@@ -1,5 +1,9 @@
 -- Primera seed (solo se ejecuta con el volumen de MySQL vacío). Ver docs/BASE-DE-DATOS.md, «Seed».
 
+-- El cliente mysql de la imagen arranca en latin1 (sin LANG) y guardaría «Alimentación» como «AlimentaciÃ³n»:
+-- este archivo es UTF-8 y hay que decirlo ANTES de insertar nada.
+SET NAMES utf8mb4;
+
 -- Categorías predeterminadas (RF-08): id_usuario NULL = visibles para todos, editables solo por un admin (RF-34).
 INSERT INTO categorias (id_usuario, nombre, tipo, color) VALUES
   (NULL, 'Alimentación',          'gasto',   '#E4572E'),
