@@ -12,6 +12,7 @@ use App\Http\Response;
 use App\Movimientos\Filtros;
 use App\Movimientos\ReglasMovimiento;
 use App\Support\Dinero;
+use App\Support\Mes;
 use App\Validation\MovimientoValidator;
 use App\View\View;
 use RuntimeException;
@@ -107,9 +108,12 @@ final class MovimientoController
                     switch ($saved['codigo']) {
                         case ReglasMovimiento::OK:
                             $data = $result['data'];
-                            Flash::set('ok', $movimiento === null
+                            $mensaje = $movimiento === null
                                 ? 'Se registró ' . ($data['tipo'] === 'ingreso' ? 'el ingreso' : 'el gasto') . ' de ' . Dinero::formatear($data['monto']) . " en «{$saved['cuenta']}»."
-                                : 'Se guardaron los cambios del movimiento.');
+                                : 'Se guardaron los cambios del movimiento.';
+                            // RF-17: si el gasto deja la categoría cerca o por encima de su presupuesto del mes, se avisa aquí mismo.
+                            $aviso = $data['tipo'] === 'gasto' ? $this->avisoPresupuesto($user['id'], $data['id_categoria'], $data['fecha']) : null;
+                            Flash::set($aviso === null ? 'ok' : 'warn', $aviso === null ? $mensaje : "$mensaje $aviso");
                             Response::redirect('/movimientos.php');
 
                         case ReglasMovimiento::TIPO_DISCORDANTE:
@@ -161,7 +165,7 @@ final class MovimientoController
         }
 
         try {
-            $borrado = $this->container->movimientos()->delete($user['id'], $id);
+            $borrado = $this->container->gestionMovimientos()->eliminar($user['id'], $id);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -177,6 +181,31 @@ final class MovimientoController
 
         Flash::set('ok', 'Se eliminó el movimiento.');
         Response::redirect('/movimientos.php' . ($query !== '' ? '?' . $query : ''));
+    }
+
+    /**
+     * El aviso de RF-17 para un gasto de esa categoría y fecha, o null si no hay presupuesto o está en orden (menos del
+     * 80 %). Se calcula al momento, no se guarda.
+     */
+    private function avisoPresupuesto(int $userId, int $categoriaId, string $fecha): ?string
+    {
+        $mes = Mes::deFecha($fecha);
+        $presupuesto = $mes === null ? null : $this->container->presupuestos()->findForCategory($userId, $categoriaId, $mes['mes'], $mes['anio']);
+
+        if ($presupuesto === null) {
+            return null;
+        }
+
+        $pr = $presupuesto->progreso();
+        $gastado = Dinero::formatear($presupuesto->gastado);
+        $limite = Dinero::formatear($presupuesto->montoLimite);
+
+        return match ($pr['estado']) {
+            'cerca' => "Aviso: llevas el {$pr['percent']} % del presupuesto de «{$presupuesto->categoriaNombre}» ($gastado de $limite).",
+            'limite' => "Aviso: llegaste al límite del presupuesto de «{$presupuesto->categoriaNombre}» ($limite).",
+            'excedido' => "Aviso: superaste el presupuesto de «{$presupuesto->categoriaNombre}» ($gastado de $limite).",
+            default => null,
+        };
     }
 
     private static function page(mixed $value): int

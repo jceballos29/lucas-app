@@ -4,4 +4,4 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-(new App\Controller\PreviewController())->app('metas', 'Metas de ahorro');
+(new App\Controller\MetaController(App\Container::shared()))->index();

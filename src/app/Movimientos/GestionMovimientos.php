@@ -13,7 +13,7 @@ use PDO;
 /**
  * Crear y editar movimientos respetando D8. Todo ocurre en UNA transacción: se bloquea la cuenta (`FOR UPDATE`), se
  * comprueban las reglas con lo leído ahí dentro y solo entonces se escribe. Así una cuenta que se desactiva a la vez no
- * recibe movimientos «a escondidas». El saldo no se guarda, se calcula (CuentaRepository), de modo que alta, edición y
+ * recibe movimientos «a escondidas»; borrar también bloquea la cuenta. El saldo no se guarda, se calcula (CuentaRepository), de modo que alta, edición y
  * borrado lo actualizan solos (RF-14).
  */
 final class GestionMovimientos
@@ -55,6 +55,27 @@ final class GestionMovimientos
             }
 
             return ['codigo' => ReglasMovimiento::OK, 'id' => $id, 'cuenta' => $cuenta['nombre'] ?? null];
+        });
+    }
+
+    /**
+     * Elimina un movimiento del usuario. Bloquea su cuenta (como el alta y los aportes a metas): quitar un ingreso baja el
+     * saldo, y no debe cruzarse con un aporte que acaba de comprobar que había saldo suficiente.
+     *
+     * @return bool false si no existe o no es del usuario
+     */
+    public function eliminar(int $userId, int $movimientoId): bool
+    {
+        return Transaction::run($this->pdo, function () use ($userId, $movimientoId): bool {
+            $movimiento = $this->movimientos->findOwned($userId, $movimientoId);
+
+            if ($movimiento === null) {
+                return false;
+            }
+
+            $this->cuentas->lockForWrite($userId, $movimiento->idCuenta);
+
+            return $this->movimientos->delete($userId, $movimientoId);
         });
     }
 }

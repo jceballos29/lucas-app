@@ -2,50 +2,86 @@
 
 declare(strict_types=1);
 
+use App\Domain\Presupuesto;
+use App\Support\Dinero;
+use App\Support\Mes;
 use App\View\Html;
 use App\View\Ui;
 
-/** Vista de maqueta (datos de ejemplo, sin lógica). Se conectará a datos reales en su fase. */
-$budgets = [
-    ['name' => 'Alimentación', 'spent' => 330000, 'limit' => 400000],
-    ['name' => 'Transporte', 'spent' => 80000, 'limit' => 200000],
-    ['name' => 'Entretenimiento', 'spent' => 150000, 'limit' => 120000],
-    ['name' => 'Servicios', 'spent' => 210000, 'limit' => 300000],
-    ['name' => 'Salud', 'spent' => 20000, 'limit' => 150000],
-    ['name' => 'Educación', 'spent' => 90000, 'limit' => 100000],
-];
-/** Texto y tono de la etiqueta según el consumo (la misma regla de aviso al 80 % y 100 % de RF-17). */
-$status = [
+/**
+ * Presupuestos del mes (RF-15 a RF-17): barra de progreso por categoría y avisos al 80 % y al superar el límite.
+ *
+ * @var int $mes
+ * @var int $anio
+ * @var array{mes: int, anio: int} $anterior
+ * @var array{mes: int, anio: int} $siguiente
+ * @var list<Presupuesto> $presupuestos
+ * @var string $presupuestado Suma de los límites del mes.
+ * @var string $gastado Suma de lo gastado en esas categorías.
+ * @var array{tone: string, message: string}|null $flash
+ */
+$flash = $flash ?? null;
+$enlace = static fn (array $m): string => '/presupuestos.php?' . http_build_query($m);
+$etiqueta = [
     'ok' => ['En orden', 'neutral', null],
-    'warn' => ['Cerca del límite', 'warn', 'alert'],
-    'over' => ['Excedido', 'danger', 'alert'],
+    'cerca' => ['Cerca del límite', 'warn', 'alert'],
+    'limite' => ['Límite alcanzado', 'danger', 'alert'],
+    'excedido' => ['Excedido', 'danger', 'alert'],
 ];
-$over = array_values(array_filter($budgets, static fn (array $b): bool => $b['spent'] > $b['limit']));
 
 $monthNav = new Html('<div class="month-nav">'
-    . Ui::iconButton('chevron-left', 'Mes anterior', ['href' => '#'])
-    . '<span class="month-nav__label">Noviembre 2026</span>'
-    . Ui::iconButton('chevron-right', 'Mes siguiente', ['href' => '#'])
+    . Ui::iconButton('chevron-left', 'Mes anterior', ['href' => $enlace($anterior)])
+    . '<span class="month-nav__label">' . escape(Mes::etiqueta($mes, $anio)) . '</span>'
+    . Ui::iconButton('chevron-right', 'Mes siguiente', ['href' => $enlace($siguiente)])
     . '</div>');
+$nuevo = '/presupuesto-form.php?' . http_build_query(['mes' => $mes, 'anio' => $anio]);
 ?>
-<?= Ui::pageHead('Presupuestos', 'Límites de gasto por categoría', Html::join([$monthNav, Ui::button('Nuevo presupuesto', ['href' => '#', 'icon' => 'plus'])])) ?>
+<?= Ui::pageHead('Presupuestos', 'Límites de gasto por categoría', Html::join([$monthNav, Ui::button('Nuevo presupuesto', ['href' => $nuevo, 'icon' => 'plus'])])) ?>
 
-<?php foreach ($over as $b): ?>
-    <?= Ui::notice(new Html('<b>Aviso:</b> superaste el presupuesto de <b>' . escape($b['name']) . '</b> en ' . escape(Ui::pesos($b['spent'] - $b['limit'])) . '. Revisa tus gastos de esta categoría.'), 'warn') ?>
+<?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
+
+<?php foreach ($presupuestos as $p): ?>
+    <?php $pr = $p->progreso(); ?>
+    <?php if ($pr['estado'] === 'cerca'): ?>
+        <?= Ui::notice(new Html('<b>Aviso:</b> llevas el <b>' . $pr['percent'] . ' %</b> del presupuesto de <b>' . escape($p->categoriaNombre) . '</b>; te quedan ' . escape(Dinero::formatear($pr['restante'])) . '.'), 'warn') ?>
+    <?php elseif ($pr['estado'] === 'limite'): ?>
+        <?= Ui::notice(new Html('<b>Aviso:</b> llegaste al límite del presupuesto de <b>' . escape($p->categoriaNombre) . '</b> (' . escape(Dinero::formatear($p->montoLimite)) . ').'), 'warn') ?>
+    <?php elseif ($pr['estado'] === 'excedido'): ?>
+        <?= Ui::notice(new Html('<b>Aviso:</b> superaste el presupuesto de <b>' . escape($p->categoriaNombre) . '</b> en ' . escape(Dinero::formatear(ltrim($pr['restante'], '-'))) . '. Revisa tus gastos de esta categoría.'), 'warn') ?>
+    <?php endif; ?>
 <?php endforeach; ?>
 
-<div class="cards-grid cards-grid--3">
-    <?php foreach ($budgets as $b): ?>
-        <?php
-        $percent = (int) floor($b['spent'] / $b['limit'] * 100);
-        $tone = Ui::budgetTone($percent);
-        [$text, $badgeTone, $badgeIcon] = $status[$tone];
-        ?>
-        <?= Ui::cardOpen(['tag' => 'article', 'class' => 'budget']) ?>
-            <div class="budget__head"><span class="budget__name"><?= escape($b['name']) ?></span><?= Ui::badge($text, $badgeTone, $badgeIcon) ?></div>
-            <?= Ui::progress($percent, $b['name'], $tone) ?>
-            <div class="budget__foot"><span><?= escape(Ui::pesos($b['spent'])) ?> de <?= escape(Ui::pesos($b['limit'])) ?></span><b class="<?= $tone === 'over' ? 'is-over' : '' ?>"><?= $percent ?> %</b></div>
-        <?= Ui::cardClose('article') ?>
-    <?php endforeach; ?>
-</div>
-<?= Ui::fab('movimiento-form.php', 'Nuevo movimiento') ?>
+<?php if ($presupuestos === []): ?>
+    <?= Ui::cardOpen() ?>
+        <p>No tienes presupuestos para <?= escape(Mes::etiqueta($mes, $anio)) ?>. Fija un límite para una categoría de gastos y te avisaremos cuando te acerques.</p>
+        <p><?= Ui::button('Crear un presupuesto', ['href' => $nuevo, 'icon' => 'plus']) ?></p>
+    <?= Ui::cardClose() ?>
+<?php else: ?>
+    <p class="summary">
+        <span>Presupuestado <b><?= escape(Dinero::formatear($presupuestado)) ?></b></span>
+        <span>Gastado <b><?= escape(Dinero::formatear($gastado)) ?></b></span>
+    </p>
+    <div class="cards-grid cards-grid--3">
+        <?php foreach ($presupuestos as $p): ?>
+            <?php
+            $pr = $p->progreso();
+            [$texto, $tonoInsignia, $icono] = $etiqueta[$pr['estado']];
+            ?>
+            <?= Ui::cardOpen(['tag' => 'article', 'class' => 'budget']) ?>
+                <div class="budget__head"><span class="budget__name"><?= escape($p->categoriaNombre) ?></span><?= Ui::badge($texto, $tonoInsignia, $icono) ?></div>
+                <?= Ui::progress($pr['percent'], 'Presupuesto de ' . $p->categoriaNombre, $pr['tone']) ?>
+                <div class="budget__foot"><span><?= escape(Dinero::formatear($p->gastado)) ?> de <?= escape(Dinero::formatear($p->montoLimite)) ?></span><b class="<?= $pr['tone'] === 'over' ? 'is-over' : '' ?>"><?= $pr['percent'] ?> %</b></div>
+                <div class="account__actions">
+                    <?= Ui::button('Editar', ['href' => '/presupuesto-form.php?id=' . $p->id, 'variant' => 'secondary', 'size' => 'sm', 'icon' => 'edit', 'attrs' => ['aria-label' => 'Editar el presupuesto de ' . $p->categoriaNombre]]) ?>
+                    <?= Ui::postForm($enlace(['mes' => $mes, 'anio' => $anio]), ['id' => $p->id, 'accion' => 'eliminar'], Ui::button('Eliminar', [
+                        'type' => 'submit',
+                        'variant' => 'secondary',
+                        'size' => 'sm',
+                        'attrs' => ['aria-label' => 'Eliminar el presupuesto de ' . $p->categoriaNombre, 'data-confirm' => '¿Eliminar el presupuesto de «' . $p->categoriaNombre . '» de ' . Mes::etiqueta($mes, $anio) . '? Tus movimientos no se tocan.', 'data-confirm-ok' => 'Eliminar'],
+                    ])) ?>
+                </div>
+            <?= Ui::cardClose('article') ?>
+        <?php endforeach; ?>
+    </div>
+<?php endif; ?>
+<?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?>

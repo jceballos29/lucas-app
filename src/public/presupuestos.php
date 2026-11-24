@@ -4,4 +4,4 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-(new App\Controller\PreviewController())->app('presupuestos', 'Presupuestos');
+(new App\Controller\PresupuestoController(App\Container::shared()))->index();

@@ -13,6 +13,12 @@ final class Fecha
 {
     private const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
+    /** «noviembre» (1 a 12). */
+    public static function mesNombre(int $mes): string
+    {
+        return self::MESES[($mes - 1) % 12];
+    }
+
     /** «Dic», «Ene»... para los ejes de los gráficos (1 a 12). */
     public static function mesCorto(int $mes): string
     {

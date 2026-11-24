@@ -9,11 +9,15 @@ use App\Auth\Autenticador;
 use App\Auth\LimitadorIntentos;
 use App\Database\Connection;
 use App\Repository\AdminStatsRepository;
+use App\Repository\AporteRepository;
 use App\Repository\CategoriaRepository;
 use App\Repository\CuentaRepository;
+use App\Metas\GestionMetas;
 use App\Movimientos\GestionMovimientos;
 use App\Repository\IntentoRepository;
+use App\Repository\MetaRepository;
 use App\Repository\MovimientoRepository;
+use App\Repository\PresupuestoRepository;
 use App\Repository\UsuarioRepository;
 use PDO;
 
@@ -99,5 +103,25 @@ final class Container
     public function gestionMovimientos(): GestionMovimientos
     {
         return new GestionMovimientos($this->pdo(), $this->movimientos(), $this->cuentas(), $this->categorias());
+    }
+
+    public function presupuestos(): PresupuestoRepository
+    {
+        return new PresupuestoRepository($this->pdo());
+    }
+
+    public function metas(): MetaRepository
+    {
+        return new MetaRepository($this->pdo());
+    }
+
+    public function aportes(): AporteRepository
+    {
+        return new AporteRepository($this->pdo());
+    }
+
+    public function gestionMetas(): GestionMetas
+    {
+        return new GestionMetas($this->pdo(), $this->metas(), $this->aportes(), $this->cuentas());
     }
 }
