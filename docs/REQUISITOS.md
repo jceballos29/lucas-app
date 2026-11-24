@@ -137,22 +137,23 @@ Jóvenes y estudiantes que empiezan a manejar su dinero, trabajadores dependient
 | RNF-21 | Privacidad | El dashboard de administración muestra **solo agregados** y datos de cuenta (nombre, correo, rol, estado, fecha de registro). Un administrador no ve los movimientos, saldos, presupuestos ni metas de ningún usuario (RNF-04, RNF-20). |
 | RNF-22 | Seguridad | Toda página de `admin/` exige sesión **y** rol `admin`, comprobado en el servidor en cada petición (no basta con ocultar el menú). Los cambios de estado/rol son POST con CSRF. |
 | RNF-23 | Seguridad | El administrador de la primera seed trae una clave de desarrollo conocida: debe cambiarse en cualquier entorno que no sea la máquina local (ver `docs/BASE-DE-DATOS.md`, «Seed»). |
-| RNF-24 | Seguridad | El registro y el login limitan los intentos (por IP y por correo) y responden igual si el correo existe o no, para no revelar qué correos están registrados. |
+| RNF-24 | Seguridad | El registro y el login limitan los intentos (por IP y por correo). El login responde igual si el correo existe o no; el registro, al no haber correo transaccional, sí informa que el correo ya está registrado (ver `docs/PLAN.md`, D2). |
 
 ## Estado de implementación
 
 | Módulo | Requisitos | Fase | Estado |
 |---|---|---|---|
 | Esqueleto Docker/PHP | RNF-05, RNF-02 | 0 | ✅ |
-| Registro, login, logout, sesión | RF-01, RF-02, RF-24 a RF-27, RNF-01, RNF-06 | 1 | ⬜ |
-| Dashboard de administración | RF-28 a RF-34, RNF-21 a RNF-23 | 2 | ⬜ |
+| Registro, login, logout, sesión | RF-01, RF-02, RF-24 a RF-27, RNF-01, RNF-06, RNF-23, RNF-24 | 1 | ⬜ |
+| Dashboard de administración | RF-28 a RF-33, RNF-21, RNF-22 | 2 | ⬜ |
 | Cuentas | RF-05 a RF-07 | 3 | ⬜ |
-| Categorías | RF-08, RF-09 | 3 | ⬜ |
+| Categorías (incl. predeterminadas del admin) | RF-08, RF-09, RF-34 | 3 | ⬜ |
 | Movimientos | RF-10 a RF-14 | 4 | ⬜ |
 | Presupuestos | RF-15 a RF-17 | 5 | ⬜ |
 | Metas de ahorro | RF-18 a RF-20 | 5 | ⬜ |
 | Panel y reportes | RF-21 a RF-23 | 6 | ⬜ |
-| Perfil y recuperar contraseña | RF-03, RF-04 | 7 | ⬜ |
+| Perfil y recuperar contraseña | RF-03, RF-04, RNF-20 | 7 | ⬜ |
+| Verificación transversal | RNF-07, RNF-08, RNF-13 a RNF-15, RNF-17, RNF-19 | 7 | ⬜ |
 
 ## Referencias
 
