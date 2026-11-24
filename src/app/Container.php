@@ -9,6 +9,8 @@ use App\Auth\Autenticador;
 use App\Auth\LimitadorIntentos;
 use App\Database\Connection;
 use App\Repository\AdminStatsRepository;
+use App\Repository\CategoriaRepository;
+use App\Repository\CuentaRepository;
 use App\Repository\IntentoRepository;
 use App\Repository\UsuarioRepository;
 use PDO;
@@ -75,5 +77,15 @@ final class Container
     public function gestionUsuarios(): GestionUsuarios
     {
         return new GestionUsuarios($this->usuarios());
+    }
+
+    public function cuentas(): CuentaRepository
+    {
+        return new CuentaRepository($this->pdo());
+    }
+
+    public function categorias(): CategoriaRepository
+    {
+        return new CategoriaRepository($this->pdo());
     }
 }

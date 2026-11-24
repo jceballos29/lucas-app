@@ -8,5 +8,6 @@ use App\View\View;
 $items = [
     ['href' => '/admin/index.php', 'label' => 'Dashboard', 'key' => 'dashboard', 'icon' => 'dashboard'],
     ['href' => '/admin/usuarios.php', 'label' => 'Usuarios', 'key' => 'usuarios', 'icon' => 'users'],
+    ['href' => '/admin/categorias.php', 'label' => 'Categorías', 'key' => 'categorias', 'icon' => 'target'],
 ];
 View::render('layout/sidebar', ['items' => $items, 'nav' => $nav ?? '', 'currentUser' => $currentUser ?? null, 'home' => '/admin/index.php', 'badge' => 'Administración']);

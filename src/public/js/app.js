@@ -116,6 +116,8 @@
   /* 0. Valores dinámicos (barras, gráficos). No van en style="" porque la CSP (style-src 'self') bloquea los estilos en
         línea; asignar propiedades por JS (CSSOM) sí está permitido. */
   document.querySelectorAll('[data-v]').forEach(function (el) { el.style.setProperty('--v', Math.max(0, Math.min(100, Number(el.dataset.v) || 0)) + '%'); });
+  /* Color de una categoría (#RRGGBB): se valida antes de aplicarlo. */
+  document.querySelectorAll('[data-color]').forEach(function (el) { if (/^#[0-9a-fA-F]{6}$/.test(el.dataset.color)) el.style.setProperty('--swatch', el.dataset.color); });
   document.querySelectorAll('[data-h]').forEach(function (el) { el.style.setProperty('--h', el.dataset.h); });
 
   /* 6. Formato de miles en campos de monto (visual). Con PHP, limpia el valor antes de guardar. */
