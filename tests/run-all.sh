@@ -15,4 +15,7 @@ bin/as-migrator php tests/integration.php
 echo; echo "################ Humo (curl)"
 tests/smoke.sh
 
+echo; echo "################ Copias de seguridad"
+tests/backup.sh
+
 echo; echo "Todas las suites pasaron."

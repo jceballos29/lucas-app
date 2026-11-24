@@ -24,6 +24,7 @@ passed=0; failed=0
 cleanup() {
     sql "DELETE FROM intentos_acceso" >/dev/null 2>&1
     # Orden explícito: transacciones y aportes referencian cuentas sin cascada (ver D5 en docs/PLAN.md).
+    sql "DELETE r FROM restablecimientos r JOIN usuarios u ON u.id_usuario = r.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE a FROM aportes_meta a JOIN metas_ahorro m ON m.id_meta = a.id_meta JOIN usuarios u ON u.id_usuario = m.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE p FROM presupuestos p JOIN usuarios u ON u.id_usuario = p.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE t FROM transacciones t JOIN usuarios u ON u.id_usuario = t.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
@@ -73,6 +74,12 @@ register() { # JAR correo clave [extra]
 }
 login() { post_form "$1" /login.php /login.php "correo=$2" "clave=$3"; }
 
+MAILPIT="http://127.0.0.1:$(env_value MAILPIT_PORT)"; [ "$MAILPIT" = "http://127.0.0.1:" ] && MAILPIT="http://127.0.0.1:8025"
+mail_clear() { curl -s -X DELETE "$MAILPIT/api/v1/messages" >/dev/null; }
+mail_ids() { curl -s -G "$MAILPIT/api/v1/search" --data-urlencode "query=to:$1" | grep -o '"ID":"[^"]*"' | cut -d'"' -f4; }
+mail_count() { mail_ids "$1" | wc -l | tr -d ' '; }
+wait_mail() { local i; for i in $(seq 1 40); do [ "$(mail_count "$1")" -ge "${2:-1}" ] && return 0; sleep 0.25; done; return 1; }
+mail_token() { local id; id="$(mail_ids "$1" | head -n1)"; [ -n "$id" ] && curl -s "$MAILPIT/api/v1/message/$id" | grep -o 'restablecer\.php?token=[a-f0-9]\{64\}' | head -n1 | cut -d= -f2; }
 curl -s -o /dev/null "$BASE/login.php" || { echo "No responde $BASE: ¿está en marcha docker compose up?"; exit 2; }
 sql "DELETE FROM intentos_acceso" >/dev/null
 
@@ -999,6 +1006,222 @@ check "ninguna fila 'Lote N' se repite" "0" "$(grep -o 'Lote [0-9]*' "$TMP/body"
 check "salieron las 2.300 filas 'Lote' (la inserción masiva funcionó)" "2300" "$(sql "SELECT COUNT(*) FROM transacciones WHERE id_usuario=$URID AND descripcion LIKE 'Lote %'")"
 check "y todas están en el archivo" "2300" "$(grep -c 'Lote [0-9]' "$TMP/body")"
 check "el orden es de la fecha más reciente a la más antigua" "0" "$(sed 1d "$TMP/body" | cut -d';' -f1 | awk 'NR > 1 && $0 > prev { bad++ } { prev = $0 } END { print bad + 0 }')"
+
+echo; echo "== Recuperar la contraseña por correo (RF-04, RNF-24)"
+curl -s -o /dev/null "$MAILPIT/api/v1/info" || { echo "No responde Mailpit en $MAILPIT (docker compose up -d)."; exit 2; }
+sql "DELETE FROM intentos_acceso" >/dev/null; mail_clear
+UC1="smoke_${RUN}_recA@correo.com"; PV='clave-vieja-12'; PN='clave-nueva-34'
+JQ1="$(new_jar)"; register "$JQ1" "$UC1" "$PV"
+JQ2="$(new_jar)"; login "$JQ2" "$UC1" "$PV"
+check "la segunda sesión del mismo usuario está abierta" "302 /panel.php" "$CODE $LOC"
+request "$J7" GET /recuperar.php;  check "la página de recuperar responde 200" "200" "$CODE"
+J8="$(new_jar)"
+post_form "$J8" /recuperar.php /recuperar.php "correo=$UC1"
+check "pedir el enlace responde 200" "200" "$CODE"
+AVISO_REAL="$(grep -o 'Si ese correo está registrado[^<]*' "$TMP/body")"
+contains "con un aviso" "Si ese correo está registrado" "$TMP/body"
+post_form "$J8" /recuperar.php /recuperar.php "correo=nadie_${RUN}@correo.com"
+AVISO_FALSO="$(grep -o 'Si ese correo está registrado[^<]*' "$TMP/body")"
+check "un correo que NO existe recibe EXACTAMENTE el mismo aviso (no revela quién está registrado)" "$AVISO_REAL" "$AVISO_FALSO"
+check "con el mismo código de respuesta" "200" "$CODE"
+post_form "$J8" /recuperar.php /recuperar.php "correo=esto-no-es-un-correo"
+check "un texto que ni es un correo también" "200" "$CODE"; contains "con el mismo aviso" "Si ese correo está registrado" "$TMP/body"
+wait_mail "$UC1" 1 || true
+check "al correo registrado le llegó UN mensaje" "1" "$(mail_count "$UC1")"
+check "y al que no existe no se envió nada" "0" "$(mail_count "nadie_${RUN}@correo.com")"
+TOK1="$(mail_token "$UC1")"
+check "el mensaje trae un enlace con un token de 64 hexadecimales" "64" "${#TOK1}"
+check "el token NO se guardó en la BD (solo su hash)" "0" "$(sql "SELECT COUNT(*) FROM restablecimientos WHERE token_hash='$TOK1'")"
+check "hay un enlace pendiente guardado" "1" "$(sql "SELECT COUNT(*) FROM restablecimientos r JOIN usuarios u ON u.id_usuario=r.id_usuario WHERE u.correo='$UC1' AND r.usado_en IS NULL")"
+
+request "$J8" GET "/restablecer.php?token=$TOK1"
+check "el enlace del correo abre el formulario" "200" "$CODE"
+contains "para elegir la contraseña nueva" "Contraseña nueva" "$TMP/body"
+contains "reenviando el token en un campo oculto" "name=\"token\" value=\"$TOK1\"" "$TMP/body"
+check "la página no se guarda en la caché" "Cache-Control: no-store" "$(grep -i '^cache-control' "$TMP/hdr" | tr -d '\r')"
+post_form "$J8" /restablecer.php "/restablecer.php?token=$TOK1" "token=$TOK1" "clave=corta" "clave2=corta"
+check "una contraseña corta se rechaza" "200" "$CODE"; contains "con un aviso" "al menos 8 caracteres" "$TMP/body"
+contains "y el formulario sigue disponible (el enlace no se gastó)" "Contraseña nueva" "$TMP/body"
+post_form "$J8" /restablecer.php "/restablecer.php?token=$TOK1" "token=$TOK1" "clave=$PN" "clave2=otra-distinta-1"
+contains "contraseñas distintas se rechazan" "no coinciden" "$TMP/body"
+request "$J8" POST /restablecer.php --data-urlencode "token=$TOK1" --data-urlencode "clave=$PN" --data-urlencode "clave2=$PN"
+check "restablecer sin token CSRF se rechaza" "403" "$CODE"
+ORIGIN_SENT="http://evil.example" post_form "$J8" /restablecer.php "/restablecer.php?token=$TOK1" "token=$TOK1" "clave=$PN" "clave2=$PN"
+check "y desde otro origen" "403" "$CODE"
+post_form "$J8" /restablecer.php "/restablecer.php?token=$TOK1" "token=$TOK1" "clave=$PN" "clave2=$PN"
+check "con una contraseña válida redirige a login" "302 /login.php?msg=reset" "$CODE $LOC"
+request "$J8" GET "/login.php?msg=reset";  contains "y lo avisa" "tu contraseña se cambió" "$TMP/body"
+JN2="$(new_jar)"; login "$JN2" "$UC1" "$PV"
+check "la contraseña VIEJA ya no sirve" "200" "$CODE"; contains "mensaje genérico" "Correo o contraseña incorrectos." "$TMP/body"
+login "$JN2" "$UC1" "$PN"
+check "la contraseña nueva sí" "302 /panel.php" "$CODE $LOC"
+request "$JQ2" GET /panel.php
+check "la sesión que estaba abierta antes del cambio se cierra (revoked)" "302 /login.php?msg=revoked" "$CODE $LOC"
+request "$JQ1" GET /panel.php
+check "y la de la primera también" "302 /login.php?msg=revoked" "$CODE $LOC"
+request "$J8" GET "/restablecer.php?token=$TOK1"
+contains "el enlace ya usado no sirve" "no es válido o ya caducó" "$TMP/body"
+post_form "$J8" /restablecer.php /recuperar.php "token=$TOK1" "clave=otra-clave-99" "clave2=otra-clave-99"
+contains "ni usándolo con otra contraseña" "no es válido o ya caducó" "$TMP/body"
+JN3="$(new_jar)"; login "$JN3" "$UC1" "otra-clave-99"
+check "y la contraseña no cambió" "200" "$CODE"
+request "$J8" GET "/restablecer.php?token=abc";  contains "un token con forma inválida no sirve" "no es válido o ya caducó" "$TMP/body"
+request "$J8" GET "/restablecer.php?token=$(printf '0%.0s' $(seq 1 64))";  contains "uno falso con forma válida no sirve" "no es válido o ya caducó" "$TMP/body"
+request "$J8" GET "/restablecer.php";  contains "sin token tampoco" "no es válido o ya caducó" "$TMP/body"
+request "$J8" GET "/restablecer.php?token[]=x";  check "un token con forma de arreglo no rompe" "200" "$CODE"
+request "$J8" GET "/restablecer.php?token=%27%20OR%201%3D1--";  contains "ni una inyección" "no es válido o ya caducó" "$TMP/body"
+
+echo; echo "== Recuperar: un enlace nuevo anula el anterior, caducidad, cuentas inactivas y límite"
+mail_clear
+post_form "$J8" /recuperar.php /recuperar.php "correo=$UC1"; wait_mail "$UC1" 1 || true; TA="$(mail_token "$UC1")"
+mail_clear
+post_form "$J8" /recuperar.php /recuperar.php "correo=$UC1"; wait_mail "$UC1" 1 || true; TB="$(mail_token "$UC1")"
+check "el segundo enlace es distinto" "true" "$([ "$TA" != "$TB" ] && echo true || echo false)"
+request "$J8" GET "/restablecer.php?token=$TA";  contains "pedir otro enlace anula el anterior" "no es válido o ya caducó" "$TMP/body"
+request "$J8" GET "/restablecer.php?token=$TB";  contains "y el nuevo sirve" "Contraseña nueva" "$TMP/body"
+sql "UPDATE restablecimientos r JOIN usuarios u ON u.id_usuario=r.id_usuario SET r.expira_en = NOW() - INTERVAL 1 MINUTE WHERE u.correo='$UC1'" >/dev/null
+request "$J8" GET "/restablecer.php?token=$TB";  contains "un enlace caducado no sirve" "no es válido o ya caducó" "$TMP/body"
+post_form "$J8" /restablecer.php /recuperar.php "token=$TB" "clave=$PN-x" "clave2=$PN-x"
+contains "ni para cambiar la contraseña" "no es válido o ya caducó" "$TMP/body"
+mail_clear; sql "UPDATE usuarios SET activo=0 WHERE correo='$UC1'" >/dev/null
+post_form "$J8" /recuperar.php /recuperar.php "correo=$UC1"
+check "una cuenta desactivada recibe la misma respuesta" "200" "$CODE"; contains "con el mismo aviso" "Si ese correo está registrado" "$TMP/body"
+sleep 1.5
+check "pero no recibe ningún correo" "0" "$(mail_count "$UC1")"
+sql "UPDATE usuarios SET activo=1 WHERE correo='$UC1'" >/dev/null
+
+UC2="smoke_${RUN}_recB@correo.com"; JQ3="$(new_jar)"; register "$JQ3" "$UC2" "$PV"
+sql "DELETE FROM intentos_acceso" >/dev/null; mail_clear
+for i in 1 2 3 4 5 6 7; do post_form "$J8" /recuperar.php /recuperar.php "correo=$UC2"; done
+check "siete peticiones seguidas siguen respondiendo 200 igual (no se revela el límite)" "200" "$CODE"
+wait_mail "$UC2" 5 || true; sleep 1.5
+check "pero solo se enviaron 5 correos (RNF-24): a partir de ahí no se envía nada" "5" "$(mail_count "$UC2")"
+sql "DELETE FROM intentos_acceso" >/dev/null
+
+echo; echo "== Perfil (RF-03)"
+JPF="$(new_jar)"; UPF="smoke_${RUN}_perf@correo.com"; PPF='clave-perfil-12'; register "$JPF" "$UPF" "$PPF"
+UPFID="$(uid "$UPF")"
+request "$J7" GET /perfil.php;  check "sin sesión, el perfil exige login" "302 /login.php" "$CODE $LOC"
+request "$JPF" GET /perfil.php
+check "el perfil responde 200" "200" "$CODE"
+contains "muestra el correo" "$UPF" "$TMP/body"
+contains "con la moneda actual seleccionada" '<option value="COP" selected>' "$TMP/body"
+post_form "$JPF" /cuenta-form.php /cuenta-form.php "nombre=Efectivo" "tipo=efectivo" "saldo_inicial=1.500.000"
+request "$JPF" GET /cuentas.php;  contains "por defecto los montos usan «\$»" '$1.500.000' "$TMP/body"
+post_form "$JPF" /perfil.php /perfil.php "accion=datos" "nombre=  Nueva   Persona " "moneda=EUR"
+check "guardar los datos redirige al perfil" "302 /perfil.php" "$CODE $LOC"
+check "se guardaron nombre (limpio) y moneda" "Nueva Persona|EUR" "$(sql "SELECT CONCAT(nombre,'|',moneda) FROM usuarios WHERE id_usuario=$UPFID")"
+request "$JPF" GET /perfil.php;  contains "avisa" "Se guardaron tus datos" "$TMP/body"
+contains "la barra lateral ya muestra el nombre nuevo" "Nueva Persona" "$TMP/body"
+request "$JPF" GET /cuentas.php;  contains "los montos pasan al símbolo de la moneda (€)" '€1.500.000' "$TMP/body"
+absent "y ya no usan «\$»" '$1.500.000' "$TMP/body"
+request "$JPF" GET /panel.php;  contains "también en el panel" '€1.500.000' "$TMP/body"
+post_form "$JPF" /perfil.php /perfil.php "accion=datos" "nombre=Nueva Persona" "moneda=USD"
+request "$JPF" GET /cuentas.php;  contains "USD usa «US\$»" 'US$1.500.000' "$TMP/body"
+post_form "$JPF" /perfil.php /perfil.php "accion=datos" "nombre=Nueva Persona" "moneda=XXX"
+check "una moneda desconocida se rechaza" "200" "$CODE"; contains "con un aviso" "Elige una moneda" "$TMP/body"
+check "y no cambió" "USD" "$(sql "SELECT moneda FROM usuarios WHERE id_usuario=$UPFID")"
+post_form "$JPF" /perfil.php /perfil.php "accion=datos" "nombre=A" "moneda=COP"
+contains "un nombre corto se rechaza" "Escribe tu nombre" "$TMP/body"
+post_form "$JPF" /perfil.php /perfil.php "accion=datos" "nombre=<b>Negrita</b>" "moneda=COP"
+request "$JPF" GET /perfil.php
+contains "un nombre con HTML se escapa" "&lt;b&gt;Negrita&lt;/b&gt;" "$TMP/body"
+absent "y no aparece como etiqueta" "<b>Negrita" "$TMP/body"
+post_form "$JPF" /perfil.php /perfil.php "accion=datos" "nombre=Persona Perfil" "moneda=COP"
+request "$JPF" POST /perfil.php --data-urlencode "accion=datos" --data-urlencode "nombre=X" --data-urlencode "moneda=COP"
+check "sin token CSRF se rechaza" "403" "$CODE"
+post_form "$JPF" /perfil.php /perfil.php "accion=otra"
+check "una acción desconocida es 400" "400" "$CODE"
+request "$JA" GET /perfil.php;  check "el administrador también tiene perfil" "200" "$CODE"
+contains "con su propio menú" "Administración" "$TMP/body"
+contains "y no puede eliminar su cuenta (lo explica)" "no puedes eliminar tu propia cuenta" "$TMP/body"
+request "$JPF" GET /perfil.php;  contains "el menú del usuario tiene «Mi perfil»" ">Mi perfil<" "$TMP/body" 2>/dev/null || contains "el menú del usuario tiene «Mi perfil»" "Mi perfil" "$TMP/body"
+
+echo; echo "== Perfil: cambiar la contraseña"
+JPF2="$(new_jar)"; login "$JPF2" "$UPF" "$PPF"
+check "hay una segunda sesión abierta del mismo usuario" "302 /panel.php" "$CODE $LOC"
+cp_() { post_form "$JPF" /perfil.php /perfil.php "accion=clave" "clave_actual=$1" "clave_nueva=$2" "clave_nueva2=$3"; }
+cp_ "equivocada-1" "nueva-clave-56" "nueva-clave-56"
+check "con la contraseña actual equivocada se rechaza" "200" "$CODE"; contains "con un aviso" "La contraseña actual no es correcta" "$TMP/body"
+cp_ "$PPF" "corta" "corta";  contains "una nueva corta se rechaza" "al menos 8 caracteres" "$TMP/body"
+cp_ "$PPF" "nueva-clave-56" "distinta-clave-7";  contains "que no coincide se rechaza" "no coinciden" "$TMP/body"
+cp_ "$PPF" "$PPF" "$PPF";  contains "igual a la actual se rechaza" "distinta de la actual" "$TMP/body"
+JPF3="$(new_jar)"; login "$JPF3" "$UPF" "$PPF"
+check "nada de lo rechazado cambió la contraseña" "302 /panel.php" "$CODE $LOC"
+cp_ "$PPF" "nueva-clave-56" "nueva-clave-56"
+check "cambiarla redirige al perfil" "302 /perfil.php" "$CODE $LOC"
+request "$JPF" GET /perfil.php;  contains "avisa" "Tu contraseña se cambió" "$TMP/body"
+request "$JPF" GET /panel.php;  check "esta sesión SIGUE abierta" "200" "$CODE"
+request "$JPF2" GET /panel.php;  check "las demás sesiones se cierran" "302 /login.php?msg=revoked" "$CODE $LOC"
+request "$JPF3" GET /panel.php;  check "todas, no solo una" "302 /login.php?msg=revoked" "$CODE $LOC"
+JPF4="$(new_jar)"; login "$JPF4" "$UPF" "$PPF"
+check "la contraseña vieja ya no sirve" "200" "$CODE"
+login "$JPF4" "$UPF" "nueva-clave-56"
+check "la nueva sí" "302 /panel.php" "$CODE $LOC"
+sql "DELETE FROM intentos_acceso" >/dev/null
+for i in 1 2 3 4 5; do cp_ "mala-$i" "x-clave-123" "x-clave-123"; done
+cp_ "mala-6" "x-clave-123" "x-clave-123"
+check "tras 5 contraseñas actuales equivocadas se bloquea (429, RNF-24)" "429" "$CODE"
+cp_ "nueva-clave-56" "otra-nueva-78" "otra-nueva-78"
+check "y mientras dure, ni la correcta pasa" "429" "$CODE"
+sql "DELETE FROM intentos_acceso" >/dev/null
+
+echo; echo "== Perfil: eliminar la cuenta y todos los datos (RNF-20, D5)"
+sql "DELETE FROM intentos_acceso" >/dev/null
+JEL="$(new_jar)"; UEL="smoke_${RUN}_elim@correo.com"; PEL='clave-elim-12'; register "$JEL" "$UEL" "$PEL"
+JEO="$(new_jar)"; UEO="smoke_${RUN}_elimB@correo.com"; register "$JEO" "$UEO" "$PEL"
+UELID="$(uid "$UEL")"; UEOID="$(uid "$UEO")"
+post_form "$JEL" /cuenta-form.php /cuenta-form.php "nombre=Efectivo" "tipo=efectivo" "saldo_inicial=1.000.000"
+post_form "$JEL" /cuenta-form.php /cuenta-form.php "nombre=Banco" "tipo=bancaria" "saldo_inicial=500.000"
+post_form "$JEO" /cuenta-form.php /cuenta-form.php "nombre=Efectivo de B" "tipo=efectivo" "saldo_inicial=700.000"
+CEL1="$(sql "SELECT id_cuenta FROM cuentas WHERE id_usuario=$UELID AND nombre='Efectivo'")"; CEL2="$(sql "SELECT id_cuenta FROM cuentas WHERE id_usuario=$UELID AND nombre='Banco'")"; CEO="$(sql "SELECT id_cuenta FROM cuentas WHERE id_usuario=$UEOID")"
+post_form "$JEL" /categorias.php /categorias.php "accion=crear" "nombre=Propia de elim" "tipo=gasto" "color=#123456"
+post_form "$JEO" /categorias.php /categorias.php "accion=crear" "nombre=Propia de B" "tipo=gasto" "color=#654321"
+KEL="$(sql "SELECT id_categoria FROM categorias WHERE id_usuario=$UELID")"; KEO="$(sql "SELECT id_categoria FROM categorias WHERE id_usuario=$UEOID")"
+KDEF="$(sql "SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND nombre='Transporte'")"
+sql "INSERT INTO transacciones (id_usuario,id_cuenta,id_categoria,tipo,monto,fecha,descripcion) VALUES ($UELID,$CEL1,$KEL,'gasto',10,CURDATE(),'a'),($UELID,$CEL1,$KDEF,'gasto',20,CURDATE(),'b'),($UELID,$CEL2,$KDEF,'gasto',30,CURDATE(),'c'),($UEOID,$CEO,$KEO,'gasto',40,CURDATE(),'otro')" >/dev/null
+sql "INSERT INTO presupuestos (id_usuario,id_categoria,mes,anio,monto_limite) VALUES ($UELID,$KEL,11,2026,100),($UELID,$KDEF,11,2026,200),($UEOID,$KDEF,11,2026,300)" >/dev/null
+post_form "$JEL" /meta-form.php /meta-form.php "nombre=Meta de elim" "monto_objetivo=5.000"
+post_form "$JEO" /meta-form.php /meta-form.php "nombre=Meta de B" "monto_objetivo=5.000"
+MEL="$(sql "SELECT id_meta FROM metas_ahorro WHERE id_usuario=$UELID")"; MEO="$(sql "SELECT id_meta FROM metas_ahorro WHERE id_usuario=$UEOID")"
+post_form "$JEL" /meta-aporte.php "/meta-aporte.php?id=$MEL" "id=$MEL" "id_cuenta=$CEL1" "monto=100" "fecha=$(date +%F)"
+post_form "$JEL" /meta-aporte.php "/meta-aporte.php?id=$MEL" "id=$MEL" "id_cuenta=$CEL2" "monto=50" "fecha=$(date +%F)"
+post_form "$JEO" /meta-aporte.php "/meta-aporte.php?id=$MEO" "id=$MEO" "id_cuenta=$CEO" "monto=60" "fecha=$(date +%F)"
+filas_de() { sql "SELECT (SELECT COUNT(*) FROM usuarios WHERE id_usuario=$1) + (SELECT COUNT(*) FROM cuentas WHERE id_usuario=$1) + (SELECT COUNT(*) FROM categorias WHERE id_usuario=$1) + (SELECT COUNT(*) FROM transacciones WHERE id_usuario=$1) + (SELECT COUNT(*) FROM presupuestos WHERE id_usuario=$1) + (SELECT COUNT(*) FROM metas_ahorro WHERE id_usuario=$1) + (SELECT COUNT(*) FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario=$1)) + (SELECT COUNT(*) FROM restablecimientos WHERE id_usuario=$1)"; }
+ANTES_ELIM="$(filas_de "$UELID")"; ANTES_OTRO="$(filas_de "$UEOID")"
+check "antes: el usuario tiene datos en todas las tablas (usuario, 2 cuentas, 1 categoría, 3 movimientos, 2 presupuestos, 1 meta, 2 aportes)" "12" "$ANTES_ELIM"
+request "$JEL" GET /perfil.php;  contains "la página explica qué se elimina" "para siempre" "$TMP/body"
+post_form "$JEL" /perfil.php /perfil.php "accion=eliminar" "eliminar_clave=equivocada-1"
+check "con la contraseña equivocada no se elimina" "200" "$CODE"; contains "y lo dice" "La contraseña actual no es correcta" "$TMP/body"
+check "los datos siguen intactos" "$ANTES_ELIM" "$(filas_de "$UELID")"
+request "$JEL" POST /perfil.php --data-urlencode "accion=eliminar" --data-urlencode "eliminar_clave=$PEL"
+check "sin token CSRF no se elimina" "403" "$CODE"
+ORIGIN_SENT="http://evil.example" post_form "$JEL" /perfil.php /perfil.php "accion=eliminar" "eliminar_clave=$PEL"
+check "desde otro origen tampoco" "403" "$CODE"
+check "y los datos siguen intactos" "$ANTES_ELIM" "$(filas_de "$UELID")"
+post_form "$JEL" /perfil.php /perfil.php "accion=eliminar" "eliminar_clave=$PEL"
+check "con la contraseña correcta se elimina y redirige a login" "302 /login.php?msg=deleted" "$CODE $LOC"
+check "NO queda ninguna fila suya en ninguna tabla" "0" "$(filas_de "$UELID")"
+check "ni sus cuentas, movimientos ni aportes (comprobado por id de cuenta)" "0" "$(sql "SELECT (SELECT COUNT(*) FROM transacciones WHERE id_cuenta IN ($CEL1,$CEL2)) + (SELECT COUNT(*) FROM aportes_meta WHERE id_cuenta IN ($CEL1,$CEL2)) + (SELECT COUNT(*) FROM cuentas WHERE id_cuenta IN ($CEL1,$CEL2))")"
+check "los datos de otro usuario quedan intactos" "$ANTES_OTRO" "$(filas_de "$UEOID")"
+check "y el saldo de su cuenta sigue bien (700.000 − 40 − 60)" "699900.00" "$(sql "SELECT c.saldo_inicial - COALESCE((SELECT SUM(monto) FROM transacciones WHERE id_cuenta=c.id_cuenta),0) - COALESCE((SELECT SUM(monto) FROM aportes_meta WHERE id_cuenta=c.id_cuenta),0) FROM cuentas c WHERE c.id_cuenta=$CEO")"
+check "los intentos de acceso no guardan el hash de su correo" "0" "$(sql "SELECT COUNT(*) FROM intentos_acceso WHERE clave='correo:$(printf '%s' "$UEL" | sha256sum | cut -d' ' -f1)'")"
+request "$JEL" GET /panel.php;  check "la sesión ya no vale" "302 /login.php" "$CODE $LOC"
+login "$JEL" "$UEL" "$PEL"
+check "y no se puede volver a entrar con esa cuenta" "200" "$CODE"; contains "mensaje genérico" "Correo o contraseña incorrectos." "$TMP/body"
+request "$J7" GET "/login.php?msg=deleted";  contains "la pantalla de login confirma la eliminación" "se eliminaron" "$TMP/body"
+ADMIN_PASS_CHECK="$ADMIN_PASS"
+post_form "$JA" /perfil.php /perfil.php "accion=eliminar" "eliminar_clave=$ADMIN_PASS_CHECK"
+check "un administrador no puede eliminar su cuenta" "200" "$CODE"; contains "y se le explica" "otro administrador que te quite el rol" "$TMP/body"
+check "su cuenta sigue ahí" "1" "$(sql "SELECT COUNT(*) FROM usuarios WHERE correo='$ADMIN_EMAIL'")"
+
+echo; echo "== Salud y páginas ya sin maqueta (RNF-14)"
+request "$J7" GET /salud.php
+check "salud.php responde 200 sin sesión" "200" "$CODE"
+check "con un JSON mínimo" '{"estado":"ok"}' "$(cat "$TMP/body")"
+check "sin caché" "Cache-Control: no-store" "$(grep -i '^cache-control' "$TMP/hdr" | tr -d '\r')"
+absent "y sin revelar versiones" "PHP" "$TMP/body"
+check "la página de recuperar es la real (pide el correo y envía)" "200" "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/recuperar.php")"
 
 echo; echo "== Limitación de intentos (RNF-24)"
 J6="$(new_jar)"; U6="smoke_${RUN}_d@correo.com"
