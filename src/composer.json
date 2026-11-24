@@ -1,0 +1,26 @@
+{
+    "name": "lucas/app",
+    "description": "Lucas: gestión de finanzas personales en PHP + MySQL con Docker. Sin dependencias de terceros: solo el autoload.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "ext-pdo": "*",
+        "ext-mbstring": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        },
+        "files": [
+            "app/support.php",
+            "app/Security/origin.php",
+            "app/Security/request-guard.php",
+            "app/Security/session.php",
+            "app/Security/csrf.php"
+        ]
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
