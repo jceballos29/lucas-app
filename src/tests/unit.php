@@ -100,4 +100,61 @@ same('las celdas Html pasan tal cual', true, str_contains($table, '<span class="
 same('las celdas llevan su etiqueta para el móvil', true, str_contains($table, 'data-label="A"'));
 same('la columna de acciones no lleva etiqueta', false, str_contains($table, 'data-label="B"'));
 
+section('RegistroValidator');
+$validator = new App\Validation\RegistroValidator();
+$ok = ['nombre' => '  Ana   María  ', 'correo' => ' ANA@Correo.COM ', 'clave' => 'secreta123', 'clave2' => 'secreta123'];
+$result = $validator->validate($ok);
+same('un registro válido no da errores', [], $result['errors']);
+same('el nombre se limpia de espacios', 'Ana María', $result['data']['nombre']);
+same('el correo se pasa a minúsculas y se recorta', 'ana@correo.com', $result['data']['correo']);
+same('nombre de 1 carácter', true, isset($validator->validate(['nombre' => 'A'] + $ok)['errors']['nombre']));
+same('nombre de 81 caracteres', true, isset($validator->validate(['nombre' => str_repeat('a', 81)] + $ok)['errors']['nombre']));
+same('nombre de 80 caracteres', false, isset($validator->validate(['nombre' => str_repeat('a', 80)] + $ok)['errors']['nombre']));
+same('correo sin arroba', true, isset($validator->validate(['correo' => 'ana.correo.com'] + $ok)['errors']['correo']));
+same('correo de más de 120 caracteres', true, isset($validator->validate(['correo' => str_repeat('a', 115) . '@b.com'] + $ok)['errors']['correo']));
+same('contraseña de 7 caracteres', true, isset($validator->validate(['clave' => '1234567', 'clave2' => '1234567'] + $ok)['errors']['clave']));
+same('contraseña de 8 caracteres', [], $validator->validate(['clave' => '12345678', 'clave2' => '12345678'] + $ok)['errors']);
+same('contraseña de más de 72 bytes', true, isset($validator->validate(['clave' => str_repeat('a', 73), 'clave2' => str_repeat('a', 73)] + $ok)['errors']['clave']));
+same('contraseñas distintas', true, isset($validator->validate(['clave2' => 'otra-distinta'] + $ok)['errors']['clave2']));
+same('un campo en forma de arreglo cuenta como vacío', true, isset($validator->validate(['nombre' => ['x']] + $ok)['errors']['nombre']));
+same('el validador ignora un campo «rol»', ['nombre', 'correo', 'clave'], array_keys($validator->validate($ok + ['rol' => 'admin'])['data']));
+
+section('LimitadorIntentos (reglas puras)');
+same('por debajo de los límites', false, App\Auth\LimitadorIntentos::excede(4, 19));
+same('5 por correo bloquea', true, App\Auth\LimitadorIntentos::excede(5, 0));
+same('20 por IP bloquea', true, App\Auth\LimitadorIntentos::excede(0, 20));
+same('la clave del correo no lleva el correo en claro', false, str_contains(App\Auth\LimitadorIntentos::claveCorreo('ana@correo.com'), 'ana'));
+same('la clave del correo ignora mayúsculas y espacios', App\Auth\LimitadorIntentos::claveCorreo('ana@correo.com'), App\Auth\LimitadorIntentos::claveCorreo(' ANA@correo.com '));
+
+section('Autenticador (con un origen de datos falso)');
+$fake = new class implements App\Auth\CredentialSource {
+    /** @var array<string, App\Domain\Usuario> */
+    public array $users = [];
+    public ?string $newHash = null;
+    public function findByEmail(string $correo): ?App\Domain\Usuario
+    {
+        return $this->users[$correo] ?? null;
+    }
+    public function updatePasswordHash(int $id, string $hash): void
+    {
+        $this->newHash = $hash;
+    }
+};
+$fake->users['ana@correo.com'] = new App\Domain\Usuario(1, 'Ana', 'ana@correo.com', password_hash('secreta123', PASSWORD_DEFAULT), 'COP', 'usuario', true);
+$fake->users['baja@correo.com'] = new App\Domain\Usuario(2, 'Baja', 'baja@correo.com', password_hash('secreta123', PASSWORD_DEFAULT), 'COP', 'usuario', false);
+$fake->users['vieja@correo.com'] = new App\Domain\Usuario(3, 'Vieja', 'vieja@correo.com', password_hash('secreta123', PASSWORD_BCRYPT, ['cost' => 4]), 'COP', 'usuario', true);
+$auth = new App\Auth\Autenticador($fake);
+same('credenciales correctas', 1, $auth->authenticate('ana@correo.com', 'secreta123')?->id);
+same('el correo no distingue mayúsculas ni espacios', 1, $auth->authenticate(' ANA@correo.com ', 'secreta123')?->id);
+same('contraseña incorrecta', null, $auth->authenticate('ana@correo.com', 'mala'));
+same('correo inexistente', null, $auth->authenticate('nadie@correo.com', 'secreta123'));
+same('usuario inactivo con la clave correcta no entra', null, $auth->authenticate('baja@correo.com', 'secreta123'));
+same('una clave correcta no vuelve a hashear si el hash está al día', null, $fake->newHash);
+same('un hash viejo se rehashea al entrar', 3, $auth->authenticate('vieja@correo.com', 'secreta123')?->id);
+same('el hash nuevo es válido y más fuerte', true, $fake->newHash !== null && password_verify('secreta123', $fake->newHash) && !password_needs_rehash($fake->newHash, PASSWORD_DEFAULT));
+same('el hash de la seed del admin corresponde a la clave documentada', true, (static function (): bool {
+    preg_match("/'(\\\$2y\\\$[^']+)'/", (string) file_get_contents(dirname(__DIR__, 2) . '/database/02-seed.sql'), $m);
+    return isset($m[1]) && password_verify('Admin#2026dev', $m[1]);
+})());
+
 finish();
