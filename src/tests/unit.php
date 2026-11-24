@@ -474,4 +474,69 @@ same('fecha vacía', true, isset($av->validate(['fecha' => ''] + $ab)['errors'][
 section('Fecha::mesNombre');
 same('nombre del mes', ['enero', 'diciembre'], [App\View\Fecha::mesNombre(1), App\View\Fecha::mesNombre(12)]);
 
+section('Csv: inyección de fórmulas (RF-23)');
+use App\Export\Csv as C;
+same('una fórmula con = se neutraliza', "'=1+1", C::texto('=1+1'));
+same('una con + se neutraliza', "'+cmd", C::texto('+cmd'));
+same('una con - se neutraliza', "'-2", C::texto('-2'));
+same('una con @ se neutraliza', "'@SUM(A1)", C::texto('@SUM(A1)'));
+same('un HYPERLINK malicioso queda como texto (y entrecomillado por las comillas)', "\"'=HYPERLINK(\"\"http://evil\"\")\"", C::texto('=HYPERLINK("http://evil")'));
+same('con espacios antes del = también', "'  =x", C::texto('  =x'));
+same('con un espacio duro (NBSP) antes del = también', "'\u{00A0}=x", C::texto("\u{00A0}=x"));
+same('un tabulador inicial se neutraliza (y se entrecomilla)', "\"'\t=x\"", C::texto("\t=x"));
+same('un retorno de carro inicial se neutraliza (y se entrecomilla)', "\"'\r=x\"", C::texto("\r=x"));
+same('un guion solo también', "'-", C::texto('-'));
+same('un texto normal no se toca', 'Almuerzo con compañeros', C::texto('Almuerzo con compañeros'));
+same('las tildes y signos de apertura no se tocan', '¡Hola! ¿Qué tal?', C::texto('¡Hola! ¿Qué tal?'));
+same('un = en medio no es peligroso', 'x=1', C::texto('x=1'));
+same('un texto vacío', '', C::texto(''));
+same('un - en medio no es peligroso', 'bus - metro', C::texto('bus - metro'));
+
+section('Csv: formato');
+same('un texto con el separador se entrecomilla', '"a;b"', C::texto('a;b'));
+same('las comillas se duplican', '"di ""hola"""', C::texto('di "hola"'));
+same('un salto de línea se entrecomilla', "\"a\nb\"", C::texto("a\nb"));
+same('una fecha ISO queda igual', '2026-11-03', C::celda('2026-11-03'));
+same('una fila termina en CRLF y usa «;»', "a;b;c\r\n", C::fila(['a', 'b', 'c']));
+same('el monto usa coma decimal', '18000,50', C::monto('18000.50'));
+same('un entero con decimales cero', '1500000,00', C::monto('1500000.00'));
+same('el BOM es el de UTF-8', "\xEF\xBB\xBF", C::BOM);
+
+section('Dinero::abreviado (ejes de gráficos)');
+same('cero', '$0', D::abreviado('0'));
+same('pesos sueltos', '$500', D::abreviado('500.00'));
+same('mil', '$1 mil', D::abreviado('1000'));
+same('cientos de miles', '$850 mil', D::abreviado('850000'));
+same('999.499 sigue en miles', '$999 mil', D::abreviado('999499'));
+same('999.500 ya es un millón (no «1000 mil»)', '$1 M', D::abreviado('999500'));
+same('un millón y pico con coma decimal', '$1,1 M', D::abreviado('1120000'));
+same('1,6 millones', '$1,6 M', D::abreviado('1640000'));
+same('1,95 millones se redondea a 2', '$2 M', D::abreviado('1950000'));
+same('1.949.999 se redondea a 1,9', '$1,9 M', D::abreviado('1949999'));
+same('varios millones', '$12,3 M', D::abreviado('12345678'));
+same('un negativo', '−$1,1 M', D::abreviado('-1120000'));
+same('un negativo pequeño', '−$500', D::abreviado('-500'));
+
+section('Fecha::diaMes');
+same('día y mes de una fecha sin hora', '03 nov', App\View\Fecha::diaMes('2026-11-03'));
+same('enero', '15 ene', App\View\Fecha::diaMes('2027-01-15'));
+same('una fecha inválida se devuelve igual', 'nada', App\View\Fecha::diaMes('nada'));
+same('un mes imposible se devuelve igual', '2026-13-03', App\View\Fecha::diaMes('2026-13-03'));
+
+section('Reportes\Categorias::agrupar');
+use App\Reportes\Categorias as K;
+$fila = static fn (string $n, string $t): array => ['nombre' => $n, 'total' => $t];
+$g3 = K::agrupar([$fila('A', '500.00'), $fila('B', '300.00'), $fila('C', '200.00')]);
+same('tres categorías van sueltas', ['A', 'B', 'C'], array_column($g3['items'], 'label'));
+same('con sus porcentajes', [50.0, 30.0, 20.0], array_column($g3['items'], 'percent'));
+same('y el total', '1000.00', $g3['total']);
+same('cinco categorías (4 + 1) también van sueltas: agrupar una sola en «Otros» no ahorra nada', 5, count(K::agrupar([$fila('A', '5'), $fila('B', '4'), $fila('C', '3'), $fila('D', '2'), $fila('E', '1')])['items']));
+$g7 = K::agrupar([$fila('A', '400'), $fila('B', '300'), $fila('C', '100'), $fila('D', '80'), $fila('E', '60'), $fila('F', '40'), $fila('G', '20')]);
+same('siete categorías: las 4 mayores y «Otros»', ['A', 'B', 'C', 'D', 'Otros'], array_column($g7['items'], 'label'));
+same('«Otros» suma el resto exacto', '120.00', $g7['items'][4]['total']);
+same('los porcentajes suman 100', 100.0, round(array_sum(array_column($g7['items'], 'percent')), 0));
+same('el 33,3 % de un tercio', 33.3, K::agrupar([$fila('A', '1'), $fila('B', '1'), $fila('C', '1')])['items'][0]['percent']);
+same('sin gastos', ['items' => [], 'total' => '0.00'], K::agrupar([]));
+same('con total cero no divide por cero', 0.0, K::agrupar([$fila('A', '0.00')])['items'][0]['percent']);
+
 finish();

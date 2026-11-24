@@ -698,4 +698,79 @@ same('liberada, se elimina', true, $movsOtra->eliminar($elena, $ingresoId));
 same('eliminar el movimiento de otro usuario no hace nada', false, $gestion2->eliminar($fabio, $ingresoId));
 same('eliminar uno inexistente', false, $gestion2->eliminar($elena, 999999));
 
+// ---- Panel y reportes (RF-21 a RF-23) ------------------------------------------------------------------------------
+
+section('ReporteRepository: totales y gastos por categoría');
+$reportes = $container->reportes();
+$ines = (int) $usuarios->create('Inés', 'ines@correo.com', 'x');
+$jaime = (int) $usuarios->create('Jaime', 'jaime@correo.com', 'x');
+$iE = $cuentas->create($ines, 'Efectivo', 'efectivo', '0');
+$jE = $cuentas->create($jaime, 'Efectivo de Jaime', 'efectivo', '0');
+[$kA, $kB] = array_map('intval', $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'gasto' ORDER BY nombre LIMIT 2")->fetchAll(PDO::FETCH_COLUMN));
+$kIngreso = (int) $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'ingreso' LIMIT 1")->fetchColumn();
+$ins = static function (int $uid, int $cid, int $kid, string $tipo, string $monto, string $fecha) use ($pdo): void {
+    $pdo->prepare('INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES (?, ?, ?, ?, ?, ?)')->execute([$uid, $cid, $kid, $tipo, $monto, $fecha]);
+};
+$ins($ines, $iE, $kA, 'gasto', '100.00', '2026-11-01');   // primer día
+$ins($ines, $iE, $kA, 'gasto', '50.50', '2026-11-30');    // último día
+$ins($ines, $iE, $kB, 'gasto', '25.25', '2026-11-15');
+$ins($ines, $iE, $kIngreso, 'ingreso', '1000.00', '2026-11-10');
+$ins($ines, $iE, $kA, 'gasto', '999.00', '2026-10-31');   // mes anterior
+$ins($ines, $iE, $kA, 'gasto', '888.00', '2026-12-01');   // mes siguiente
+$ins($jaime, $jE, $kA, 'gasto', '7777.00', '2026-11-15'); // otro usuario
+$ins($jaime, $jE, $kIngreso, 'ingreso', '6666.00', '2026-11-15');
+same('totales de noviembre (incluye el primer y el último día, excluye otros meses y otros usuarios)', ['1000.00', '175.75'], array_values($reportes->totalesMes($ines, 11, 2026)));
+same('el mes sin movimientos da ceros', ['0.00', '0.00'], array_values($reportes->totalesMes($ines, 8, 2026)));
+same('otro usuario ve solo lo suyo', ['6666.00', '7777.00'], array_values($reportes->totalesMes($jaime, 11, 2026)));
+$cat = $reportes->gastosPorCategoria($ines, 11, 2026);
+same('gastos por categoría: de mayor a menor', [['A', '150.50'], ['B', '25.25']], array_map(static fn (array $c): array => [$c['nombre'] === $categorias->findById($kA)?->nombre ? 'A' : 'B', $c['total']], $cat));
+same('un ingreso nunca cuenta como gasto', 2, count($cat));
+same('trae el color de la categoría', true, preg_match('/^#[0-9A-F]{6}$/', $cat[0]['color']) === 1);
+same('el mes de diciembre solo ve su gasto', [['888.00']], array_map(static fn (array $c): array => [$c['total']], $reportes->gastosPorCategoria($ines, 12, 2026)));
+same('otro usuario no ve mis categorías', ['7777.00'], array_column($reportes->gastosPorCategoria($jaime, 11, 2026), 'total'));
+same('un mes sin gastos', [], $reportes->gastosPorCategoria($ines, 3, 2026));
+
+section('ReporteRepository: evolución mensual');
+$ev = $reportes->evolucion($ines, 11, 2026, 6);
+same('6 meses, de junio a noviembre', [[6, 2026], [7, 2026], [8, 2026], [9, 2026], [10, 2026], [11, 2026]], array_map(static fn (array $m): array => [$m['mes'], $m['anio']], $ev));
+same('los meses sin movimientos van en cero', ['0.00', '0.00'], [$ev[0]['gastos'], $ev[3]['ingresos']]);
+same('octubre solo tiene su gasto del 31', ['0.00', '999.00'], [$ev[4]['ingresos'], $ev[4]['gastos']]);
+same('noviembre trae sus totales', ['1000.00', '175.75'], [$ev[5]['ingresos'], $ev[5]['gastos']]);
+same('diciembre queda fuera de la ventana', 6, count($ev));
+$ev2 = $reportes->evolucion($ines, 2, 2027, 6);
+same('la ventana cruza el cambio de año (sep 2026 a feb 2027)', [[9, 2026], [10, 2026], [11, 2026], [12, 2026], [1, 2027], [2, 2027]], array_map(static fn (array $m): array => [$m['mes'], $m['anio']], $ev2));
+same('y diciembre trae su gasto', '888.00', $ev2[3]['gastos']);
+same('12 meses', 12, count($reportes->evolucion($ines, 11, 2026, 12)));
+same('un solo mes', 1, count($reportes->evolucion($ines, 11, 2026, 1)));
+same('el tope es 24 meses', 24, count($reportes->evolucion($ines, 11, 2026, 99)));
+same('otro usuario no mezcla sus datos', '7777.00', $reportes->evolucion($jaime, 11, 2026, 6)[5]['gastos']);
+
+section('MovimientoRepository::searchAfter (paginación por cursor)');
+$sinF = ['desde' => '', 'hasta' => '', 'cuenta' => 0, 'categoria' => 0, 'tipo' => ''];
+for ($i = 1; $i <= 23; $i++) {
+    $ins($ines, $iE, $kA, 'gasto', '1.00', $i % 4 === 0 ? '2026-09-10' : sprintf('2026-09-%02d', 1 + $i % 9));   // varias con la MISMA fecha
+}
+$todo = array_map(static fn ($m) => $m->id, $movs->search($ines, $sinF, 500, 0));
+$recorrido = [];
+$cursor = null;
+$lotes = 0;
+do {
+    $lote = $movs->searchAfter($ines, $sinF, $cursor, 7);
+    $lotes++;
+    foreach ($lote as $m) {
+        $recorrido[] = $m->id;
+    }
+    $cursor = $lote === [] ? null : ['fecha' => $lote[array_key_last($lote)]->fecha, 'id' => $lote[array_key_last($lote)]->id];
+} while ($lote !== [] && count($lote) === 7);
+same('recorrer por lotes da exactamente lo mismo que el listado, en el mismo orden', $todo, $recorrido);
+same('sin repetidos ni faltantes', [count($todo), count($todo)], [count($recorrido), count(array_unique($recorrido))]);
+same('hizo varios lotes', true, $lotes > 1);
+same('con filtros solo trae lo filtrado', true, (static function () use ($movs, $ines, $sinF): bool {
+    $f = ['tipo' => 'ingreso'] + $sinF;
+    $r = $movs->searchAfter($ines, $f, null, 50);
+    return count($r) === 1 && $r[0]->esIngreso();
+})());
+same('un cursor pasado el final no trae nada', [], $movs->searchAfter($ines, $sinF, ['fecha' => '1999-01-01', 'id' => 1], 50));
+same('otro usuario no recibe los míos', 2, count($movs->searchAfter($jaime, $sinF, null, 50)));
+
 finish();
