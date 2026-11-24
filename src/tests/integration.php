@@ -252,4 +252,103 @@ same('una excepción dentro de la transacción deshace el cambio (Marta era admi
     return (string) $usuarios->findById($martaId)?->rol;
 })());
 
+// ---- Cuentas (RF-05 a RF-07) ------------------------------------------------------------------------------------
+
+section('CuentaRepository');
+$cuentas = $container->cuentas();
+$carla = (int) $usuarios->create('Carla', 'carla@correo.com', 'x');
+$david = (int) $usuarios->create('David', 'david@correo.com', 'x');
+$cid = $cuentas->create($carla, 'Efectivo', 'efectivo', '100000.00');
+$c = $cuentas->findOwned($carla, $cid);
+same('la cuenta nueva se encuentra', 'Efectivo', $c?->nombre);
+same('nace activa', true, $c?->activa);
+same('sin movimientos el saldo es el inicial', '100000.00', $c?->saldo);
+
+$catGasto = (int) $pdo->query("SELECT MIN(id_categoria) FROM categorias WHERE tipo = 'gasto'")->fetchColumn();
+$catIngreso = (int) $pdo->query("SELECT MIN(id_categoria) FROM categorias WHERE tipo = 'ingreso'")->fetchColumn();
+$pdo->exec("INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES
+    ($carla, $cid, $catIngreso, 'ingreso', 50000.50, CURDATE()),
+    ($carla, $cid, $catGasto, 'gasto', 20000.25, CURDATE())");
+$pdo->exec("INSERT INTO metas_ahorro (id_usuario, nombre, monto_objetivo) VALUES ($carla, 'Viaje', 1000000)");
+$metaId = (int) $pdo->lastInsertId();
+$pdo->exec("INSERT INTO aportes_meta (id_meta, id_cuenta, monto, fecha) VALUES ($metaId, $cid, 10000.10, CURDATE())");
+same('saldo = inicial + ingresos − gastos − aportes, exacto al centavo', '120000.15', $cuentas->findOwned($carla, $cid)?->saldo);
+same('el saldo de una cuenta no se mezcla con el de otra', '0.00', (static function () use ($cuentas, $carla): string {
+    $otra = $cuentas->create($carla, 'Vacía', 'ahorro', '0');
+    return (string) $cuentas->findOwned($carla, $otra)?->saldo;
+})());
+$tarjeta = $cuentas->create($carla, 'Visa', 'tarjeta_credito', '-500000.00');
+$pdo->exec("INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES ($carla, $tarjeta, $catGasto, 'gasto', 80000.00, CURDATE())");
+same('una tarjeta con deuda inicial baja más al gastar', '-580000.00', $cuentas->findOwned($carla, $tarjeta)?->saldo);
+same('la lista del usuario trae sus 3 cuentas', 3, count($cuentas->listByUser($carla)));
+same('otro usuario no ve ninguna', 0, count($cuentas->listByUser($david)));
+
+section('CuentaRepository: propiedad (RNF-04)');
+same('una cuenta ajena no se encuentra', null, $cuentas->findOwned($david, $cid));
+same('una cuenta ajena no se edita', false, $cuentas->update($david, $cid, 'Robada', 'efectivo', '0'));
+same('una cuenta ajena no se desactiva', false, $cuentas->setActiva($david, $cid, false));
+same('y no cambió nada', ['Efectivo', true], [$cuentas->findOwned($carla, $cid)?->nombre, $cuentas->findOwned($carla, $cid)?->activa]);
+same('el nombre repetido se detecta por usuario', [true, false], [$cuentas->nameTaken($carla, 'efectivo'), $cuentas->nameTaken($david, 'Efectivo')]);
+same('al editar, la propia cuenta no cuenta como repetida', false, $cuentas->nameTaken($carla, 'Efectivo', $cid));
+same('editar guarda los cambios', true, $cuentas->update($carla, $cid, 'Caja', 'bancaria', '250000.50'));
+same('y el saldo se recalcula con el nuevo saldo inicial', ['Caja', 'bancaria', '270000.65'], [$cuentas->findOwned($carla, $cid)?->nombre, $cuentas->findOwned($carla, $cid)?->tipo, $cuentas->findOwned($carla, $cid)?->saldo]);
+same('desactivar conserva el historial', [true, 2], [$cuentas->setActiva($carla, $cid, false), (int) $pdo->query("SELECT COUNT(*) FROM transacciones WHERE id_cuenta = $cid")->fetchColumn()]);
+same('las cuentas inactivas van al final de la lista', false, $cuentas->listByUser($carla)[2]->activa);
+same('el saldo de una cuenta inactiva se sigue calculando', '270000.65', $cuentas->findOwned($carla, $cid)?->saldo);
+
+// ---- Categorías (RF-08, RF-09, RF-34) ----------------------------------------------------------------------------
+
+section('CategoriaRepository');
+$categorias = $container->categorias();
+same('las predeterminadas son 12', 12, count($categorias->listDefaults()));
+same('el usuario ve las 12 predeterminadas', 12, count($categorias->listVisible($carla)));
+$mascotas = $categorias->create($carla, 'Mascotas', 'gasto', '#A1B2C3');
+same('una categoría propia se suma a las visibles', 13, count($categorias->listVisible($carla)));
+same('y no la ve otro usuario', 12, count($categorias->listVisible($david)));
+same('ni aparece entre las predeterminadas', 12, count($categorias->listDefaults()));
+same('los gastos van antes que los ingresos', 'gasto', $categorias->listVisible($carla)[0]->tipo);
+$m = $categorias->findById($mascotas);
+same('findById trae el dueño y el color', [$carla, '#A1B2C3', false], [$m?->idUsuario, $m?->color, $m?->esPredeterminada()]);
+same('una predeterminada no tiene dueño', true, $categorias->findById($catGasto)?->esPredeterminada());
+same('findById de un id inexistente', null, $categorias->findById(999999));
+
+section('CategoriaRepository: nombres repetidos');
+same('no se puede repetir una predeterminada (sin distinguir mayúsculas ni tildes)', true, $categorias->nameTaken($carla, 'alimentacion', 'gasto'));
+same('el mismo nombre en el otro tipo es otra categoría', false, $categorias->nameTaken($carla, 'Alimentación', 'ingreso'));
+same('no se puede repetir una categoría propia', true, $categorias->nameTaken($carla, 'MASCOTAS', 'gasto'));
+same('la propia categoría no cuenta al editarla', false, $categorias->nameTaken($carla, 'Mascotas', 'gasto', $mascotas));
+same('la categoría de otro usuario no estorba', false, $categorias->nameTaken($david, 'Mascotas', 'gasto'));
+same('para el administrador solo cuentan las predeterminadas', [false, true], [$categorias->nameTaken(null, 'Mascotas', 'gasto'), $categorias->nameTaken(null, 'Salud', 'gasto')]);
+
+section('CategoriaRepository: editar y borrar');
+$defaultId = $catGasto;
+same('un usuario no edita una predeterminada', false, $categorias->update($carla, $defaultId, 'Hackeada', '#000000'));
+same('un usuario no edita la de otro', false, $categorias->update($david, $mascotas, 'Hackeada', '#000000'));
+same('el administrador no edita una categoría propia de un usuario', false, $categorias->update(null, $mascotas, 'Hackeada', '#000000'));
+same('el dueño la edita', true, $categorias->update($carla, $mascotas, 'Mascotas y más', '#112233'));
+same('y el TIPO no cambia', ['Mascotas y más', 'gasto'], [$categorias->findById($mascotas)?->nombre, $categorias->findById($mascotas)?->tipo]);
+same('el administrador edita una predeterminada', true, $categorias->update(null, $defaultId, 'Alimentación y mercado', '#E4572E'));
+$categorias->update(null, $defaultId, 'Alimentación', '#E4572E');
+same('un usuario no borra una predeterminada', 'no_existe', $categorias->delete($carla, $defaultId));
+same('un usuario no borra la de otro', 'no_existe', $categorias->delete($david, $mascotas));
+same('y siguen existiendo', [true, true], [$categorias->findById($defaultId) !== null, $categorias->findById($mascotas) !== null]);
+$pdo->exec("INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES ($carla, $cid, $mascotas, 'gasto', 5000, CURDATE())");
+same('una categoría con movimientos NO se borra (D4)', 'en_uso', $categorias->delete($carla, $mascotas));
+same('y sigue existiendo', true, $categorias->findById($mascotas) !== null);
+$pdo->exec("DELETE FROM transacciones WHERE id_categoria = $mascotas");
+$pdo->exec("INSERT INTO presupuestos (id_usuario, id_categoria, mes, anio, monto_limite) VALUES ($carla, $mascotas, 11, 2026, 100000)");
+same('una categoría con presupuestos NO se borra (D4)', 'en_uso', $categorias->delete($carla, $mascotas));
+$pdo->exec("DELETE FROM presupuestos WHERE id_categoria = $mascotas");
+same('sin movimientos ni presupuestos se borra', 'ok', $categorias->delete($carla, $mascotas));
+same('y desaparece', null, $categorias->findById($mascotas));
+same('borrarla otra vez avisa que no existe', 'no_existe', $categorias->delete($carla, $mascotas));
+$nueva = $categorias->create(null, 'Mascotas globales', 'gasto', '#445566');
+same('el administrador crea una predeterminada (sin dueño)', true, $categorias->findById($nueva)?->esPredeterminada());
+same('y todos la ven', [13, 13], [count($categorias->listVisible($carla)), count($categorias->listVisible($david))]);
+same('el administrador la borra', 'ok', $categorias->delete(null, $nueva));
+same('el administrador no borra una categoría propia de un usuario', 'no_existe', (static function () use ($categorias, $carla): string {
+    $propia = $categorias->create($carla, 'Solo mía', 'gasto', '#000000');
+    return $categorias->delete(null, $propia);
+})());
+
 finish();

@@ -25,10 +25,11 @@ cleanup() {
     sql "DELETE FROM intentos_acceso" >/dev/null 2>&1
     # Orden explícito: transacciones y aportes referencian cuentas sin cascada (ver D5 en docs/PLAN.md).
     sql "DELETE t FROM transacciones t JOIN usuarios u ON u.id_usuario = t.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
+    sql "DELETE FROM categorias WHERE id_usuario IS NULL AND nombre LIKE 'Smoke-Cat%'" >/dev/null 2>&1
     sql "DELETE FROM usuarios WHERE correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     rm -rf "$TMP"
 }
-sql() { docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" lucas -N -e "$0" 2>/dev/null' "$1"; }
+sql() { docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --default-character-set=utf8mb4 lucas -N -e "$0" 2>/dev/null' "$1"; }
 
 check() { # descripción esperado obtenido
     if [ "$2" = "$3" ]; then passed=$((passed + 1)); echo "  ok    $1"
@@ -72,6 +73,10 @@ login() { post_form "$1" /login.php /login.php "correo=$2" "clave=$3"; }
 
 curl -s -o /dev/null "$BASE/login.php" || { echo "No responde $BASE: ¿está en marcha docker compose up?"; exit 2; }
 sql "DELETE FROM intentos_acceso" >/dev/null
+
+echo; echo "== La seed y el juego de caracteres"
+check "las tildes de la seed se guardaron bien (utf8mb4, no latin1)" "1" "$(sql "SELECT COUNT(*) FROM categorias WHERE id_usuario IS NULL AND nombre IN ('Alimentación','Educación')" | awk '{print ($1==2)}')"
+check "no hay texto con doble codificación en la BD" "0" "$(sql "SELECT COUNT(*) FROM categorias WHERE HEX(nombre) LIKE '%C383%'")"
 
 echo; echo "== Sin sesión"
 J="$(new_jar)"
@@ -245,6 +250,170 @@ check "y el admin sigue activo" "1" "$(sql "SELECT activo FROM usuarios WHERE id
 request "$JU" GET /admin/usuarios.php; check "un usuario normal no ve la lista de usuarios" "403" "$CODE"
 J7="$(new_jar)"; request "$J7" POST /admin/usuarios.php --data-urlencode "id=$UXID" --data-urlencode "accion=desactivar"
 check "sin sesión, un POST de administración no llega ni a validarse" "302 /login.php" "$CODE $LOC"
+
+echo; echo "== Cuentas (RF-05 a RF-07, RNF-04)"
+JC="$(new_jar)"; UC="smoke_${RUN}_e@correo.com"; register "$JC" "$UC" "$P"
+JD="$(new_jar)"; UD="smoke_${RUN}_f@correo.com"; register "$JD" "$UD" "$P"
+UCID="$(uid "$UC")"; UDID="$(uid "$UD")"
+request "$JC" GET /cuentas.php;      check "el listado de cuentas responde 200" "200" "$CODE"
+contains "sin cuentas invita a crear la primera" "Aún no tienes cuentas" "$TMP/body"
+request "$J7" GET /cuentas.php;      check "sin sesión, las cuentas exigen login" "302 /login.php" "$CODE $LOC"
+request "$J7" GET /cuenta-form.php;  check "y el formulario también" "302 /login.php" "$CODE $LOC"
+request "$JC" GET /cuenta-form.php;  check "el formulario de cuenta nueva responde 200" "200" "$CODE"
+
+post_form "$JC" /cuenta-form.php /cuenta-form.php "nombre=Efectivo" "tipo=efectivo" "saldo_inicial=1.500.000,50"
+check "crear una cuenta redirige al listado" "302 /cuentas.php" "$CODE $LOC"
+check "el saldo inicial se guardó exacto" "1500000.50" "$(sql "SELECT saldo_inicial FROM cuentas WHERE id_usuario=$UCID AND nombre='Efectivo'")"
+CID="$(sql "SELECT id_cuenta FROM cuentas WHERE id_usuario=$UCID AND nombre='Efectivo'")"
+request "$JC" GET /cuentas.php
+contains "el listado muestra la cuenta" "Efectivo" "$TMP/body"
+contains "con su saldo formateado" '$1.500.000,50' "$TMP/body"
+contains "y avisa que se creó" "Se creó la cuenta" "$TMP/body"
+post_form "$JC" /cuenta-form.php /cuenta-form.php "nombre=Visa" "tipo=tarjeta_credito" "saldo_inicial=-300000"
+request "$JC" GET /cuentas.php
+contains "el saldo total suma las cuentas (1.200.000,50)" 'Saldo total $1.200.000,50' "$TMP/body"
+sql "INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES ($UCID, $CID, (SELECT MIN(id_categoria) FROM categorias WHERE tipo='ingreso'), 'ingreso', 250000.25, CURDATE())" >/dev/null
+request "$JC" GET /cuentas.php
+contains "un ingreso sube el saldo calculado" '$1.750.000,75' "$TMP/body"
+
+post_form "$JC" /cuenta-form.php /cuenta-form.php "nombre=Efectivo" "tipo=efectivo" "saldo_inicial=0"
+check "un nombre repetido se rechaza" "200" "$CODE"; contains "con un aviso claro" "Ya tienes una cuenta con ese nombre" "$TMP/body"
+post_form "$JC" /cuenta-form.php /cuenta-form.php "nombre=Caja" "tipo=ahorro" "saldo_inicial=-5"
+contains "un saldo negativo en una cuenta de ahorro se rechaza" "no puede ser negativo" "$TMP/body"
+post_form "$JC" /cuenta-form.php /cuenta-form.php "nombre=Caja" "tipo=cripto" "saldo_inicial=0"
+contains "un tipo inválido se rechaza" "Elige el tipo" "$TMP/body"
+post_form "$JC" /cuenta-form.php /cuenta-form.php "nombre=Caja" "tipo=efectivo" "saldo_inicial=mucho"
+contains "un monto inválido se rechaza" "monto válido" "$TMP/body"
+check "nada de lo rechazado se guardó" "2" "$(sql "SELECT COUNT(*) FROM cuentas WHERE id_usuario=$UCID")"
+post_form "$JC" /cuenta-form.php /cuenta-form.php "nombre=<b>Negrita</b>" "tipo=efectivo" "saldo_inicial=0"
+request "$JC" GET /cuentas.php
+contains "un nombre con HTML se escapa" "&lt;b&gt;Negrita&lt;/b&gt;" "$TMP/body"
+absent "y no aparece como etiqueta" "<b>Negrita" "$TMP/body"
+
+request "$JC" GET "/cuenta-form.php?id=$CID"
+contains "editar muestra los datos de la cuenta" 'value="Efectivo"' "$TMP/body"
+contains "y su saldo inicial" 'value="1500000,50"' "$TMP/body"
+post_form "$JC" /cuenta-form.php "/cuenta-form.php?id=$CID" "id=$CID" "nombre=Caja fuerte" "tipo=efectivo" "saldo_inicial=2.000.000"
+check "guardar los cambios redirige al listado" "302 /cuentas.php" "$CODE $LOC"
+check "el cambio quedó en la BD" "Caja fuerte|2000000.00" "$(sql "SELECT CONCAT(nombre,'|',saldo_inicial) FROM cuentas WHERE id_cuenta=$CID")"
+
+request "$JD" GET "/cuenta-form.php?id=$CID";  check "otro usuario no puede abrir mi cuenta (404, RNF-04)" "404" "$CODE"
+post_form "$JD" /cuenta-form.php /cuenta-form.php "id=$CID" "nombre=Robada" "tipo=efectivo" "saldo_inicial=0"
+check "ni editarla" "404" "$CODE"
+check "y el nombre no cambió" "Caja fuerte" "$(sql "SELECT nombre FROM cuentas WHERE id_cuenta=$CID")"
+post_form "$JD" /cuentas.php /cuentas.php "id=$CID" "accion=desactivar"
+check "ni desactivarla" "404" "$CODE"
+check "sigue activa" "1" "$(sql "SELECT activa FROM cuentas WHERE id_cuenta=$CID")"
+request "$JD" GET /cuentas.php;  absent "mis cuentas no aparecen en el listado de otro usuario" "Caja fuerte" "$TMP/body"
+request "$JC" GET "/cuenta-form.php?id=abc";  check "un id no numérico es 404" "404" "$CODE"
+request "$JC" GET "/cuenta-form.php?id=99999999";  check "un id inexistente es 404" "404" "$CODE"
+
+post_form "$JC" /cuentas.php /cuentas.php "id=$CID" "accion=desactivar"
+check "desactivar redirige al listado" "302 /cuentas.php" "$CODE $LOC"
+check "la cuenta quedó inactiva y conserva sus movimientos" "0|1" "$(sql "SELECT CONCAT(activa,'|',(SELECT COUNT(*) FROM transacciones WHERE id_cuenta=$CID)) FROM cuentas WHERE id_cuenta=$CID")"
+request "$JC" GET /cuentas.php
+contains "la cuenta aparece como inactiva" "Inactiva" "$TMP/body"
+contains "y deja de contar en el saldo total" 'Saldo total −$300.000' "$TMP/body"
+post_form "$JC" /cuentas.php /cuentas.php "id=$CID" "accion=activar"
+check "se puede reactivar" "1" "$(sql "SELECT activa FROM cuentas WHERE id_cuenta=$CID")"
+post_form "$JC" /cuentas.php /cuentas.php "id=$CID" "accion=borrar"
+check "una acción desconocida es 400" "400" "$CODE"
+request "$JC" POST /cuentas.php --data-urlencode "id=$CID" --data-urlencode "accion=desactivar"
+check "sin token CSRF se rechaza" "403" "$CODE"
+
+echo; echo "== Categorías (RF-08, RF-09)"
+request "$JC" GET /categorias.php;   check "el listado de categorías responde 200" "200" "$CODE"
+contains "muestra las predeterminadas" "Alimentación" "$TMP/body"
+contains "marcadas como tales" "Predeterminada" "$TMP/body"
+request "$J7" GET /categorias.php;   check "sin sesión exige login" "302 /login.php" "$CODE $LOC"
+post_form "$JC" /categorias.php /categorias.php "accion=crear" "nombre=Mascotas" "tipo=gasto" "color=#a1b2c3"
+check "crear una categoría redirige al listado" "302 /categorias.php" "$CODE $LOC"
+check "queda como propia, con el color en mayúsculas" "$UCID|gasto|#A1B2C3" "$(sql "SELECT CONCAT(id_usuario,'|',tipo,'|',color) FROM categorias WHERE nombre='Mascotas' AND id_usuario=$UCID")"
+KID="$(sql "SELECT id_categoria FROM categorias WHERE nombre='Mascotas' AND id_usuario=$UCID")"
+request "$JC" GET /categorias.php
+contains "aparece como propia" "Propia" "$TMP/body"
+contains "con su color para el JS" 'data-color="#A1B2C3"' "$TMP/body"
+request "$JD" GET /categorias.php;   absent "otro usuario no ve mis categorías" 'data-color="#A1B2C3"' "$TMP/body"
+post_form "$JC" /categorias.php /categorias.php "accion=crear" "nombre=salud" "tipo=gasto" "color=#000000"
+contains "no se puede repetir una predeterminada" "Ya existe una categoría con ese nombre" "$TMP/body"
+post_form "$JC" /categorias.php /categorias.php "accion=crear" "nombre=Salud" "tipo=ingreso" "color=#000000"
+check "el mismo nombre en el otro tipo sí se permite" "302 /categorias.php" "$CODE $LOC"
+post_form "$JC" /categorias.php /categorias.php "accion=crear" "nombre=X" "tipo=gasto"
+contains "un nombre demasiado corto se rechaza" "Escribe un nombre" "$TMP/body"
+post_form "$JC" /categorias.php /categorias.php "accion=crear" "nombre=Rara" "tipo=gasto" "color=rojo"
+contains "un color inválido se rechaza" "#RRGGBB" "$TMP/body"
+post_form "$JC" /categorias.php /categorias.php "accion=crear" "nombre=<i>Cursiva</i>" "tipo=gasto" "color=#112233"
+request "$JC" GET /categorias.php
+contains "un nombre con HTML se escapa" "&lt;i&gt;Cursiva&lt;/i&gt;" "$TMP/body"
+
+request "$JC" GET "/categorias.php?editar=$KID"
+contains "editar muestra el formulario con sus datos" 'value="Mascotas"' "$TMP/body"
+post_form "$JC" /categorias.php "/categorias.php?editar=$KID" "accion=guardar" "id=$KID" "nombre=Mascotas y más" "tipo=ingreso" "color=#112233"
+check "guardar redirige al listado" "302 /categorias.php" "$CODE $LOC"
+check "se cambió nombre y color, pero NO el tipo" "Mascotas y más|gasto|#112233" "$(sql "SELECT CONCAT(nombre,'|',tipo,'|',color) FROM categorias WHERE id_categoria=$KID")"
+
+DEFID="$(sql "SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND nombre='Salud'")"
+request "$JC" GET "/categorias.php?editar=$DEFID";  check "un usuario no puede editar una predeterminada (403)" "403" "$CODE"
+post_form "$JC" /categorias.php /categorias.php "accion=guardar" "id=$DEFID" "nombre=Hackeada" "tipo=gasto" "color=#000000"
+check "ni guardarla" "403" "$CODE"
+post_form "$JC" /categorias.php /categorias.php "accion=eliminar" "id=$DEFID"
+check "ni eliminarla" "403" "$CODE"
+check "la predeterminada sigue intacta" "Salud" "$(sql "SELECT nombre FROM categorias WHERE id_categoria=$DEFID")"
+request "$JD" GET "/categorias.php?editar=$KID";  check "otro usuario no puede abrir mi categoría (404)" "404" "$CODE"
+post_form "$JD" /categorias.php /categorias.php "accion=eliminar" "id=$KID"
+check "ni eliminarla" "404" "$CODE"
+check "sigue existiendo" "1" "$(sql "SELECT COUNT(*) FROM categorias WHERE id_categoria=$KID")"
+post_form "$JC" /categorias.php /categorias.php "accion=raro" "id=$KID"
+check "una acción desconocida es 400" "400" "$CODE"
+
+sql "INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES ($UCID, $CID, $KID, 'gasto', 5000, CURDATE())" >/dev/null
+post_form "$JC" /categorias.php /categorias.php "accion=eliminar" "id=$KID"
+check "eliminar una categoría con movimientos redirige" "302 /categorias.php" "$CODE $LOC"
+request "$JC" GET /categorias.php;   contains "y explica por qué no se pudo (D4)" "No se puede eliminar" "$TMP/body"
+check "la categoría sigue existiendo" "1" "$(sql "SELECT COUNT(*) FROM categorias WHERE id_categoria=$KID")"
+sql "DELETE FROM transacciones WHERE id_categoria=$KID" >/dev/null
+post_form "$JC" /categorias.php /categorias.php "accion=eliminar" "id=$KID"
+request "$JC" GET /categorias.php;   contains "sin uso se elimina y lo avisa" "Se eliminó la categoría" "$TMP/body"
+check "ya no está en la BD" "0" "$(sql "SELECT COUNT(*) FROM categorias WHERE id_categoria=$KID")"
+
+echo; echo "== Categorías predeterminadas del administrador (RF-34, RNF-21)"
+post_form "$JC" /categorias.php /categorias.php "accion=crear" "nombre=Smoke-Cat-Privada-$RUN" "tipo=gasto" "color=#334455"
+request "$JA" GET /admin/categorias.php;  check "el admin ve la gestión de predeterminadas" "200" "$CODE"
+contains "con las predeterminadas" "Alimentación" "$TMP/body"
+absent "pero no las categorías propias de un usuario (RNF-21)" "Smoke-Cat-Privada-$RUN" "$TMP/body"
+request "$JC" GET /admin/categorias.php;  check "un usuario recibe 403 en admin/categorias" "403" "$CODE"
+post_form "$JC" /admin/categorias.php /categorias.php "accion=crear" "nombre=Smoke-Cat-Intruso" "tipo=gasto" "color=#000000"
+check "un usuario no puede crear predeterminadas por la puerta de admin (403)" "403" "$CODE"
+check "y no se creó" "0" "$(sql "SELECT COUNT(*) FROM categorias WHERE nombre='Smoke-Cat-Intruso'")"
+request "$J7" GET /admin/categorias.php;  check "sin sesión exige login" "302 /login.php" "$CODE $LOC"
+
+post_form "$JA" /admin/categorias.php /admin/categorias.php "accion=crear" "nombre=Smoke-Cat-$RUN" "tipo=ingreso" "color=#778899"
+check "el admin crea una predeterminada" "302 /admin/categorias.php" "$CODE $LOC"
+check "queda sin dueño" "NULL" "$(sql "SELECT IFNULL(id_usuario,'NULL') FROM categorias WHERE nombre='Smoke-Cat-$RUN'")"
+GID="$(sql "SELECT id_categoria FROM categorias WHERE nombre='Smoke-Cat-$RUN'")"
+request "$JD" GET /categorias.php
+contains "todos los usuarios la ven" "Smoke-Cat-$RUN" "$TMP/body"
+post_form "$JA" /admin/categorias.php "/admin/categorias.php?editar=$GID" "accion=guardar" "id=$GID" "nombre=Smoke-Cat-$RUN-b" "tipo=ingreso" "color=#778899"
+check "el admin la edita" "Smoke-Cat-$RUN-b" "$(sql "SELECT nombre FROM categorias WHERE id_categoria=$GID")"
+post_form "$JA" /admin/categorias.php /admin/categorias.php "accion=guardar" "id=$KID" "nombre=x" "tipo=gasto" "color=#000000"
+check "el admin no puede tocar categorías propias de un usuario (404)" "404" "$CODE"
+OWN="$(sql "SELECT id_categoria FROM categorias WHERE nombre='Smoke-Cat-Privada-$RUN'")"
+post_form "$JA" /admin/categorias.php /admin/categorias.php "accion=eliminar" "id=$OWN"
+check "ni eliminarlas (404)" "404" "$CODE"
+check "la categoría del usuario sigue ahí" "1" "$(sql "SELECT COUNT(*) FROM categorias WHERE id_categoria=$OWN")"
+sql "INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES ($UDID, (SELECT 0), $GID, 'ingreso', 1, CURDATE())" >/dev/null 2>&1
+DCID="$(sql "INSERT INTO cuentas (id_usuario, nombre, tipo) VALUES ($UDID, 'Smoke cuenta D', 'efectivo'); SELECT LAST_INSERT_ID()")"
+sql "INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES ($UDID, $DCID, $GID, 'ingreso', 1, CURDATE())" >/dev/null
+post_form "$JA" /admin/categorias.php /admin/categorias.php "accion=eliminar" "id=$GID"
+request "$JA" GET /admin/categorias.php
+contains "el admin no puede borrar una predeterminada en uso" "No se puede eliminar" "$TMP/body"
+check "sigue existiendo" "1" "$(sql "SELECT COUNT(*) FROM categorias WHERE id_categoria=$GID")"
+absent "y el aviso no revela de quién son los movimientos" "$UD" "$TMP/body"
+sql "DELETE FROM transacciones WHERE id_categoria=$GID" >/dev/null
+post_form "$JA" /admin/categorias.php /admin/categorias.php "accion=eliminar" "id=$GID"
+check "sin uso el admin la elimina" "0" "$(sql "SELECT COUNT(*) FROM categorias WHERE id_categoria=$GID")"
+request "$JD" POST /admin/categorias.php --data-urlencode "accion=crear" --data-urlencode "nombre=Smoke-Cat-X" --data-urlencode "tipo=gasto"
+check "un POST de admin sin CSRF se rechaza (403)" "403" "$CODE"
 
 echo; echo "== Limitación de intentos (RNF-24)"
 J6="$(new_jar)"; U6="smoke_${RUN}_d@correo.com"
