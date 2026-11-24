@@ -11,7 +11,7 @@ Cada fase termina en algo que funciona y se prueba en el navegador y con pruebas
 | 3 | Cuentas y categorías (incl. categorías predeterminadas del admin) | [x] |
 | 4 | Movimientos | [x] |
 | 5 | Presupuestos y metas de ahorro | [x] |
-| 6 | Panel y reportes | [ ] |
+| 6 | Panel y reportes | [x] |
 | 7 | Perfil, recuperación de contraseña, endurecimiento | [ ] |
 
 ## Decisiones tomadas
@@ -100,8 +100,15 @@ Notas de la implementación:
 - **Concurrencia:** eliminar un movimiento también bloquea su cuenta (`GestionMovimientos::eliminar`): quitar un ingreso baja el saldo y no debe cruzarse con un aporte que acaba de comprobar que había saldo. Probado con dos conexiones reales.
 - **Cuenta inactiva en el formulario de aporte:** si la cuenta se desactiva con el formulario abierto, el error se ve en el campo (se incluye la cuenta elegida, marcada «inactiva»).
 
-## Fase 6 · Panel y reportes
-Panel del mes (ingresos, gastos, balance, saldo total), gráficos por categoría y evolución mensual con SVG/CSS propios (sin CDN, por la CSP), exportación CSV (RF-21 a RF-23). El CSV **neutraliza la inyección de fórmulas** (prefijo `'` en celdas que empiezan con `=`, `+`, `-`, `@`) y solo exporta los datos del usuario de la sesión.
+## Fase 6 · Panel y reportes ✅
+Panel del mes (ingresos, gastos, balance, saldo total), gráficos por categoría y evolución mensual con SVG/CSS propios (sin CDN, por la CSP), exportación CSV (RF-21 a RF-23). El CSV **neutraliza la inyección de fórmulas** (prefijo `'` en celdas que empiezan con `=`, `+`, `-`, `@`) y solo exporta los datos del usuario de la sesión. Además, **los avisos de presupuesto (RF-17) aparecen en el panel** (pendiente de la Fase 5).
+
+Notas de la implementación:
+- **Panel (`panel.php`):** saldo total (solo cuentas activas), ingresos, gastos y balance del mes, gráfico circular por categoría (las 4 mayores y «Otros»; si sobra una sola categoría se muestra tal cual), los 5 últimos movimientos y los presupuestos del mes (los más gastados primero), con los avisos de RF-17 arriba. Un usuario nuevo ve un panel vacío con invitaciones a empezar. `Avisos::presupuesto()` comparte los avisos con `presupuestos.php`.
+- **Reportes (`reportes.php`):** gastos por categoría de un mes (con navegación de meses, gráfico y tabla accesible) y evolución mensual de 6 o 12 meses terminando en el mes elegido, con una tabla «mes a mes» de ingresos, gastos y balance. Los ejes usan `Dinero::abreviado()` («$1,1 M», «$850 mil»), redondeado con enteros.
+- **Datos:** `ReporteRepository` (totales del mes, gastos por categoría y evolución con ceros en los meses vacíos) pide cada mes como `fecha >= primer día AND fecha < primer día del siguiente` y siempre filtra por el usuario de la sesión.
+- **CSV (`exportar.php`):** es un `GET` que solo lee (sin CSRF) y exporta los movimientos del usuario con los mismos filtros del listado; también se llega desde reportes (el mes mostrado). Formato pensado para Excel en español: separador `;`, BOM UTF-8, fechas ISO y montos con coma decimal sin separador de miles (`18000,50`). Se genera por lotes de 1.000 filas con **paginación por cursor** (`fecha`, `id`) en vez de `OFFSET`, con un tope de 100.000 filas. `Export\Csv` neutraliza la inyección de fórmulas en todo texto del usuario (descripción, categoría y cuenta), también si empieza por espacios, tabulador o retorno de carro, y entrecomilla lo que lleve `;`, comillas o saltos de línea. El administrador exporta solo lo suyo (RNF-21).
+- **Contraste (RNF-13):** en la tarjeta oscura del panel el monto de un ingreso heredaba un teal pensado para fondo claro; ahora hereda el color claro y el signo +/− sigue indicando ingreso o gasto.
 
 ## Fase 7 · Cierre
 - `perfil.php` (vista nueva): nombre, moneda, cambio de contraseña (RF-03).

@@ -29,11 +29,12 @@ El proyecto avanza por fases, cada una con criterios de «terminado» verificabl
 | 3 | Cuentas con saldo calculado y categorías (propias y predeterminadas del administrador) | Completa |
 | 4 | Movimientos: alta, edición, eliminación, filtros y paginación; el saldo de las cuentas se actualiza solo | Completa |
 | 5 | Presupuestos mensuales con avisos al 80 % y al superar el límite, y metas de ahorro con aportes desde una cuenta | Completa |
-| 6 | Panel y reportes | Siguiente (Fase 6) |
-| 7 | Perfil, recuperación de contraseña, HTTPS y endurecimiento final | Pendiente |
+| 6 | Panel con el resumen del mes, reportes (gastos por categoría y evolución mensual) y exportación de movimientos a CSV | Completa |
+| 7 | Perfil, recuperación de contraseña, HTTPS y endurecimiento final | Siguiente (Fase 7) |
 
-> Hoy el registro, el login, los permisos por rol y la administración de usuarios, las cuentas, las categorías, los movimientos, los presupuestos y las metas son reales, pero el panel
-> y los reportes siguen con datos de ejemplo (exigen sesión, no guardan nada). Las secciones de *Funcionalidades* describen el alcance objetivo, no lo ya implementado.
+> Hoy casi todo es real: registro, login, roles, administración de usuarios, cuentas, categorías, movimientos, presupuestos, metas, panel,
+> reportes y exportación a CSV. Faltan el perfil, la recuperación de contraseña (su página es una maqueta: no envía correos) y el
+> endurecimiento final. Las secciones de *Funcionalidades* describen el alcance objetivo, no lo ya implementado.
 
 ## Funcionalidades previstas
 
