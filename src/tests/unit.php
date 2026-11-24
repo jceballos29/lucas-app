@@ -281,4 +281,82 @@ same('al editar, el tipo se ignora', [], $kv->validate(['nombre' => 'Mascotas', 
 same('nombre de 1 carácter', true, isset($kv->validate(['nombre' => 'A', 'tipo' => 'gasto'], true)['errors']['nombre']));
 same('nombre de 51 caracteres', true, isset($kv->validate(['nombre' => str_repeat('a', 51), 'tipo' => 'gasto'], true)['errors']['nombre']));
 
+section('MovimientoValidator');
+$mv = new App\Validation\MovimientoValidator();
+$base = ['tipo' => 'gasto', 'monto' => '18.000', 'fecha' => '2026-11-03', 'id_cuenta' => '4', 'id_categoria' => '7', 'descripcion' => '  Almuerzo   con compañeros '];
+$r = $mv->validate($base);
+same('un movimiento válido no da errores', [], $r['errors']);
+same('el monto se normaliza', '18000.00', $r['data']['monto']);
+same('la descripción se limpia', 'Almuerzo con compañeros', $r['data']['descripcion']);
+same('los ids pasan a enteros', [4, 7], [$r['data']['id_cuenta'], $r['data']['id_categoria']]);
+same('una descripción vacía es null', null, $mv->validate(['descripcion' => '   '] + $base)['data']['descripcion']);
+same('tipo inválido', true, isset($mv->validate(['tipo' => 'transferencia'] + $base)['errors']['tipo']));
+same('monto cero', true, isset($mv->validate(['monto' => '0'] + $base)['errors']['monto']));
+same('monto negativo', true, isset($mv->validate(['monto' => '-5.000'] + $base)['errors']['monto']));
+same('monto que no es número', true, isset($mv->validate(['monto' => 'mucho'] + $base)['errors']['monto']));
+same('monto con 3 decimales', true, isset($mv->validate(['monto' => '10,123'] + $base)['errors']['monto']));
+same('monto con 2 decimales', '1250.50', $mv->validate(['monto' => '1.250,50'] + $base)['data']['monto']);
+same('monto que no cabe en DECIMAL(12,2)', true, isset($mv->validate(['monto' => '10.000.000.000'] + $base)['errors']['monto']));
+same('fecha imposible (31 de febrero)', true, isset($mv->validate(['fecha' => '2026-02-31'] + $base)['errors']['fecha']));
+same('fecha con otro formato', true, isset($mv->validate(['fecha' => '03/11/2026'] + $base)['errors']['fecha']));
+same('fecha de un año absurdo', true, isset($mv->validate(['fecha' => '1850-01-01'] + $base)['errors']['fecha']));
+same('fecha vacía', true, isset($mv->validate(['fecha' => ''] + $base)['errors']['fecha']));
+same('29 de febrero de un año bisiesto', [], $mv->validate(['fecha' => '2028-02-29'] + $base)['errors']);
+same('cuenta sin elegir', true, isset($mv->validate(['id_cuenta' => ''] + $base)['errors']['id_cuenta']));
+same('cuenta con un id no numérico', true, isset($mv->validate(['id_cuenta' => '1 OR 1=1'] + $base)['errors']['id_cuenta']));
+same('categoría con id negativo', true, isset($mv->validate(['id_categoria' => '-3'] + $base)['errors']['id_categoria']));
+same('categoría con un arreglo', true, isset($mv->validate(['id_categoria' => ['1']] + $base)['errors']['id_categoria']));
+same('descripción de 151 caracteres', true, isset($mv->validate(['descripcion' => str_repeat('a', 151)] + $base)['errors']['descripcion']));
+same('descripción de 150 caracteres', [], $mv->validate(['descripcion' => str_repeat('a', 150)] + $base)['errors']);
+
+section('ReglasMovimiento (D8)');
+use App\Movimientos\ReglasMovimiento as RM;
+$cat = static fn (?int $dueño, string $tipo): App\Domain\Categoria => new App\Domain\Categoria(1, $dueño, 'X', $tipo, '#000000');
+$activa = ['activa' => true];
+same('un gasto en una cuenta activa con una categoría de gasto propia', RM::OK, RM::evaluar($activa, $cat(5, 'gasto'), 5, 'gasto'));
+same('con una categoría predeterminada', RM::OK, RM::evaluar($activa, $cat(null, 'ingreso'), 5, 'ingreso'));
+same('una cuenta que no es del usuario', RM::CUENTA_AJENA, RM::evaluar(null, $cat(null, 'gasto'), 5, 'gasto'));
+same('una categoría que no existe', RM::CATEGORIA_AJENA, RM::evaluar($activa, null, 5, 'gasto'));
+same('una categoría de otro usuario', RM::CATEGORIA_AJENA, RM::evaluar($activa, $cat(9, 'gasto'), 5, 'gasto'));
+same('el tipo no coincide con el de la categoría', RM::TIPO_DISCORDANTE, RM::evaluar($activa, $cat(null, 'ingreso'), 5, 'gasto'));
+same('una cuenta inactiva', RM::CUENTA_INACTIVA, RM::evaluar(['activa' => false], $cat(null, 'gasto'), 5, 'gasto'));
+same('lo ajeno se detecta antes que lo discordante (no se revela que existe)', RM::CATEGORIA_AJENA, RM::evaluar($activa, $cat(9, 'ingreso'), 5, 'gasto'));
+
+section('Filtros del listado');
+use App\Movimientos\Filtros as F;
+same('sin parámetros no hay filtros', ['desde' => '', 'hasta' => '', 'cuenta' => 0, 'categoria' => 0, 'tipo' => ''], F::desde([]));
+same('filtros válidos', ['desde' => '2026-11-01', 'hasta' => '2026-11-30', 'cuenta' => 3, 'categoria' => 8, 'tipo' => 'gasto'], F::desde(['desde' => '2026-11-01', 'hasta' => '2026-11-30', 'cuenta' => '3', 'categoria' => '8', 'tipo' => 'gasto']));
+same('una fecha inválida se ignora', '', F::desde(['desde' => '2026-13-45'])['desde']);
+same('un tipo desconocido se ignora', '', F::desde(['tipo' => 'otro'])['tipo']);
+same('un id no numérico se ignora', 0, F::desde(['cuenta' => '1; DROP TABLE'])['cuenta']);
+same('un id gigante se ignora (no desborda)', 0, F::desde(['cuenta' => str_repeat('9', 30)])['cuenta']);
+same('parámetros con forma de arreglo se ignoran', 0, F::desde(['cuenta' => ['1'], 'categoria' => ['2']])['cuenta']);
+same('la query omite lo vacío', 'tipo=gasto', F::query(F::desde(['tipo' => 'gasto', 'desde' => 'mal'])));
+same('la query añade la página solo si pasa de 1', ['tipo=gasto', 'tipo=gasto&pagina=3'], [F::query(F::desde(['tipo' => 'gasto']), 1), F::query(F::desde(['tipo' => 'gasto']), 3)]);
+same('hayAlguno', [false, true], [F::hayAlguno(F::desde([])), F::hayAlguno(F::desde(['cuenta' => '2']))]);
+
+section('Ui::money con montos exactos y Fecha::simple');
+same('un monto en cadena de ingreso', '<span class="money money--in">+$1.250,50</span>', (string) App\View\Ui::money('1250.50', 'in'));
+same('un monto en cadena de gasto', '<span class="money money--out">−$18.000</span>', (string) App\View\Ui::money('18000.00', 'out'));
+same('un monto en cadena negativo, neutro', '<span class="money money--plain">−$300.000</span>', (string) App\View\Ui::money('-300000.00'));
+same('un entero sigue funcionando', '<span class="money money--plain">$5.000</span>', (string) App\View\Ui::money(5000));
+same('fecha simple (sin convertir zona horaria)', '03/11/2026', App\View\Fecha::simple('2026-11-03'));
+same('fecha simple inválida se devuelve igual', 'nada', App\View\Fecha::simple('nada'));
+
+section('Ui::pagination con ventana');
+$pag = static fn (int $actual, int $total): string => (string) App\View\Ui::pagination($actual, $total, '?p=%d');
+same('pocas páginas: todas', 3, substr_count($pag(1, 3), 'aria-label="Página'));
+same('500 páginas no dibujan 500 enlaces (1, 2 vecinas a cada lado y la última)', 7, substr_count($pag(250, 500), 'aria-label="Página'));
+same('con huecos marcados', 2, substr_count($pag(250, 500), 'pagination__gap'));
+same('al inicio solo hay un hueco', 1, substr_count($pag(1, 500), 'pagination__gap'));
+same('la actual está marcada', true, str_contains($pag(250, 500), 'href="?p=250" aria-current="page"'));
+same('siempre está la última', true, str_contains($pag(1, 500), 'href="?p=500"'));
+same('una sola página', 1, substr_count($pag(1, 1), 'aria-label="Página'));
+
+section('Ui::select: error y atributos por opción');
+$sel = (string) App\View\Ui::select(['id' => 'c', 'label' => 'C', 'options' => ['5' => 'Gasto', '6' => 'Ingreso'], 'optionAttrs' => ['5' => ['data-tipo' => 'gasto']], 'selected' => '6', 'error' => 'Elige']);
+same('la opción lleva su atributo', true, str_contains($sel, '<option value="5" data-tipo="gasto">Gasto</option>'));
+same('la seleccionada queda marcada', true, str_contains($sel, '<option value="6" selected>Ingreso</option>'));
+same('muestra el error y lo enlaza', true, str_contains($sel, 'id="e-c"') && str_contains($sel, 'aria-describedby="e-c"') && str_contains($sel, 'aria-invalid="true"'));
+
 finish();

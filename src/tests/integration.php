@@ -19,6 +19,8 @@ use App\Auth\LimitadorIntentos;
 use App\Config\Environment;
 use App\Container;
 use App\Database\Connection;
+use App\Database\Transaction;
+use App\Support\Dinero;
 
 if (PHP_SAPI !== 'cli') {
     exit(1);
@@ -349,6 +351,138 @@ same('el administrador la borra', 'ok', $categorias->delete(null, $nueva));
 same('el administrador no borra una categoría propia de un usuario', 'no_existe', (static function () use ($categorias, $carla): string {
     $propia = $categorias->create($carla, 'Solo mía', 'gasto', '#000000');
     return $categorias->delete(null, $propia);
+})());
+
+// ---- Movimientos (RF-10 a RF-14, D8) -----------------------------------------------------------------------------
+
+section('GestionMovimientos: alta y reglas de D8');
+$gestion2 = $container->gestionMovimientos();
+$movs = $container->movimientos();
+$elena = (int) $usuarios->create('Elena', 'elena@correo.com', 'x');
+$fabio = (int) $usuarios->create('Fabio', 'fabio@correo.com', 'x');
+$efectivo = $cuentas->create($elena, 'Efectivo', 'efectivo', '100000.00');
+$banco = $cuentas->create($elena, 'Banco', 'bancaria', '0');
+$ajena = $cuentas->create($fabio, 'Cuenta de Fabio', 'efectivo', '500.00');
+$catGasto = (int) $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'gasto' ORDER BY id_categoria LIMIT 1")->fetchColumn();
+$catIngreso = (int) $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'ingreso' ORDER BY id_categoria LIMIT 1")->fetchColumn();
+$miGasto = $categorias->create($elena, 'Mi gasto', 'gasto', '#111111');
+$gastoDeFabio = $categorias->create($fabio, 'Gasto de Fabio', 'gasto', '#222222');
+$dato = static fn (array $over = []): array => $over + ['tipo' => 'gasto', 'monto' => '18000.50', 'fecha' => '2026-11-03', 'id_cuenta' => $efectivo, 'id_categoria' => $catGasto, 'descripcion' => 'Almuerzo'];
+$saldo = static fn (int $uid, int $cid): string => (string) $cuentas->findOwned($uid, $cid)?->saldo;
+$cuenta = static fn (int $uid): int => (int) $pdo->query("SELECT COUNT(*) FROM transacciones WHERE id_usuario = $uid")->fetchColumn();
+
+$r = $gestion2->guardar($elena, null, $dato());
+same('un gasto válido se guarda', 'ok', $r['codigo']);
+same('y devuelve su id y el nombre de la cuenta', [true, 'Efectivo'], [is_int($r['id']) && $r['id'] > 0, $r['cuenta']]);
+$gastoId = (int) $r['id'];
+same('el saldo baja exacto al centavo (RF-14)', '81999.50', $saldo($elena, $efectivo));
+same('un ingreso con categoría de ingreso sube el saldo', ['ok', '131999.50'], (static function () use ($gestion2, $dato, $catIngreso, $saldo, $elena, $efectivo): array {
+    $x = $gestion2->guardar($elena, null, $dato(['tipo' => 'ingreso', 'monto' => '50000', 'id_categoria' => $catIngreso, 'descripcion' => null]));
+    return [$x['codigo'], $saldo($elena, $efectivo)];
+})());
+same('una categoría propia sirve', 'ok', $gestion2->guardar($elena, null, $dato(['id_categoria' => $miGasto, 'monto' => '1']))['codigo']);
+
+$antes = $cuenta($elena);
+same('un gasto con categoría de ingreso: tipo discordante', 'tipo_discordante', $gestion2->guardar($elena, null, $dato(['id_categoria' => $catIngreso]))['codigo']);
+same('un ingreso con categoría de gasto: tipo discordante', 'tipo_discordante', $gestion2->guardar($elena, null, $dato(['tipo' => 'ingreso']))['codigo']);
+same('una cuenta de otro usuario', 'cuenta_ajena', $gestion2->guardar($elena, null, $dato(['id_cuenta' => $ajena]))['codigo']);
+same('una cuenta que no existe', 'cuenta_ajena', $gestion2->guardar($elena, null, $dato(['id_cuenta' => 999999]))['codigo']);
+same('una categoría de otro usuario', 'categoria_ajena', $gestion2->guardar($elena, null, $dato(['id_categoria' => $gastoDeFabio]))['codigo']);
+same('una categoría que no existe', 'categoria_ajena', $gestion2->guardar($elena, null, $dato(['id_categoria' => 999999]))['codigo']);
+$cuentas->setActiva($elena, $banco, false);
+$inactiva = $gestion2->guardar($elena, null, $dato(['id_cuenta' => $banco]));
+same('una cuenta inactiva no acepta movimientos', ['cuenta_inactiva', 'Banco'], [$inactiva['codigo'], $inactiva['cuenta']]);
+same('nada de lo rechazado se guardó', $antes, $cuenta($elena));
+$cuentas->setActiva($elena, $banco, true);
+same('al reactivarla sí', 'ok', $gestion2->guardar($elena, null, $dato(['id_cuenta' => $banco, 'monto' => '2500']))['codigo']);
+
+section('GestionMovimientos: edición y borrado');
+$saldoAntesEditar = $saldo($elena, $efectivo);
+same('editar el monto: el gasto de 18.000,50 pasa a 20.500', 'ok', $gestion2->guardar($elena, $gastoId, $dato(['monto' => '20500']))['codigo']);
+same('el saldo baja exactamente la diferencia (20.500 − 18.000,50 = 2.499,50)', Dinero::sumar([$saldoAntesEditar, '-2499.50']), $saldo($elena, $efectivo));
+$gastoDeFabioId = (int) $gestion2->guardar($fabio, null, ['tipo' => 'gasto', 'monto' => '100', 'fecha' => '2026-11-03', 'id_cuenta' => $ajena, 'id_categoria' => $catGasto, 'descripcion' => null])['id'];
+same('editar el movimiento de otro usuario: no existe', 'no_existe', $gestion2->guardar($elena, $gastoDeFabioId, $dato())['codigo']);
+same('y no se tocó', '100.00', $movs->findOwned($fabio, $gastoDeFabioId)?->monto);
+same('editar con tipo discordante no cambia nada', ['tipo_discordante', '20500.00'], (static function () use ($gestion2, $dato, $gastoId, $movs, $elena, $catIngreso): array {
+    $x = $gestion2->guardar($elena, $gastoId, $dato(['id_categoria' => $catIngreso, 'monto' => '1']));
+    return [$x['codigo'], (string) $movs->findOwned($elena, $gastoId)?->monto];
+})());
+$saldoEfectivoAntes = $saldo($elena, $efectivo);
+$saldoBancoAntes = $saldo($elena, $banco);
+same('mover un gasto a otra cuenta actualiza el saldo de las dos', 'ok', $gestion2->guardar($elena, $gastoId, $dato(['id_cuenta' => $banco, 'monto' => '20500']))['codigo']);
+same('Efectivo recupera lo gastado', Dinero::sumar([$saldoEfectivoAntes, '20500.00']), $saldo($elena, $efectivo));
+same('Banco lo pierde', Dinero::sumar([$saldoBancoAntes, '-20500.00']), $saldo($elena, $banco));
+$saldoAntesBorrar = $saldo($elena, $banco);
+same('borrar un movimiento ajeno no hace nada', false, $movs->delete($elena, $gastoDeFabioId));
+same('y sigue existiendo', true, $movs->findOwned($fabio, $gastoDeFabioId) !== null);
+same('borrar el propio funciona', true, $movs->delete($elena, $gastoId));
+same('y el saldo se recupera (RF-14)', Dinero::sumar([$saldoAntesBorrar, '20500.00']), $saldo($elena, $banco));
+same('borrarlo otra vez da false', false, $movs->delete($elena, $gastoId));
+
+section('GestionMovimientos: el bloqueo de la cuenta');
+$otra2 = Connection::create();
+$otra2->exec('SET SESSION innodb_lock_wait_timeout = 1');
+Transaction::run($container->pdo(), function () use ($cuentas, $elena, $efectivo, $otra2): void {
+    $cuentas->lockForWrite($elena, $efectivo);
+    $codigo = null;
+    try {
+        $otra2->prepare('UPDATE cuentas SET activa = 0 WHERE id_cuenta = ?')->execute([$efectivo]);
+    } catch (PDOException $e) {
+        $codigo = (int) ($e->errorInfo[1] ?? 0);
+    }
+    same('mientras se guarda un movimiento nadie puede desactivar la cuenta (timeout 1205)', 1205, $codigo);
+});
+$otra2->prepare('UPDATE cuentas SET activa = 0 WHERE id_cuenta = ?')->execute([$efectivo]);
+same('al terminar la transacción ya se puede desactivar', false, $cuentas->findOwned($elena, $efectivo)?->activa);
+$otra2->prepare('UPDATE cuentas SET activa = 1 WHERE id_cuenta = ?')->execute([$efectivo]);
+same('lockForWrite de una cuenta ajena no encuentra nada', null, $cuentas->lockForWrite($fabio, $efectivo));
+
+section('MovimientoRepository: listado, filtros y paginación');
+$pdo->exec("DELETE FROM transacciones WHERE id_usuario = $elena");
+$sin = ['desde' => '', 'hasta' => '', 'cuenta' => 0, 'categoria' => 0, 'tipo' => ''];
+for ($i = 1; $i <= 25; $i++) {
+    $dia = sprintf('2026-10-%02d', $i);
+    $esIngreso = $i % 5 === 0;
+    $gestion2->guardar($elena, null, $dato([
+        'tipo' => $esIngreso ? 'ingreso' : 'gasto',
+        'id_categoria' => $esIngreso ? $catIngreso : ($i % 2 === 0 ? $miGasto : $catGasto),
+        'id_cuenta' => $i <= 15 ? $efectivo : $banco,
+        'fecha' => $dia,
+        'monto' => '0.10',
+        'descripcion' => "Mov $i",
+    ]));
+}
+same('25 movimientos guardados', 25, $movs->count($elena, $sin));
+same('la primera página trae 20', 20, count($movs->search($elena, $sin, 20, 0)));
+same('la segunda trae los 5 restantes', 5, count($movs->search($elena, $sin, 20, 20)));
+same('el orden es del más reciente al más antiguo', ['Mov 25', 'Mov 24'], array_slice(array_map(static fn ($m) => $m->descripcion, $movs->search($elena, $sin, 20, 0)), 0, 2));
+same('a igual fecha manda el más nuevo (id mayor)', true, (static function () use ($gestion2, $dato, $movs, $elena, $sin): bool {
+    $gestion2->guardar($elena, null, $dato(['fecha' => '2026-10-25', 'descripcion' => 'Segundo del 25']));
+    return $movs->search($elena, $sin, 1, 0)[0]->descripcion === 'Segundo del 25';
+})());
+$pdo->exec("DELETE FROM transacciones WHERE descripcion = 'Segundo del 25'");
+same('trae los nombres de cuenta y categoría', ['Banco', 'Salario'], (static function () use ($movs, $elena, $sin): array {
+    $m = $movs->search($elena, $sin, 1, 0)[0];
+    return [$m->cuentaNombre, $m->categoriaNombre === 'Salario' ? 'Salario' : $m->categoriaNombre];
+})());
+same('filtro por tipo', 5, $movs->count($elena, ['tipo' => 'ingreso'] + $sin));
+same('filtro por cuenta', 15, $movs->count($elena, ['cuenta' => $efectivo] + $sin));
+same('filtro por categoría (los gastos pares que no son múltiplos de 5)', 10, $movs->count($elena, ['categoria' => $miGasto] + $sin));
+same('filtro «desde» (incluye el día)', 6, $movs->count($elena, ['desde' => '2026-10-20'] + $sin));
+same('filtro «hasta» (incluye el día)', 5, $movs->count($elena, ['hasta' => '2026-10-05'] + $sin));
+same('rango de fechas', 3, $movs->count($elena, ['desde' => '2026-10-10', 'hasta' => '2026-10-12'] + $sin));
+same('filtros combinados: ingresos en Efectivo (días 5, 10 y 15)', 3, $movs->count($elena, ['tipo' => 'ingreso', 'cuenta' => $efectivo] + $sin));
+same('un filtro sin resultados', 0, $movs->count($elena, ['desde' => '2030-01-01'] + $sin));
+same('los totales usan TODOS los movimientos filtrados, no solo la página', ['0.50', '2.00'], array_values($movs->totals($elena, $sin)));
+same('0,10 × 20 gastos = 2,00 exacto (con float daría 2.0000000000000004)', '2.00', $movs->totals($elena, ['tipo' => 'gasto'] + $sin)['gastos']);
+same('los totales respetan los filtros', '0.10', $movs->totals($elena, ['desde' => '2026-10-25'] + $sin)['ingresos']);
+same('filtrar por la cuenta de otra persona no trae nada', 0, $movs->count($fabio, ['cuenta' => $efectivo] + $sin));
+same('con la misma categoría, cada usuario ve solo lo suyo', [25 - 5 - 10, 1], [$movs->count($elena, ['categoria' => $catGasto] + $sin), $movs->count($fabio, ['categoria' => $catGasto] + $sin)]);
+same('findOwned encuentra el propio', true, $movs->findOwned($elena, $movs->search($elena, $sin, 1, 0)[0]->id) !== null);
+same('y no el ajeno', null, $movs->findOwned($elena, $gastoDeFabioId));
+same('el índice (usuario, fecha) sirve para ordenar sin ordenar aparte', true, (static function () use ($pdo, $elena): bool {
+    $plan = $pdo->query("EXPLAIN SELECT t.id_transaccion FROM transacciones t WHERE t.id_usuario = $elena ORDER BY t.fecha DESC, t.id_transaccion DESC LIMIT 20")->fetch();
+    return str_contains((string) ($plan['key'] ?? ''), 'idx_usuario_fecha') || str_contains((string) ($plan['key'] ?? ''), 'id_usuario');
 })());
 
 finish();
