@@ -13,9 +13,8 @@ final class RegistroValidator
     public const NOMBRE_MIN = 2;
     public const NOMBRE_MAX = 80;
     public const CORREO_MAX = 120;
-    public const CLAVE_MIN = 8;
-    /** bcrypt solo usa los primeros 72 BYTES: más largo daría una falsa sensación de seguridad. */
-    public const CLAVE_MAX_BYTES = 72;
+    public const CLAVE_MIN = ClaveValidator::MIN;
+    public const CLAVE_MAX_BYTES = ClaveValidator::MAX_BYTES;
 
     /**
      * @param array<string, mixed> $input Normalmente $_POST (campos nombre, correo, clave, clave2).
@@ -38,13 +37,7 @@ final class RegistroValidator
             $errors['correo'] = 'Escribe un correo válido (máximo ' . self::CORREO_MAX . ' caracteres).';
         }
 
-        if (mb_strlen($clave) < self::CLAVE_MIN) {
-            $errors['clave'] = 'La contraseña debe tener al menos ' . self::CLAVE_MIN . ' caracteres.';
-        } elseif (strlen($clave) > self::CLAVE_MAX_BYTES) {
-            $errors['clave'] = 'La contraseña es demasiado larga (máximo ' . self::CLAVE_MAX_BYTES . ' bytes).';
-        } elseif ($clave !== $clave2) {
-            $errors['clave2'] = 'Las contraseñas no coinciden.';
-        }
+        $errors += ClaveValidator::errores($clave, $clave2);
 
         return ['data' => ['nombre' => $nombre, 'correo' => $correo, 'clave' => $clave], 'errors' => $errors];
     }

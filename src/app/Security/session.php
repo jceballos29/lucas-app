@@ -127,12 +127,37 @@ function resolve_user_session(): array
         return ['user' => null, 'expired' => false, 'revoked' => true];
     }
 
+    // La sesión guarda una HUELLA del hash de la contraseña con la que se abrió. Si la contraseña cambia (el propio usuario, o un
+    // restablecimiento por correo), las demás sesiones abiertas dejan de valer en su siguiente petición: quien robó una sesión
+    // la pierde al cambiar la clave.
+    if (!hash_equals((string) ($_SESSION['pw_fp'] ?? ''), password_fingerprint($current->contrasenaHash))) {
+        log_out_user();
+
+        return ['user' => null, 'expired' => false, 'revoked' => true];
+    }
+
+    // Los montos de toda la petición se muestran en la moneda del usuario (RF-03).
+    \App\Support\Dinero::usarMoneda($current->moneda);
+
     $_SESSION['last_seen'] = time();
     $_SESSION['user_name'] = $current->nombre;
     $_SESSION['user_email'] = $current->correo;
     $_SESSION['user_role'] = $current->rol;
 
     return ['user' => ['id' => $current->id, 'name' => $current->nombre, 'email' => $current->correo, 'role' => $current->rol], 'expired' => false, 'revoked' => false];
+}
+
+/** Huella corta del hash de una contraseña (no revela el hash): sirve para saber si la contraseña cambió desde que se abrió la sesión. */
+function password_fingerprint(string $hash): string
+{
+    return substr(hash('sha256', $hash), 0, 32);
+}
+
+/** Tras cambiar la contraseña en ESTA sesión, se actualiza su huella para que siga abierta (las demás se cierran). */
+function refresh_session_fingerprint(string $hash): void
+{
+    start_app_session();
+    $_SESSION['pw_fp'] = password_fingerprint($hash);
 }
 
 /** El usuario conectado, o null. */
@@ -149,7 +174,7 @@ function current_user(): ?array
  *
  * El rol sale de la BD (lo pasa el controlador desde el Usuario), nunca de la petición (RF-25).
  *
- * @param array{id: int, name: string, email: string, role: string} $user
+ * @param array{id: int, name: string, email: string, role: string, fp: string} $user `fp`: {@see password_fingerprint()} del hash vigente
  */
 function log_in_user(array $user): void
 {
@@ -157,7 +182,7 @@ function log_in_user(array $user): void
     session_regenerate_id(true);
     // Se REEMPLAZA todo $_SESSION: también se descarta el token CSRF de la sesión anónima, y el primer formulario
     // de la sesión ya autenticada recibe uno nuevo (el que conociera quien vio la página de login no sirve).
-    $_SESSION = ['user_id' => $user['id'], 'user_name' => $user['name'], 'user_email' => $user['email'], 'user_role' => $user['role'], 'last_seen' => time()];
+    $_SESSION = ['user_id' => $user['id'], 'user_name' => $user['name'], 'user_email' => $user['email'], 'user_role' => $user['role'], 'pw_fp' => $user['fp'], 'last_seen' => time()];
 }
 
 /** Cierra la sesión: vacía los datos, borra la cookie del navegador y destruye el archivo del servidor. */

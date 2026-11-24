@@ -31,7 +31,10 @@ final class Autenticador
         }
 
         if (password_needs_rehash($usuario->contrasenaHash, PASSWORD_DEFAULT)) {
-            $this->usuarios->updatePasswordHash($usuario->id, password_hash($clave, PASSWORD_DEFAULT));
+            $nuevo = password_hash($clave, PASSWORD_DEFAULT);
+            $this->usuarios->updatePasswordHash($usuario->id, $nuevo);
+            // Se devuelve con el hash NUEVO: la sesión guarda su huella (ver log_in_user) y debe coincidir con la BD.
+            $usuario = $usuario->conContrasenaHash($nuevo);
         }
 
         return $usuario;

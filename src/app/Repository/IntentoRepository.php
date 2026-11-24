@@ -40,4 +40,10 @@ final class IntentoRepository
         $stmt = $this->pdo->prepare('DELETE FROM intentos_acceso WHERE creado_en < (NOW() - INTERVAL :s SECOND)');
         $stmt->execute(['s' => $seconds]);
     }
+
+    /** Borra los intentos de esa clave en TODOS los tipos (al eliminar una cuenta no debe quedar rastro del correo, ni siquiera su hash). */
+    public function clearKey(string $clave): void
+    {
+        $this->pdo->prepare('DELETE FROM intentos_acceso WHERE clave = :clave')->execute(['clave' => $clave]);
+    }
 }

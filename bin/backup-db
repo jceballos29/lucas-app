@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# Copia de seguridad de la base de datos (RNF-15: semanal). Genera un volcado comprimido y consistente (--single-transaction: no
+# bloquea la aplicación) con la fecha en el nombre, comprueba que sea legible y borra las copias más viejas.
+#
+#   bin/backup-db [carpeta]            # por defecto «backups/»; se conservan las últimas 8 (BACKUP_KEEP=n para cambiarlo)
+#
+# Programarlo cada semana (cron, domingo a las 3:00):
+#   0 3 * * 0  cd /ruta/a/lucas-app && bin/backup-db /var/backups/lucas >> /var/log/lucas-backup.log 2>&1
+#
+# Usa el usuario de MIGRACIONES (tiene SELECT sobre todo y no es el de la aplicación web). Compose de producción:
+#   COMPOSE_FILE=docker-compose.prod.yml bin/backup-db
+# Una copia que vive en el mismo servidor no protege de perder el servidor: copia la carpeta a otro sitio (ver docs/DESPLIEGUE.md).
+
+set -eu
+cd "$(dirname "$0")/.."
+
+DEST="${1:-backups}"
+KEEP="${BACKUP_KEEP:-8}"
+
+[ -f .env ] || { echo "No existe .env (cópialo de .env.example)." >&2; exit 2; }
+value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2-; }
+USER_NAME="$(value DB_MIGRATION_USERNAME)"; USER_NAME="${USER_NAME:-lucas_migrator}"
+PASSWORD="$(value DB_MIGRATION_PASSWORD)"
+DATABASE="$(value DB_DATABASE)"; DATABASE="${DATABASE:-lucas}"
+[ -n "$PASSWORD" ] || { echo "Falta DB_MIGRATION_PASSWORD en .env." >&2; exit 2; }
+
+mkdir -p "$DEST"
+FILE="$DEST/lucas-$(date +%Y-%m-%d-%H%M%S).sql.gz"
+
+# La clave viaja en la variable MYSQL_PWD solo de este proceso (no queda en la lista de procesos ni en el historial).
+MYSQL_PWD="$PASSWORD" docker compose exec -T -e MYSQL_PWD db \
+    mysqldump -u"$USER_NAME" --single-transaction --routines --triggers --no-tablespaces --default-character-set=utf8mb4 "$DATABASE" \
+    | gzip > "$FILE.tmp"
+
+# Una copia que no se puede leer no es una copia: se comprueba antes de darla por buena.
+if ! gzip -t "$FILE.tmp" 2>/dev/null || ! gzip -dc "$FILE.tmp" | grep -q 'CREATE TABLE `usuarios`'; then
+    rm -f "$FILE.tmp"
+    echo "La copia de seguridad salió vacía o dañada: no se guardó." >&2
+    exit 1
+fi
+
+mv "$FILE.tmp" "$FILE"
+chmod 600 "$FILE"   # contiene datos personales y hashes de contraseñas: solo para quien la hizo
+
+# Conserva las últimas $KEEP copias.
+ls -1t "$DEST"/lucas-*.sql.gz 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r vieja; do rm -f -- "$vieja"; done
+
+echo "Copia creada: $FILE ($(du -h "$FILE" | cut -f1)); se conservan las últimas $KEEP."

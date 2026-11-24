@@ -140,3 +140,7 @@ input[type="color"].input { width: 96px; height: 44px; padding: 4px; cursor: poi
 /* Movimientos */
 .summary { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); margin: 0 0 var(--s-3); color: var(--muted); font-size: var(--fs-sm); }
 .summary .money { font-weight: 650; }
+
+/* Perfil */
+.danger-zone { border-color: var(--danger); }
+.form-card + .form-card { margin-top: var(--s-4); }

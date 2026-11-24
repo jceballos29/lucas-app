@@ -5,8 +5,14 @@ declare(strict_types=1);
 use App\View\Ui;
 use App\View\View;
 
-/** Recuperar contraseña (RF-04). @var string|null $notice Aviso tras enviar. */
+/**
+ * Recuperar contraseña (RF-04).
+ *
+ * @var string|null $notice Aviso tras enviar (siempre el mismo, exista o no el correo).
+ * @var string|null $error Error general (BD caída...).
+ */
 $notice = $notice ?? null;
+$error = $error ?? null;
 ?>
 <div class="auth">
     <?php View::render('auth/hero') ?>
@@ -16,6 +22,7 @@ $notice = $notice ?? null;
             <h1>Recuperar contraseña</h1>
             <p class="muted">Te enviaremos un enlace a tu correo</p>
             <?php if ($notice !== null): ?><?= Ui::notice($notice, 'ok') ?><?php endif; ?>
+            <?php if ($error !== null): ?><?= Ui::notice($error, 'error') ?><?php endif; ?>
             <form action="/recuperar.php" method="post" novalidate>
                 <?= csrf_field() ?>
                 <?= Ui::field(['id' => 'correo', 'label' => 'Correo electrónico', 'type' => 'email', 'autocomplete' => 'email', 'placeholder' => 'tucorreo@ejemplo.com', 'required' => true]) ?>

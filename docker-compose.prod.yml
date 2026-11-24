@@ -1,0 +1,86 @@
+# PRODUCCIÓN. Se usa SOLA (no como complemento del docker-compose.yml de desarrollo):
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Diferencias con desarrollo: APP_ENV=production (errores solo al log, status.php responde 404), HTTPS con tus certificados, sin
+# Adminer ni Mailpit, sin puertos de la base de datos y con reinicio automático. Variables obligatorias en .env: ver docs/DESPLIEGUE.md.
+services:
+  php:
+    build:
+      context: ./docker/php
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    restart: unless-stopped
+    volumes:
+      - ./src:/var/www/html
+    environment:
+      APP_ENV: production
+      # Con https:// la cookie de sesión se marca «Secure» y los POST solo se aceptan desde este origen.
+      APP_ORIGIN: ${APP_ORIGIN:?Falta APP_ORIGIN (p. ej. https://lucas.tudominio.com)}
+      PHP_INI_SCAN_DIR: /usr/local/etc/php/conf.d:/usr/local/etc/php/env/production
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-lucas}
+      DB_USERNAME: ${DB_USERNAME:?Falta DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD}
+      MAIL_HOST: ${MAIL_HOST:?Falta MAIL_HOST (el SMTP real)}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-starttls}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:?Falta MAIL_FROM}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Lucas}
+      PHP_FPM_MAX_CHILDREN: ${PHP_FPM_MAX_CHILDREN:-40}
+      PHP_FPM_START_SERVERS: ${PHP_FPM_START_SERVERS:-10}
+      PHP_FPM_MIN_SPARE: ${PHP_FPM_MIN_SPARE:-5}
+      PHP_FPM_MAX_SPARE: ${PHP_FPM_MAX_SPARE:-15}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.30.6-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Falta APP_DOMAIN (p. ej. lucas.tudominio.com)}
+    volumes:
+      - ./src:/var/www/html:ro
+      - ./docker/nginx/production.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./docker/nginx/security-headers.conf:/etc/nginx/snippets/security-headers.conf:ro
+      # fullchain.pem y privkey.pem de tu dominio (ver docs/DESPLIEGUE.md)
+      - ${CERTS_DIR:-./certs}:/etc/nginx/certs:ro
+      - ./certbot-webroot:/var/www/certbot:ro
+    depends_on:
+      - php
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider --no-check-certificate https://localhost/salud.php || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: ["--default-time-zone=+00:00"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Falta DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE:-lucas}
+      DB_USERNAME: ${DB_USERNAME:?Falta DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD}
+      DB_MIGRATION_USERNAME: ${DB_MIGRATION_USERNAME:-lucas_migrator}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:?Falta DB_MIGRATION_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  db_data:

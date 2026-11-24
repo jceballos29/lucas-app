@@ -7,11 +7,14 @@ namespace App;
 use App\Admin\GestionUsuarios;
 use App\Auth\Autenticador;
 use App\Auth\LimitadorIntentos;
+use App\Auth\RecuperacionClave;
 use App\Database\Connection;
 use App\Repository\AdminStatsRepository;
 use App\Repository\AporteRepository;
 use App\Repository\CategoriaRepository;
 use App\Repository\CuentaRepository;
+use App\Mail\Mailer;
+use App\Mail\SmtpMailer;
 use App\Metas\GestionMetas;
 use App\Movimientos\GestionMovimientos;
 use App\Repository\IntentoRepository;
@@ -19,7 +22,9 @@ use App\Repository\MetaRepository;
 use App\Repository\MovimientoRepository;
 use App\Repository\PresupuestoRepository;
 use App\Repository\ReporteRepository;
+use App\Repository\RestablecimientoRepository;
 use App\Repository\UsuarioRepository;
+use App\Usuarios\EliminarCuenta;
 use PDO;
 
 /**
@@ -38,6 +43,7 @@ final class Container
     private static ?self $shared = null;
 
     private ?PDO $pdo = null;
+    private ?Mailer $mailer = null;
     private ?UsuarioRepository $usuarios = null;
     private ?IntentoRepository $intentos = null;
 
@@ -129,5 +135,31 @@ final class Container
     public function reportes(): ReporteRepository
     {
         return new ReporteRepository($this->pdo());
+    }
+
+    /** El cliente de correo (D7), con las variables MAIL_*. En las pruebas se sustituye con {@see useMailer()}. */
+    public function mailer(): Mailer
+    {
+        return $this->mailer ??= SmtpMailer::fromEnvironment();
+    }
+
+    public function useMailer(Mailer $mailer): void
+    {
+        $this->mailer = $mailer;
+    }
+
+    public function restablecimientos(): RestablecimientoRepository
+    {
+        return new RestablecimientoRepository($this->pdo());
+    }
+
+    public function recuperacion(): RecuperacionClave
+    {
+        return new RecuperacionClave($this->pdo(), $this->usuarios(), $this->restablecimientos(), $this->mailer(), \App\Config\Environment::get('APP_ORIGIN'));
+    }
+
+    public function eliminarCuenta(): EliminarCuenta
+    {
+        return new EliminarCuenta($this->pdo(), $this->usuarios(), $this->intentos());
     }
 }

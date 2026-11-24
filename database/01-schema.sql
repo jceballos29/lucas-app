@@ -81,8 +81,20 @@ CREATE TABLE aportes_meta (
 -- es "ip:<dirección>" o "correo:<sha256 del correo>". Las filas viejas se borran al consultar.
 CREATE TABLE intentos_acceso (
   id_intento INT AUTO_INCREMENT PRIMARY KEY,
-  tipo       ENUM('login','registro') NOT NULL,
+  tipo       ENUM('login','registro','recuperacion','clave') NOT NULL,
   clave      VARCHAR(80) NOT NULL,
   creado_en  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_tipo_clave_fecha (tipo, clave, creado_en)
+);
+
+-- Enlaces de restablecimiento de contraseña (RF-04). Solo se guarda el HASH (SHA-256) del token.
+CREATE TABLE restablecimientos (
+  id_restablecimiento INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario          INT NOT NULL,
+  token_hash          CHAR(64) NOT NULL UNIQUE,
+  creado_en           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expira_en           TIMESTAMP NOT NULL,
+  usado_en            TIMESTAMP NULL,
+  INDEX idx_usuario (id_usuario),
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
 );

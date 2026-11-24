@@ -1,0 +1,82 @@
+# PRODUCCIÓN (HTTPS, RNF-07). nginx sustituye ${APP_DOMAIN} al arrancar (plantilla de la imagen oficial: /etc/nginx/templates).
+# Los certificados se montan en /etc/nginx/certs (fullchain.pem y privkey.pem): ver docs/DESPLIEGUE.md.
+
+# Defensa en profundidad: además del límite de la aplicación (5 intentos por correo y 20 por IP), nginx limita la tasa de las páginas
+# de acceso, que son las que cuestan CPU (bcrypt a propósito).
+limit_req_zone $binary_remote_addr zone=acceso:10m rate=30r/m;
+
+# HTTP: solo redirige a HTTPS (y deja pasar la validación de Let's Encrypt si se usa).
+server {
+    listen 80;
+    server_name ${APP_DOMAIN};
+    server_tokens off;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${APP_DOMAIN};
+
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    root /var/www/html/public;
+    index index.php;
+    server_tokens off;
+    client_max_body_size 1m;
+
+    include /etc/nginx/snippets/security-headers.conf;
+    # HSTS: durante un año el navegador usará SIEMPRE https con este dominio. Activa `preload` solo cuando estés seguro.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~* \.(css|js|svg|png|ico)$ {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Cache-Control "public, max-age=2592000, immutable" always;
+        gzip on;
+        gzip_vary on;
+        gzip_comp_level 6;
+        gzip_min_length 256;
+        gzip_types text/css application/javascript image/svg+xml;
+        try_files $uri =404;
+    }
+
+    # Páginas de acceso: tasa limitada (ráfaga de 10) y 429 al pasarse.
+    location ~ ^/(login|registro|recuperar|restablecer)\.php$ {
+        limit_req zone=acceso burst=10 nodelay;
+        limit_req_status 429;
+        include fastcgi_params;
+        fastcgi_pass php:9000;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param HTTPS on;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass php:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param HTTPS on;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+}

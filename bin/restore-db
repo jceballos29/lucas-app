@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+#
+# Restaura una copia de seguridad (bin/backup-db) en una base de datos VACÍA o inexistente. Nunca pisa datos: si la base destino ya
+# tiene tablas, se niega.
+#
+#   bin/restore-db backups/lucas-2026-11-22-030000.sql.gz [base_destino]
+#
+# Sin base_destino se restaura en `lucas_test_restore` (para PROBAR que la copia sirve: el usuario de migraciones puede crear las
+# bases `lucas_test%`). Para recuperar de verdad la base `lucas` tras un desastre, con un volumen nuevo y vacío:
+#   docker compose down -v && docker compose up -d db          # base `lucas` vacía (el esquema ya lo crea 01-schema.sql)
+#   docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP DATABASE lucas; CREATE DATABASE lucas CHARACTER SET utf8mb4"'
+#   gunzip -c backups/<archivo>.sql.gz | docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" lucas'
+#   docker compose exec db bash /docker-entrypoint-initdb.d/03-users.sh    # vuelve a dar los permisos a los usuarios
+
+set -eu
+cd "$(dirname "$0")/.."
+
+FILE="${1:-}"
+TARGET="${2:-lucas_test_restore}"
+[ -f "$FILE" ] || { echo "Uso: bin/restore-db <archivo.sql.gz> [base_destino]" >&2; exit 2; }
+case "$TARGET" in '' | *[!A-Za-z0-9_]*) echo "Nombre de base no válido: $TARGET" >&2; exit 2 ;; esac
+
+value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2-; }
+USER_NAME="$(value DB_MIGRATION_USERNAME)"; USER_NAME="${USER_NAME:-lucas_migrator}"
+PASSWORD="$(value DB_MIGRATION_PASSWORD)"
+[ -n "$PASSWORD" ] || { echo "Falta DB_MIGRATION_PASSWORD en .env." >&2; exit 2; }
+
+mysql_() { MYSQL_PWD="$PASSWORD" docker compose exec -T -e MYSQL_PWD db mysql -u"$USER_NAME" --default-character-set=utf8mb4 "$@"; }
+
+mysql_ -e "CREATE DATABASE IF NOT EXISTS \`$TARGET\` CHARACTER SET utf8mb4"
+TABLAS="$(mysql_ -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$TARGET'")"
+[ "$TABLAS" = "0" ] || { echo "La base «$TARGET» ya tiene $TABLAS tablas: no se restaura sobre datos existentes." >&2; exit 1; }
+
+gzip -dc "$FILE" | mysql_ "$TARGET"
+echo "Restaurado en la base «$TARGET»: $(mysql_ -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$TARGET'") tablas."

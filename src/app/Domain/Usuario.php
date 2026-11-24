@@ -35,6 +35,12 @@ final class Usuario
         );
     }
 
+    /** El mismo usuario con otro hash de contraseña (tras un rehash). */
+    public function conContrasenaHash(string $hash): self
+    {
+        return new self($this->id, $this->nombre, $this->correo, $hash, $this->moneda, $this->rol, $this->activo);
+    }
+
     public function esAdmin(): bool
     {
         return $this->rol === self::ROL_ADMIN;

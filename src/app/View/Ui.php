@@ -182,7 +182,7 @@ final class Ui
             $text = \App\Support\Dinero::formatear(ltrim($amount, '-'));
         } else {
             $negative = $amount < 0;
-            $text = '$' . number_format(abs($amount), 0, ',', '.');
+            $text = \App\Support\Dinero::simbolo() . number_format(abs($amount), 0, ',', '.');
         }
 
         $sign = match ($kind) {
@@ -198,7 +198,7 @@ final class Ui
     /** Pesos sin signo ni envoltorio, para frases («$330.000 de $400.000»). */
     public static function pesos(int|float $amount): string
     {
-        return '$' . number_format(abs($amount), 0, ',', '.');
+        return \App\Support\Dinero::simbolo() . number_format(abs($amount), 0, ',', '.');
     }
 
     /**

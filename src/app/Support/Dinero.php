@@ -10,8 +10,25 @@ namespace App\Support;
  */
 final class Dinero
 {
+    /** Monedas que ofrece el perfil (RF-03) y su símbolo. Es solo cómo se MUESTRAN los montos: la aplicación no convierte entre monedas. */
+    public const MONEDAS = ['COP' => '$', 'USD' => 'US$', 'EUR' => '€', 'MXN' => 'MX$'];
+
+    /** El símbolo con el que se muestra el dinero en esta petición (el de la moneda del usuario). */
+    private static string $simbolo = '$';
+
     /** Máximo de un DECIMAL(12,2): 9.999.999.999,99 (en centavos). */
     public const MAX_CENTAVOS = 999_999_999_999;
+
+    /** Fija la moneda con la que se muestran los montos en ESTA petición (la sesión lo hace con la del usuario). Una desconocida cae a «$». */
+    public static function usarMoneda(string $codigo): void
+    {
+        self::$simbolo = self::MONEDAS[$codigo] ?? '$';
+    }
+
+    public static function simbolo(): string
+    {
+        return self::$simbolo;
+    }
 
     /**
      * Lee un monto escrito por una persona, con formato colombiano: punto para los miles y coma para los decimales
@@ -84,7 +101,7 @@ final class Dinero
     {
         $centavos = self::aCentavos($monto);
         $abs = abs($centavos);
-        $texto = '$' . number_format(intdiv($abs, 100), 0, ',', '.') . ($abs % 100 !== 0 ? ',' . str_pad((string) ($abs % 100), 2, '0', STR_PAD_LEFT) : '');
+        $texto = self::$simbolo . number_format(intdiv($abs, 100), 0, ',', '.') . ($abs % 100 !== 0 ? ',' . str_pad((string) ($abs % 100), 2, '0', STR_PAD_LEFT) : '');
 
         return ($centavos < 0 ? '−' : '') . $texto;
     }
@@ -109,11 +126,11 @@ final class Dinero
 
         if ($abs >= 99_950_000) {
             $decimas = intdiv($abs + 5_000_000, 10_000_000);
-            $texto = '$' . intdiv($decimas, 10) . ($decimas % 10 !== 0 ? ',' . $decimas % 10 : '') . ' M';
+            $texto = self::$simbolo . intdiv($decimas, 10) . ($decimas % 10 !== 0 ? ',' . $decimas % 10 : '') . ' M';
         } elseif ($abs >= 100_000) {
-            $texto = '$' . intdiv($abs + 50_000, 100_000) . ' mil';
+            $texto = self::$simbolo . intdiv($abs + 50_000, 100_000) . ' mil';
         } else {
-            $texto = '$' . intdiv($abs + 50, 100);
+            $texto = self::$simbolo . intdiv($abs + 50, 100);
         }
 
         return ($centavos < 0 ? '−' : '') . $texto;

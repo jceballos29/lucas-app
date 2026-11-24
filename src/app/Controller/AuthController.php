@@ -17,7 +17,9 @@ final class AuthController
 {
     private const MENSAJES_LOGIN = [
         'expired' => ['Tu sesión caducó por inactividad. Vuelve a iniciar sesión.', 'warn'],
-        'revoked' => ['Tu sesión se cerró porque tu cuenta ya no está activa. Si crees que es un error, contacta al administrador.', 'warn'],
+        'revoked' => ['Tu sesión se cerró: tu cuenta ya no está activa o tu contraseña cambió. Inicia sesión de nuevo; si crees que es un error, contacta al administrador.', 'warn'],
+        'reset' => ['Listo: tu contraseña se cambió. Ya puedes iniciar sesión con la nueva.', 'ok'],
+        'deleted' => ['Tu cuenta y todos tus datos se eliminaron. Gracias por haber usado Lucas.', 'ok'],
     ];
 
     public function __construct(private readonly Container $container)
@@ -95,15 +97,16 @@ final class AuthController
 
             if ($errors === []) {
                 $usuarios = $this->container->usuarios();
+                $hash = password_hash($data['clave'], PASSWORD_DEFAULT);
                 $id = $usuarios->findByEmail($data['correo']) === null
-                    ? $usuarios->create($data['nombre'], $data['correo'], password_hash($data['clave'], PASSWORD_DEFAULT))
+                    ? $usuarios->create($data['nombre'], $data['correo'], $hash)
                     : null;
 
                 if ($id === null) {
                     // D2: el registro sí avisa que el correo existe (no hay correo transaccional para ocultarlo).
                     $errors['correo'] = 'Este correo ya está registrado. ¿Quieres iniciar sesión?';
                 } else {
-                    self::startSession(new Usuario($id, $data['nombre'], $data['correo'], '', 'COP', Usuario::ROL_USUARIO, true));
+                    self::startSession(new Usuario($id, $data['nombre'], $data['correo'], $hash, 'COP', Usuario::ROL_USUARIO, true));
                     Response::redirect('/panel.php');
                 }
             }
@@ -135,7 +138,7 @@ final class AuthController
 
     private static function startSession(Usuario $usuario): void
     {
-        log_in_user(['id' => $usuario->id, 'name' => $usuario->nombre, 'email' => $usuario->correo, 'role' => $usuario->rol]);
+        log_in_user(['id' => $usuario->id, 'name' => $usuario->nombre, 'email' => $usuario->correo, 'role' => $usuario->rol, 'fp' => password_fingerprint($usuario->contrasenaHash)]);
     }
 
     private function redirectIfLoggedIn(): void

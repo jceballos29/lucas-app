@@ -65,6 +65,32 @@ final class UsuarioRepository implements CredentialSource
         $stmt->execute(['hash' => $hash, 'id' => $id]);
     }
 
+    public function updateProfile(int $id, string $nombre, string $moneda): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE usuarios SET nombre = :n, moneda = :m WHERE id_usuario = :id');
+        $stmt->execute(['n' => $nombre, 'm' => $moneda, 'id' => $id]);
+    }
+
+    /**
+     * Borra TODO lo del usuario y luego al usuario (RNF-20), en un ORDEN explícito: `transacciones` y `aportes_meta` referencian
+     * `cuentas` sin cascada, así que no se puede confiar en el orden de los `ON DELETE CASCADE`. Solo dentro de una transacción.
+     */
+    public function deleteWithAllData(int $id): void
+    {
+        foreach ([
+            'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario = :id)',
+            'DELETE FROM transacciones WHERE id_usuario = :id',
+            'DELETE FROM presupuestos WHERE id_usuario = :id',
+            'DELETE FROM metas_ahorro WHERE id_usuario = :id',
+            'DELETE FROM cuentas WHERE id_usuario = :id',
+            'DELETE FROM categorias WHERE id_usuario = :id',
+            'DELETE FROM restablecimientos WHERE id_usuario = :id',
+            'DELETE FROM usuarios WHERE id_usuario = :id',
+        ] as $sql) {
+            $this->pdo->prepare($sql)->execute(['id' => $id]);
+        }
+    }
+
     public function countActiveAdmins(): int
     {
         return (int) $this->pdo->query("SELECT COUNT(*) FROM usuarios WHERE rol = 'admin' AND activo = 1")->fetchColumn();

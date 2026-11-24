@@ -13,5 +13,6 @@ $items = [
     ['href' => '/presupuestos.php', 'label' => 'Presupuestos', 'key' => 'presupuestos', 'icon' => 'pie'],
     ['href' => '/metas.php', 'label' => 'Metas de ahorro', 'key' => 'metas', 'icon' => 'flag'],
     ['href' => '/reportes.php', 'label' => 'Reportes', 'key' => 'reportes', 'icon' => 'chart'],
+    ['href' => '/perfil.php', 'label' => 'Mi perfil', 'key' => 'perfil', 'icon' => 'shield'],
 ];
 View::render('layout/sidebar', ['items' => $items, 'nav' => $nav ?? '', 'currentUser' => $currentUser ?? null, 'home' => '/panel.php', 'badge' => null]);
