@@ -142,4 +142,114 @@ $container->intentos()->purgeOlderThan(900);
 same('purgeOlderThan borra los viejos', 0, (int) $pdo->query('SELECT COUNT(*) FROM intentos_acceso')->fetchColumn());
 same('la tabla no guarda correos en claro', 0, (int) $pdo->query("SELECT COUNT(*) FROM intentos_acceso WHERE clave LIKE '%@%'")->fetchColumn());
 
+// ---- Búsqueda y paginación de usuarios (RF-30) ------------------------------------------------------------------
+
+section('UsuarioRepository: búsqueda');
+$usuarios->create('Marta 100% Ríos', 'marta@correo.com', 'x');
+$usuarios->create('Pedro_Gómez', 'pedro@correo.com', 'x');
+$usuarios->create('Pedroxgómez', 'otro.pedro@correo.com', 'x');
+same('sin texto lista a todos', $usuarios->countSearch(''), count($usuarios->search('', 100, 0)));
+same('busca por parte del nombre (sin distinguir mayúsculas)', ['Ana'], array_column($usuarios->search('ANA', 10, 0), 'nombre'));
+same('busca por parte del correo', ['beto@correo.com'], array_column($usuarios->search('beto@', 10, 0), 'correo'));
+same('el % del texto buscado no es un comodín', ['Marta 100% Ríos'], array_column($usuarios->search('100%', 10, 0), 'nombre'));
+same('el % solo no devuelve todo', 1, $usuarios->countSearch('%'));
+same('el _ del texto buscado no es un comodín', ['Pedro_Gómez'], array_column($usuarios->search('o_g', 10, 0), 'nombre'));
+same('una búsqueda sin resultados', [], $usuarios->search('zzzzzz', 10, 0));
+same('la lista no expone el hash', false, array_key_exists('contrasena_hash', $usuarios->search('', 1, 0)[0]));
+same('la paginación respeta límite y desplazamiento', [2, 1], [count($usuarios->search('', 2, 0)), count($usuarios->search('', 2, $usuarios->countSearch('') - 1))]);
+same('un texto con comillas no rompe la consulta', 0, $usuarios->countSearch("'; DROP TABLE usuarios; --"));
+
+// ---- Métricas del dashboard (RF-28, RF-29, RNF-21) ---------------------------------------------------------------
+
+section('AdminStatsRepository');
+$stats = $container->adminStats();
+$t = $stats->totals();
+same('usuarios totales', (int) $pdo->query('SELECT COUNT(*) FROM usuarios')->fetchColumn(), $t['usuarios']);
+same('usuarios activos', (int) $pdo->query('SELECT COUNT(*) FROM usuarios WHERE activo = 1')->fetchColumn(), $t['activos']);
+same('todos nacieron este mes', $t['usuarios'], $t['nuevos_mes']);
+$pdo->exec("UPDATE usuarios SET creado_en = NOW() - INTERVAL 40 DAY WHERE correo = 'ana@correo.com'");
+same('un usuario de hace 40 días no cuenta como nuevo del mes', $t['usuarios'] - 1, $stats->totals()['nuevos_mes']);
+same('administradores activos', $usuarios->countActiveAdmins(), $t['admins_activos']);
+same('sin cuentas ni movimientos', [0, 0], [$t['cuentas'], $t['movimientos']]);
+$pdo->exec("INSERT INTO cuentas (id_usuario, nombre, tipo) VALUES ($id, 'Efectivo', 'efectivo')");
+$pdo->exec("INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha, descripcion) SELECT $id, id_cuenta, (SELECT MIN(id_categoria) FROM categorias), 'gasto', 98765.43, CURDATE(), 'SECRETO-NO-EXPONER' FROM cuentas LIMIT 1");
+$t2 = $stats->totals();
+same('cuenta cuentas y movimientos', [1, 1], [$t2['cuentas'], $t2['movimientos']]);
+same('las métricas son solo números (nada de montos ni descripciones)', true, array_reduce($t2, static fn (bool $ok, mixed $v): bool => $ok && is_int($v), true));
+same('los últimos registros no traen datos de movimientos', ['id', 'nombre', 'correo', 'activo', 'creado_en'], array_keys($stats->latestUsers(1)[0]));
+
+$meses = $stats->registrationsByMonth(12);
+same('siempre 12 meses', 12, count($meses));
+same('el último mes es el actual', (int) gmdate('n'), $meses[11]['month']);
+same('el mes de hace 11 meses es el primero', (int) gmdate('n', strtotime('first day of this month -11 months')), $meses[0]['month']);
+same('los registros de este mes se cuentan', $t['usuarios'] - 1, $meses[11]['value']);
+same('el de hace 40 días cae en el mes anterior o en este', $t['usuarios'], array_sum(array_column($meses, 'value')));
+$pdo->exec("UPDATE usuarios SET creado_en = NOW() - INTERVAL 5 YEAR WHERE correo = 'marta@correo.com'");
+same('un registro de hace años queda fuera de la gráfica', $t['usuarios'] - 1, array_sum(array_column($stats->registrationsByMonth(12), 'value')));
+same('el orden de los últimos registros es del más nuevo al más viejo', true, (static function () use ($stats): bool {
+    $dates = array_column($stats->latestUsers(50), 'creado_en');
+    $sorted = $dates;
+    rsort($sorted);
+    return $dates === $sorted;
+})());
+
+// ---- Gestión de usuarios con RF-33 dentro de una transacción -----------------------------------------------------
+
+section('GestionUsuarios (RF-31 a RF-33)');
+$gestion = $container->gestionUsuarios();
+$adminId = (int) $seedAdmin?->id;
+$betoId = (int) $usuarios->findByEmail('beto@correo.com')?->id; // admin, inactivo desde antes
+$martaId = (int) $usuarios->findByEmail('marta@correo.com')?->id;
+
+same('desactivar a un usuario', ['ok', 'Marta 100% Ríos'], array_values($gestion->aplicar($adminId, $martaId, 'desactivar')));
+same('queda inactivo en la BD', false, $usuarios->findById($martaId)?->activo);
+same('el mismo cambio otra vez no hace nada', 'sin_cambio', $gestion->aplicar($adminId, $martaId, 'desactivar')['codigo']);
+same('activarlo de nuevo', 'ok', $gestion->aplicar($adminId, $martaId, 'activar')['codigo']);
+same('hacer admin a un usuario', 'ok', $gestion->aplicar($adminId, $martaId, 'hacer_admin')['codigo']);
+same('ahora hay 2 admins activos', 2, $usuarios->countActiveAdmins());
+same('un admin no puede desactivarse a sí mismo', 'propio', $gestion->aplicar($adminId, $adminId, 'desactivar')['codigo']);
+same('ni quitarse el rol', 'propio', $gestion->aplicar($adminId, $adminId, 'quitar_admin')['codigo']);
+same('y sigue siendo admin activo', true, $usuarios->findById($adminId)?->esAdmin() && $usuarios->findById($adminId)->activo);
+same('un usuario inexistente', 'no_existe', $gestion->aplicar($adminId, 999999, 'desactivar')['codigo']);
+same('un usuario normal no tiene permiso', 'sin_permiso', $gestion->aplicar((int) $id, $martaId, 'quitar_admin')['codigo']);
+same('y no se aplicó el cambio', 'admin', $usuarios->findById($martaId)?->rol);
+
+// Dos administradores que se desactivan a la vez: el segundo ya no es admin activo cuando le toca y se le rechaza.
+same('el admin 1 desactiva al admin 2', 'ok', $gestion->aplicar($adminId, $martaId, 'desactivar')['codigo']);
+same('el admin 2 (ya inactivo) intenta desactivar al admin 1: rechazado', 'sin_permiso', $gestion->aplicar($martaId, $adminId, 'desactivar')['codigo']);
+same('queda 1 admin activo', 1, $usuarios->countActiveAdmins());
+
+// El bloqueo es real: mientras otra transacción tiene bloqueados a los admins activos, una segunda conexión espera
+// (aquí con un tiempo de espera de 1 s para no bloquear la prueba) en vez de leer un estado a medias.
+$otra = Connection::create();
+$otra->exec('SET SESSION innodb_lock_wait_timeout = 1');
+$usuarios->transaction(function () use ($usuarios, $otra): void {
+    $usuarios->lockActiveAdminIds();
+    $espera = null;
+    try {
+        $otra->beginTransaction();
+        $otra->query("SELECT id_usuario FROM usuarios WHERE rol = 'admin' AND activo = 1 FOR UPDATE")->fetchAll();
+    } catch (PDOException $e) {
+        $espera = (int) ($e->errorInfo[1] ?? 0);
+    }
+    $otra->rollBack();
+    same('una segunda conexión no puede bloquear a los admins a la vez (timeout 1205)', 1205, $espera);
+});
+same('al terminar la transacción el bloqueo se libera', true, (static function () use ($otra): bool {
+    $otra->beginTransaction();
+    $ids = $otra->query("SELECT id_usuario FROM usuarios WHERE rol = 'admin' AND activo = 1 FOR UPDATE")->fetchAll();
+    $otra->rollBack();
+    return count($ids) === 1;
+})());
+same('una excepción dentro de la transacción deshace el cambio (Marta era admin)', 'admin', (static function () use ($usuarios, $martaId): string {
+    try {
+        $usuarios->transaction(function () use ($usuarios, $martaId): void {
+            $usuarios->setRol($martaId, 'usuario');
+            throw new RuntimeException('falla a mitad');
+        });
+    } catch (RuntimeException) {
+    }
+    return (string) $usuarios->findById($martaId)?->rol;
+})());
+
 finish();

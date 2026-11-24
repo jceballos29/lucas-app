@@ -157,4 +157,61 @@ same('el hash de la seed del admin corresponde a la clave documentada', true, (s
     return isset($m[1]) && password_verify('Admin#2026dev', $m[1]);
 })());
 
+section('ReglasAdmin (RF-33)');
+use App\Admin\ReglasAdmin as R;
+$u = static fn (int $id, string $rol = 'usuario', bool $activo = true): App\Domain\Usuario => new App\Domain\Usuario($id, "U$id", "u$id@x.com", 'h', 'COP', $rol, $activo);
+same('desactivar a otro usuario', R::OK, R::evaluar([1], 1, $u(2), 'desactivar'));
+same('activar a un usuario inactivo', R::OK, R::evaluar([1], 1, $u(2, 'usuario', false), 'activar'));
+same('activar a uno ya activo no cambia nada', R::SIN_CAMBIO, R::evaluar([1], 1, $u(2), 'activar'));
+same('hacer admin a un usuario', R::OK, R::evaluar([1], 1, $u(2), 'hacer_admin'));
+same('quitar admin a un usuario normal no cambia nada', R::SIN_CAMBIO, R::evaluar([1], 1, $u(2), 'quitar_admin'));
+same('quitar admin a otro admin habiendo más', R::OK, R::evaluar([1, 2], 1, $u(2, 'admin'), 'quitar_admin'));
+same('no puede desactivarse a sí mismo', R::PROPIO, R::evaluar([1, 2], 1, $u(1, 'admin'), 'desactivar'));
+same('no puede quitarse el rol a sí mismo', R::PROPIO, R::evaluar([1, 2], 1, $u(1, 'admin'), 'quitar_admin'));
+same('un objetivo inexistente', R::NO_EXISTE, R::evaluar([1], 1, null, 'desactivar'));
+same('quien actúa ya no es admin activo (otro lo desactivó)', R::SIN_PERMISO, R::evaluar([2], 1, $u(3), 'desactivar'));
+same('un usuario normal nunca tiene permiso', R::SIN_PERMISO, R::evaluar([2], 5, $u(3), 'hacer_admin'));
+// ULTIMO_ADMIN es una red de seguridad: con las reglas anteriores (el actor es un admin activo distinto del objetivo)
+// no se alcanza nunca, y la propiedad de abajo lo comprueba de forma general.
+same('PROPIEDAD: tras cualquier acción permitida siempre queda un admin activo', 0, (static function () use ($u): int {
+    $violaciones = 0;
+    foreach ([[1], [2], [1, 2], [1, 3], [2, 3], [1, 2, 3]] as $admins) {
+        foreach ([1, 2, 3] as $actor) {
+            foreach ([1, 2, 3, 4] as $objetivoId) {
+                foreach (R::ACCIONES as $accion) {
+                    $esAdmin = in_array($objetivoId, $admins, true);
+                    $objetivo = $u($objetivoId, $esAdmin ? 'admin' : 'usuario', true);
+                    if (R::evaluar($admins, $actor, $objetivo, $accion) !== R::OK) {
+                        continue;
+                    }
+                    $despues = $admins;
+                    if (in_array($accion, ['desactivar', 'quitar_admin'], true)) {
+                        $despues = array_values(array_diff($admins, [$objetivoId]));
+                    } elseif ($accion === 'hacer_admin') {
+                        $despues[] = $objetivoId;
+                    }
+                    $violaciones += $despues === [] ? 1 : 0;
+                }
+            }
+        }
+    }
+    return $violaciones;
+})());
+same('una acción desconocida lanza excepción', true, (static function () use ($u): bool {
+    try {
+        R::evaluar([1], 1, $u(2), 'borrar');
+    } catch (InvalidArgumentException) {
+        return true;
+    }
+    return false;
+})());
+
+section('Fecha');
+same('mes corto', 'Dic', App\View\Fecha::mesCorto(12));
+same('mes corto de enero', 'Ene', App\View\Fecha::mesCorto(1));
+same('mes y año', 'noviembre 2026', App\View\Fecha::mesAnio(new DateTimeImmutable('2026-11-24')));
+same('día en zona local', '19 nov', App\View\Fecha::dia('2026-11-19 14:08:36'));
+same('fecha numérica en zona local (la medianoche UTC aún es el día anterior en Bogotá)', '18/11/2026', App\View\Fecha::numerica('2026-11-19 03:00:00'));
+same('una fecha inválida se devuelve igual', 'nada', App\View\Fecha::dia('nada'));
+
 finish();
