@@ -7,7 +7,7 @@ Cada fase termina en algo que funciona y se prueba en el navegador y con pruebas
 | 0 | Esqueleto Docker/PHP funcionando | [x] |
 | UI | Migración de la interfaz (maqueta PHP sin funcionalidad, incl. registro y dashboard de admin) | [x] |
 | 1 | Infraestructura de pruebas, registro, login/logout, sesión con roles, seed con admin | [x] |
-| 2 | Dashboard de administración (métricas y usuarios) | [ ] |
+| 2 | Dashboard de administración (métricas y usuarios) | [x] |
 | 3 | Cuentas y categorías (incl. categorías predeterminadas del admin) | [ ] |
 | 4 | Movimientos | [ ] |
 | 5 | Presupuestos y metas de ahorro | [ ] |
@@ -52,12 +52,13 @@ Notas de la implementación: la IP para limitar es `REMOTE_ADDR` (no se confía 
 
 **Listo cuando:** `admin@lucas.local` entra tras `docker compose up` con volumen vacío, cualquiera puede registrarse y queda con rol `usuario`, y `tests/run-all.sh` pasa.
 
-## Fase 2 · Dashboard de administración
+## Fase 2 · Dashboard de administración ✅
 1. `Repository\AdminStatsRepository`: totales de usuarios/activos/nuevos del mes, cuentas, movimientos; registros por mes (últimos 12).
 2. `Controller\AdminController`: `dashboard()`, `usuarios()` (búsqueda por nombre/correo, 20 por página), `cambiarEstado()`, `cambiarRol()`, protegidos con `require_role('admin')`.
 3. Reglas RF-33 (no auto-desactivarse ni quitarse el rol, no quedar sin admins) **dentro de una transacción**: `SELECT id_usuario FROM usuarios WHERE rol='admin' AND activo=1 FOR UPDATE` para bloquear a los admins activos antes de decidir.
 4. Vistas `views/admin/{index,usuarios}.php` con menú propio (sustituyen a `PreviewController`).
-5. Pruebas: el admin no puede quedarse sin admins (incluida una prueba de dos cambios concurrentes); los cambios de estado/rol exigen POST + CSRF (RNF-22); el dashboard no expone movimientos ni saldos (RNF-21).
+5. Notas de la implementación: las reglas puras viven en `Admin\ReglasAdmin` y la transacción en `Admin\GestionUsuarios`; quien actúa debe seguir siendo admin **activo** dentro de la transacción (si otro admin lo desactivó mientras tanto, se rechaza con 403); los avisos usan `Http\Flash` (PRG); `ULTIMO_ADMIN` es una red de seguridad que las reglas anteriores hacen inalcanzable, y una prueba de propiedad comprueba que tras cualquier acción permitida queda un admin activo.
+6. Pruebas: el admin no puede quedarse sin admins (el bloqueo `FOR UPDATE` se prueba con dos conexiones reales); los cambios de estado/rol exigen POST + CSRF (RNF-22); el dashboard no expone movimientos ni saldos (RNF-21).
 
 ## Fase 3 · Cuentas y categorías
 1. `CuentaRepository` (saldo calculado: `saldo_inicial + ingresos − gastos − aportes`), `CategoriaRepository` (predeterminadas + propias), páginas `cuentas.php`, `cuenta-form.php`, `categorias.php`. Desactivar en vez de borrar cuentas con movimientos.

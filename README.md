@@ -25,12 +25,12 @@ El proyecto avanza por fases, cada una con criterios de «terminado» verificabl
 | 0 | Infraestructura: Docker, PHP-FPM, nginx, MySQL, conexión PDO, sesión, CSRF, usuarios de BD con mínimo privilegio | Completa |
 | UI | Interfaz completa: sistema de diseño, 3 layouts y todas las pantallas (con datos de ejemplo) | Completa |
 | 1 | Registro, inicio y cierre de sesión, roles, limitación de intentos, primera seed y pruebas automáticas | Completa |
-| 2 | Dashboard de administración | Siguiente |
-| 3–6 | Cuentas, categorías, movimientos, presupuestos, metas, panel y reportes | Pendiente |
+| 2 | Dashboard de administración: métricas globales, usuarios (búsqueda, paginación, activar/desactivar, cambiar rol) | Completa |
+| 3–6 | Cuentas, categorías, movimientos, presupuestos, metas, panel y reportes | Siguiente (Fase 3) |
 | 7 | Perfil, recuperación de contraseña, HTTPS y endurecimiento final | Pendiente |
 
-> Hoy el registro, el login y los permisos por rol son reales, pero el resto de pantallas siguen con datos de ejemplo (exigen sesión,
-> no guardan nada). Las secciones de *Funcionalidades* describen el alcance objetivo, no lo ya implementado.
+> Hoy el registro, el login, los permisos por rol y la administración de usuarios son reales, pero las pantallas del usuario (panel,
+> movimientos, cuentas...) siguen con datos de ejemplo (exigen sesión, no guardan nada). Las secciones de *Funcionalidades* describen el alcance objetivo, no lo ya implementado.
 
 ## Funcionalidades previstas
 
