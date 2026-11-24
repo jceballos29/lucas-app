@@ -203,6 +203,7 @@ Para empezar de cero (borra los datos): `docker compose down -v && docker compos
 | contraseña | `Admin#2026dev` (guardada como hash bcrypt, **nunca** en claro en el SQL) |
 | rol / activo | `admin` / `1` |
 
+- `02-seed.sql` empieza con `SET NAMES utf8mb4`: el cliente `mysql` de la imagen arranca en `latin1` y, sin eso, las tildes de las categorías se guardarían mal («AlimentaciÃ³n»).
 - El hash lo genera `password_hash()` y se escribe en `02-seed.sql` con `INSERT IGNORE`. La seed está pensada para ejecutarse **una sola vez** (volumen vacío): el admin no se duplica gracias al `UNIQUE` del correo, pero las categorías (`categorias` no tiene clave única, y con `NULL` MySQL permite repetidos) sí se duplicarían si se lanzara a mano otra vez.
 - Es una clave **conocida y pública**: sirve para entrar la primera vez en local. Cámbiala desde el perfil o crea otro administrador
   y desactiva este antes de exponer la app (RNF-23).
@@ -233,7 +234,8 @@ Para empezar de cero (borra los datos): `docker compose down -v && docker compos
 
 ## Consultas clave
 
-- **Saldo de una cuenta** (no se guarda): `saldo_inicial + Σ ingresos − Σ gastos − Σ aportes_meta`.
+- **Saldo de una cuenta** (no se guarda): `saldo_inicial + Σ ingresos − Σ gastos − Σ aportes_meta`, con subconsultas por cuenta en `CuentaRepository`. Una tarjeta de crédito puede tener saldo negativo (lo que se debe). El saldo total suma solo las cuentas activas.
+- **Borrar una categoría** (D4): el `DELETE` falla por la clave foránea si hay movimientos o presupuestos (`SQLSTATE 23000`); la aplicación lo traduce en un aviso.
 - **Gasto de un presupuesto**: `SUM(monto)` de `transacciones` de gasto, de esa categoría, mes y año, del usuario.
 - **Administradores activos** (RF-33): `SELECT COUNT(*) FROM usuarios WHERE rol='admin' AND activo=1`, dentro de la misma transacción que el cambio.
 - **Registros por mes** (RF-29): `GROUP BY DATE_FORMAT(creado_en,'%Y-%m')` sobre los últimos 12 meses.

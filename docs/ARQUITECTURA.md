@@ -37,6 +37,7 @@ Petición → public/*.php → Controller → (Validator) → Repository → MyS
 | Dominio | `app/Domain/` | Entidades pequeñas (`Usuario`, `Cuenta`, `Movimiento`...) hechas desde una fila. | I/O. |
 | Vista | `src/views/` | HTML + `if`/`foreach`; todo dato sale con `escape()`. | Consultas, decidir códigos HTTP. |
 | Autenticación | `app/Auth/` | `Autenticador` (credenciales, rehash), `LimitadorIntentos`. | HTTP, SQL. |
+| Utilidades | `app/Support/` | `Dinero` (montos exactos y formato colombiano). | HTTP, SQL. |
 | Administración | `app/Admin/` | `ReglasAdmin` (RF-33, puras) y `GestionUsuarios` (la transacción con `FOR UPDATE`). | HTTP, HTML. |
 | Infraestructura | `app/{Config,Database,Http,Logging,Security,View}`, `Container.php` | Ya existe (Fase 0). | — |
 
@@ -144,7 +145,7 @@ flowchart TD
 ## Convenciones
 
 - **Idioma:** nombres de dominio en español como en la BD (`Cuenta`, `Movimiento`, `monto`, `saldo`); infraestructura en inglés (`Container`, `Connection`). Textos al usuario, en español.
-- **Dinero:** `DECIMAL(12,2)` en BD y **cadenas** o enteros de centavos en PHP; nunca `float` (RNF-16). Cambios de saldo dentro de una transacción SQL.
+- **Dinero:** `DECIMAL(12,2)` en BD y **cadenas** o enteros de centavos en PHP; nunca `float` (RNF-16). `Support\Dinero` lee lo que escribe la persona (`1.250.000,50`), suma en centavos y da formato. Cambios de saldo dentro de una transacción SQL.
 - **POST + CSRF** para todo lo que modifica datos; GET nunca cambia estado. Tras un POST correcto: redirección (patrón PRG).
 - **Errores:** `Failure::describe()` traduce excepciones a 503/500 y registra el detalle; el visitante ve un mensaje genérico.
 - **Estilo:** `declare(strict_types=1)`, PSR-12, `.editorconfig` (UTF-8, LF, 4 espacios).

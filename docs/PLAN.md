@@ -8,7 +8,7 @@ Cada fase termina en algo que funciona y se prueba en el navegador y con pruebas
 | UI | Migración de la interfaz (maqueta PHP sin funcionalidad, incl. registro y dashboard de admin) | [x] |
 | 1 | Infraestructura de pruebas, registro, login/logout, sesión con roles, seed con admin | [x] |
 | 2 | Dashboard de administración (métricas y usuarios) | [x] |
-| 3 | Cuentas y categorías (incl. categorías predeterminadas del admin) | [ ] |
+| 3 | Cuentas y categorías (incl. categorías predeterminadas del admin) | [x] |
 | 4 | Movimientos | [ ] |
 | 5 | Presupuestos y metas de ahorro | [ ] |
 | 6 | Panel y reportes | [ ] |
@@ -60,11 +60,19 @@ Notas de la implementación: la IP para limitar es `REMOTE_ADDR` (no se confía 
 5. Notas de la implementación: las reglas puras viven en `Admin\ReglasAdmin` y la transacción en `Admin\GestionUsuarios`; quien actúa debe seguir siendo admin **activo** dentro de la transacción (si otro admin lo desactivó mientras tanto, se rechaza con 403); los avisos usan `Http\Flash` (PRG); `ULTIMO_ADMIN` es una red de seguridad que las reglas anteriores hacen inalcanzable, y una prueba de propiedad comprueba que tras cualquier acción permitida queda un admin activo.
 6. Pruebas: el admin no puede quedarse sin admins (el bloqueo `FOR UPDATE` se prueba con dos conexiones reales); los cambios de estado/rol exigen POST + CSRF (RNF-22); el dashboard no expone movimientos ni saldos (RNF-21).
 
-## Fase 3 · Cuentas y categorías
+## Fase 3 · Cuentas y categorías ✅
 1. `CuentaRepository` (saldo calculado: `saldo_inicial + ingresos − gastos − aportes`), `CategoriaRepository` (predeterminadas + propias), páginas `cuentas.php`, `cuenta-form.php`, `categorias.php`. Desactivar en vez de borrar cuentas con movimientos.
 2. Borrado de categorías según D4; mensaje claro, sin detalle técnico (RNF-12).
 3. **RF-34:** `admin/categorias.php` (vista nueva) sobre las categorías con `id_usuario IS NULL`, con `require_role('admin')` y las mismas reglas de borrado.
 4. Pruebas: una cuenta/categoría ajena da 404 (RNF-04); no se borra una categoría en uso; un `usuario` no edita predeterminadas; el saldo coincide con la fórmula.
+
+Notas de la implementación:
+- **Las cuentas no se borran desde la interfaz**: solo se desactivan y reactivan (RF-06), siempre, tengan o no movimientos. Así el historial nunca queda huérfano; el borrado real queda para eliminar la cuenta de usuario (D5, Fase 7). Una cuenta inactiva no cuenta en el saldo total (RF-07) pero su saldo se sigue calculando.
+- **El tipo de una categoría no se edita** (solo nombre y color): los movimientos ya guardados dependen de él (D8). Una categoría propia no puede repetir el nombre de una predeterminada del mismo tipo (sin distinguir mayúsculas ni tildes).
+- **D4 se garantiza con la clave foránea**, no con una comprobación previa: `DELETE` falla con `23000` si hay movimientos o presupuestos y se responde con el aviso; así también resiste dos peticiones a la vez. Para el administrador el aviso no revela de quién son los movimientos (RNF-21).
+- **Permisos:** una categoría de otro usuario o una cuenta ajena dan 404; una categoría predeterminada que un usuario intenta modificar da 403; `admin/categorias.php` solo ve y toca las predeterminadas.
+- **Dinero:** nace `Support\Dinero` (montos como cadenas decimales, centavos enteros para sumar, formato colombiano `1.250.000,50`); el saldo total se suma en centavos, nunca con `float`. El saldo inicial solo puede ser negativo en una tarjeta de crédito.
+- **Error corregido de la Fase 1:** la seed guardaba «Alimentación» como «AlimentaciÃ³n» porque el cliente `mysql` de la imagen arranca en `latin1`. `02-seed.sql` ahora empieza con `SET NAMES utf8mb4`, y el humo comprueba la codificación sobre la base real (la prueba de integración no lo veía porque carga la seed por PDO, que ya usa `utf8mb4`).
 
 ## Fase 4 · Movimientos
 `MovimientoRepository` con filtros (fecha, cuenta, categoría, tipo) y paginación de 20 (RNF-09), formulario con categorías filtradas por tipo, eliminar con confirmación (`data-confirm`). Aplicar D8: comprobar en el servidor que cuenta y categoría pertenecen al usuario, que el tipo coincide, que la cuenta está activa y que el monto es positivo con ≤ 2 decimales (cadenas, nunca `float`). Alta/edición/borrado y efecto en saldo en una transacción (RF-14). Pruebas: IDs ajenos → 404; tipo discordante → error de validación.

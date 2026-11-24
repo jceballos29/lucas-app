@@ -146,8 +146,8 @@ Jóvenes y estudiantes que empiezan a manejar su dinero, trabajadores dependient
 | Esqueleto Docker/PHP | RNF-05, RNF-02 | 0 | ✅ |
 | Registro, login, logout, sesión | RF-01, RF-02, RF-24 a RF-27, RNF-01, RNF-06, RNF-23, RNF-24 | 1 | ✅ |
 | Dashboard de administración | RF-28 a RF-33, RNF-21, RNF-22 | 2 | ✅ |
-| Cuentas | RF-05 a RF-07 | 3 | ⬜ |
-| Categorías (incl. predeterminadas del admin) | RF-08, RF-09, RF-34 | 3 | ⬜ |
+| Cuentas | RF-05 a RF-07 | 3 | ✅ |
+| Categorías (incl. predeterminadas del admin) | RF-08, RF-09, RF-34 | 3 | ✅ |
 | Movimientos | RF-10 a RF-14 | 4 | ⬜ |
 | Presupuestos | RF-15 a RF-17 | 5 | ⬜ |
 | Metas de ahorro | RF-18 a RF-20 | 5 | ⬜ |
