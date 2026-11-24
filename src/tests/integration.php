@@ -485,4 +485,217 @@ same('el índice (usuario, fecha) sirve para ordenar sin ordenar aparte', true, 
     return str_contains((string) ($plan['key'] ?? ''), 'idx_usuario_fecha') || str_contains((string) ($plan['key'] ?? ''), 'id_usuario');
 })());
 
+// ---- Presupuestos (RF-15 a RF-17) ---------------------------------------------------------------------------------
+
+section('PresupuestoRepository: gastado, mes y propiedad');
+$presupuestos = $container->presupuestos();
+$gina = (int) $usuarios->create('Gina', 'gina@correo.com', 'x');
+$hugo = (int) $usuarios->create('Hugo', 'hugo@correo.com', 'x');
+$gE = $cuentas->create($gina, 'Efectivo', 'efectivo', '1000000.00');
+$gA = $cuentas->create($gina, 'Ahorros', 'ahorro', '50000.00');
+$hE = $cuentas->create($hugo, 'Efectivo de Hugo', 'efectivo', '1000000.00');
+$gastos = $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'gasto' ORDER BY nombre LIMIT 3")->fetchAll(PDO::FETCH_COLUMN);
+[$catA, $catB, $catC] = array_map('intval', $gastos);
+$mov = static function (int $uid, int $cuentaId, int $catId, string $tipo, string $monto, string $fecha) use ($pdo): void {
+    $pdo->prepare('INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES (?, ?, ?, ?, ?, ?)')->execute([$uid, $cuentaId, $catId, $tipo, $monto, $fecha]);
+};
+$pid = $presupuestos->create($gina, $catA, 11, 2026, '400000.00');
+same('un presupuesto nuevo devuelve su id', true, is_int($pid) && $pid > 0);
+same('el mismo presupuesto (usuario, categoría, mes, año) devuelve null', null, $presupuestos->create($gina, $catA, 11, 2026, '1.00'));
+same('la misma categoría en otro mes sí', true, $presupuestos->create($gina, $catA, 12, 2026, '1.00') !== null);
+same('y en otro año', true, $presupuestos->create($gina, $catA, 11, 2027, '1.00') !== null);
+same('otro usuario puede tener el suyo', true, $presupuestos->create($hugo, $catA, 11, 2026, '1.00') !== null);
+same('sin gastos, gastado es 0', '0.00', $presupuestos->listByMonth($gina, 11, 2026)[0]->gastado);
+
+$mov($gina, $gE, $catA, 'gasto', '100000.00', '2026-11-01');   // primer día del mes
+$mov($gina, $gE, $catA, 'gasto', '219999.99', '2026-11-30');   // último día del mes
+$mov($gina, $gE, $catA, 'gasto', '5000.00', '2026-10-31');     // mes anterior: no cuenta
+$mov($gina, $gE, $catA, 'gasto', '5000.00', '2026-12-01');     // mes siguiente: no cuenta
+$mov($gina, $gE, $catB, 'gasto', '77777.00', '2026-11-15');    // otra categoría: no cuenta
+$mov($hugo, $hE, $catA, 'gasto', '88888.00', '2026-11-15');    // otro usuario: no cuenta
+$pdo->exec("INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha) VALUES ($gina, $gE, $catA, 'ingreso', 55555.00, '2026-11-10')"); // un ingreso no es gasto
+$p = $presupuestos->listByMonth($gina, 11, 2026)[0];
+same('gastado suma solo los gastos de la categoría en ese mes (incluye el primer y el último día)', '319999.99', $p->gastado);
+same('con 319.999,99 de 400.000 sigue en orden', ['ok', 79], [$p->progreso()['estado'], $p->progreso()['percent']]);
+$mov($gina, $gE, $catA, 'gasto', '0.01', '2026-11-20');
+$p = $presupuestos->findOwned($gina, (int) $pid);
+same('un centavo más: 320.000,00 = 80 % exacto, pide aviso', ['320000.00', 'cerca', 80], [$p?->gastado, $p?->progreso()['estado'], $p?->progreso()['percent']]);
+$mov($gina, $gE, $catA, 'gasto', '80000.00', '2026-11-21');
+same('exactamente el límite', 'limite', $presupuestos->findOwned($gina, (int) $pid)?->progreso()['estado']);
+$mov($gina, $gE, $catA, 'gasto', '0.01', '2026-11-22');
+same('un centavo por encima: excedido', ['excedido', '-0.01'], [$presupuestos->findOwned($gina, (int) $pid)?->progreso()['estado'], $presupuestos->findOwned($gina, (int) $pid)?->progreso()['restante']]);
+same('el presupuesto de otro año no ve nada', '0.00', $presupuestos->listByMonth($gina, 11, 2027)[0]->gastado);
+same('el de diciembre ve solo el gasto del 1 de diciembre', '5000.00', $presupuestos->listByMonth($gina, 12, 2026)[0]->gastado);
+
+$c3 = $presupuestos->create($gina, $catB, 11, 2026, '100000.00');
+$presupuestos->create($gina, $catC, 11, 2026, '100000.00');
+same('listByMonth trae los 3 presupuestos del mes, por nombre de categoría', 3, count($presupuestos->listByMonth($gina, 11, 2026)));
+same('y trae el nombre y el color de la categoría', true, $presupuestos->listByMonth($gina, 11, 2026)[0]->categoriaNombre !== '');
+same('otro usuario solo ve el suyo', 1, count($presupuestos->listByMonth($hugo, 11, 2026)));
+$alertas = $presupuestos->alertas($gina, 11, 2026);
+same('alertas: solo los que llegaron al 80 % (77.777 de 100.000 no)', 1, count($alertas));
+same('el de la categoría A está excedido', 'excedido', $alertas[0]->progreso()['estado']);
+$mov($gina, $gE, $catB, 'gasto', '2223.00', '2026-11-16');
+same('alertas: al 80 % exacto entra (77.777 + 2.223 = 80.000)', 2, count($presupuestos->alertas($gina, 11, 2026)));
+same('y se ordenan del más gastado al menos', true, (static function () use ($presupuestos, $gina): bool {
+    $porcentajes = array_map(static fn ($x) => $x->progreso()['percent'], $presupuestos->alertas($gina, 11, 2026));
+    return $porcentajes === [100, 80];
+})());
+same('findForCategory encuentra el del mes', true, $presupuestos->findForCategory($gina, $catA, 11, 2026) !== null);
+same('y no el de un mes sin presupuesto', null, $presupuestos->findForCategory($gina, $catA, 5, 2026));
+same('ni el de otro usuario', null, $presupuestos->findForCategory($hugo, $catB, 11, 2026));
+same('0,10 + 0,10 + 0,10 = 0,30 exacto', '0.30', (static function () use ($presupuestos, $gina, $catC, $mov, $gE): string {
+    foreach ([1, 2, 3] as $_) {
+        $mov($gina, $gE, $catC, 'gasto', '0.10', '2026-11-05');
+    }
+    foreach ($presupuestos->listByMonth($gina, 11, 2026) as $p) {
+        if ($p->idCategoria === $catC) {
+            return $p->gastado;
+        }
+    }
+    return 'no encontrado';
+})());
+same('un presupuesto ajeno no se encuentra', null, $presupuestos->findOwned($hugo, (int) $pid));
+same('ni se edita', false, $presupuestos->updateLimit($hugo, (int) $pid, '1.00'));
+same('ni se elimina', false, $presupuestos->delete($hugo, (int) $pid));
+same('el dueño cambia el límite', ['500000.00', 'cerca'], (static function () use ($presupuestos, $gina, $pid): array {
+    $presupuestos->updateLimit($gina, (int) $pid, '500000.00');
+    $p = $presupuestos->findOwned($gina, (int) $pid);
+    return [$p?->montoLimite, $p?->progreso()['estado']];
+})());
+same('el dueño lo elimina', [true, null], [$presupuestos->delete($gina, (int) $c3), $presupuestos->findOwned($gina, (int) $c3)]);
+same('los movimientos del presupuesto eliminado siguen ahí', true, (int) $pdo->query("SELECT COUNT(*) FROM transacciones WHERE id_usuario = $gina AND id_categoria = $catB")->fetchColumn() > 0);
+
+// ---- Metas y aportes (RF-18 a RF-20, D8) ---------------------------------------------------------------------------
+
+section('GestionMetas: aportes y reglas de D8');
+$metas = $container->metas();
+$aportes = $container->aportes();
+$gm = $container->gestionMetas();
+$meta = $metas->create($gina, 'Viaje', '300000.00', '2027-06-30');
+$otraMeta = $metas->create($hugo, 'Meta de Hugo', '1000.00', null);
+$ap = static fn (int $cuentaId, string $monto): array => ['id_cuenta' => $cuentaId, 'monto' => $monto, 'fecha' => '2026-11-24'];
+$saldoG = static fn (int $cid): string => (string) $cuentas->findOwned($gina, $cid)?->saldo;
+$ahorrado = static fn (int $mid): string => (string) $metas->findOwned($gina, $mid)?->ahorrado;
+$antesE = $saldoG($gE);
+$gananciaE = Dinero::aCentavos($antesE);
+
+$r = $gm->aportar($gina, $meta, $ap($gE, '100000.00'));
+same('un aporte válido', ['ok', false, 'Efectivo'], [$r['codigo'], $r['lograda'], $r['cuenta']]);
+same('el saldo de la cuenta baja exacto (los aportes cuentan en el saldo)', Dinero::sumar([$antesE, '-100000.00']), $saldoG($gE));
+same('la meta suma el aporte y sigue en curso', ['100000.00', 'en_curso'], [$ahorrado($meta), $metas->findOwned($gina, $meta)?->estado]);
+same('RF-20: 33 % y faltan 200.000', [33, '200000.00'], [$metas->findOwned($gina, $meta)?->progreso()['percent'], $metas->findOwned($gina, $meta)?->progreso()['faltante']]);
+
+$antes = (int) $pdo->query('SELECT COUNT(*) FROM aportes_meta')->fetchColumn();
+$r = $gm->aportar($gina, $meta, $ap($gA, '60000.00'));
+same('un aporte mayor que el saldo (50.000) se rechaza', ['saldo_insuficiente', 'Ahorros', '50000.00'], [$r['codigo'], $r['cuenta'], $r['saldo']]);
+same('y no se guardó nada', $antes, (int) $pdo->query('SELECT COUNT(*) FROM aportes_meta')->fetchColumn());
+same('un centavo más que el saldo también se rechaza', 'saldo_insuficiente', $gm->aportar($gina, $meta, $ap($gA, '50000.01'))['codigo']);
+same('un aporte IGUAL al saldo se acepta y deja la cuenta en cero', ['ok', '0.00'], [$gm->aportar($gina, $meta, $ap($gA, '50000.00'))['codigo'], $saldoG($gA)]);
+same('con la cuenta en cero ya no se puede aportar nada', 'saldo_insuficiente', $gm->aportar($gina, $meta, $ap($gA, '0.01'))['codigo']);
+same('un primer aporte pequeño pasa', 'ok', $gm->aportar($gina, $meta, $ap($gE, '1.00'))['codigo']);
+$resto = $saldoG($gE);
+same('y uno por un centavo más de lo que queda se rechaza (los aportes anteriores ya cuentan en el saldo)', 'saldo_insuficiente', $gm->aportar($gina, $meta, $ap($gE, Dinero::sumar([$resto, '0.01'])))['codigo']);
+
+$cuentas->setActiva($gina, $gA, false);
+same('una cuenta inactiva no puede aportar', 'cuenta_inactiva', $gm->aportar($gina, $meta, $ap($gA, '1.00'))['codigo']);
+$cuentas->setActiva($gina, $gA, true);
+same('una cuenta de otro usuario', 'cuenta_ajena', $gm->aportar($gina, $meta, $ap($hE, '1.00'))['codigo']);
+same('una cuenta inexistente', 'cuenta_ajena', $gm->aportar($gina, $meta, $ap(999999, '1.00'))['codigo']);
+same('una meta de otro usuario', 'meta_ajena', $gm->aportar($gina, $otraMeta, $ap($gE, '1.00'))['codigo']);
+same('una meta inexistente', 'meta_ajena', $gm->aportar($gina, 999999, $ap($gE, '1.00'))['codigo']);
+same('el otro usuario no ve los aportes de mi meta', [], $aportes->listByMeta($hugo, $meta));
+same('el dueño ve el historial, el más reciente primero', true, count($aportes->listByMeta($gina, $meta)) >= 3);
+
+section('GestionMetas: lograr la meta en la misma transacción');
+$faltante = Dinero::sumar(['300000.00', '-' . $ahorrado($meta)]);
+$r = $gm->aportar($gina, $meta, $ap($gE, Dinero::sumar([$faltante, '-0.01'])));
+same('un centavo antes del objetivo: sigue en curso', [false, 'en_curso'], [$r['lograda'], $metas->findOwned($gina, $meta)?->estado]);
+$r = $gm->aportar($gina, $meta, $ap($gE, '0.01'));
+same('el aporte que completa el objetivo marca la meta como lograda', [true, 'lograda'], [$r['lograda'], $metas->findOwned($gina, $meta)?->estado]);
+same('y el total es exactamente el objetivo', '300000.00', $ahorrado($meta));
+same('una meta lograda ya no admite aportes', 'meta_cerrada', $gm->aportar($gina, $meta, $ap($gE, '1.00'))['codigo']);
+$chica = $metas->create($gina, 'Chica', '100.00', null);
+same('pasarse del objetivo también la logra', [true, 'lograda', 0], (static function () use ($gm, $gina, $chica, $ap, $gE, $metas): array {
+    $r = $gm->aportar($gina, $chica, $ap($gE, '150.00'));
+    return [$r['lograda'], $metas->findOwned($gina, $chica)?->estado, (int) $metas->findOwned($gina, $chica)?->progreso()['faltante']];
+})());
+
+section('GestionMetas: editar, cancelar y eliminar');
+$m2 = $metas->create($gina, 'Computador', '3000000.00', '2027-01-01');
+$gm->aportar($gina, $m2, $ap($gE, '1000.00'));
+same('editar cambia nombre, objetivo y fecha', 'ok', $gm->editar($gina, $m2, ['nombre' => 'Portátil', 'monto_objetivo' => '5000.00', 'fecha_limite' => null])['codigo']);
+same('y queda guardado', ['Portátil', '5000.00', null], [$metas->findOwned($gina, $m2)?->nombre, $metas->findOwned($gina, $m2)?->montoObjetivo, $metas->findOwned($gina, $m2)?->fechaLimite]);
+$r = $gm->editar($gina, $m2, ['nombre' => 'Portátil', 'monto_objetivo' => '1000.00', 'fecha_limite' => null]);
+same('bajar el objetivo hasta lo ya ahorrado la deja lograda', [true, 'lograda'], [$r['lograda'], $metas->findOwned($gina, $m2)?->estado]);
+same('una meta lograda ya no se edita', 'meta_cerrada', $gm->editar($gina, $m2, ['nombre' => 'X', 'monto_objetivo' => '9.00', 'fecha_limite' => null])['codigo']);
+same('editar una meta ajena: no existe', 'no_existe', $gm->editar($hugo, $m2, ['nombre' => 'X', 'monto_objetivo' => '9.00', 'fecha_limite' => null])['codigo']);
+
+$m3 = $metas->create($gina, 'Fondo', '900000.00', null);
+$saldoAntes = $saldoG($gE);
+$gm->aportar($gina, $m3, $ap($gE, '120.50'));
+$gm->aportar($gina, $m3, $ap($gE, '30.25'));
+same('con aportes la cuenta tiene menos', Dinero::sumar([$saldoAntes, '-150.75']), $saldoG($gE));
+same('no se puede eliminar una meta con aportes', 'tiene_aportes', $gm->eliminar($gina, $m3));
+same('cancelar una meta ajena: no existe', 'no_existe', $gm->cancelar($hugo, $m3)['codigo']);
+$c = $gm->cancelar($gina, $m3);
+same('cancelar devuelve el dinero aportado', ['ok', '150.75'], [$c['codigo'], $c['devuelto']]);
+same('el saldo de la cuenta se recupera exacto', $saldoAntes, $saldoG($gE));
+same('los aportes se borran y la meta queda cancelada', [0, 'cancelada', '0.00'], [count($aportes->listByMeta($gina, $m3)), $metas->findOwned($gina, $m3)?->estado, $ahorrado($m3)]);
+same('cancelar otra vez: ya cerrada', 'meta_cerrada', $gm->cancelar($gina, $m3)['codigo']);
+same('una meta cancelada no admite aportes', 'meta_cerrada', $gm->aportar($gina, $m3, $ap($gE, '1.00'))['codigo']);
+same('una meta lograda no se cancela (el dinero ya cumplió su fin)', 'meta_cerrada', $gm->cancelar($gina, $meta)['codigo']);
+same('una meta cancelada sin aportes se puede eliminar', ['ok', null], [$gm->eliminar($gina, $m3), $metas->findOwned($gina, $m3)]);
+same('eliminar una meta ajena: no existe', 'no_existe', $gm->eliminar($hugo, $meta));
+same('eliminar una meta inexistente: no existe', 'no_existe', $gm->eliminar($gina, 999999));
+$vacia = $metas->create($gina, 'Sin aportes', '10.00', null);
+same('una meta sin aportes se elimina', 'ok', $gm->eliminar($gina, $vacia));
+
+section('MetaRepository: listado y vencimiento');
+$pdo->exec("DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario = $gina)");
+$pdo->exec("DELETE FROM metas_ahorro WHERE id_usuario = $gina");
+$lejos = $metas->create($gina, 'Lejos', '10.00', '2030-01-01');
+$cerca = $metas->create($gina, 'Cerca', '10.00', '2026-12-01');
+$sinFecha = $metas->create($gina, 'Sin fecha', '10.00', null);
+$hecha = $metas->create($gina, 'Hecha', '10.00', null);
+$gm->aportar($gina, $hecha, $ap($gE, '10.00'));
+$lista = array_map(static fn ($x) => $x->nombre, $metas->listByUser($gina));
+same('en curso primero (la fecha más próxima antes, sin fecha al final) y luego las logradas', ['Cerca', 'Lejos', 'Sin fecha', 'Hecha'], $lista);
+same('otro usuario no ve mis metas', 1, count($metas->listByUser($hugo)));
+same('una meta en curso con la fecha pasada está vencida', [true, false, false], [$metas->findOwned($gina, $cerca)?->vencida('2026-12-02'), $metas->findOwned($gina, $lejos)?->vencida('2026-12-02'), $metas->findOwned($gina, $sinFecha)?->vencida('2030-01-01')]);
+same('una meta lograda nunca está vencida', false, $metas->findOwned($gina, $hecha)?->vencida('2099-01-01'));
+same('findOwned de una meta ajena', null, $metas->findOwned($hugo, $lejos));
+same('el número de aportes se cuenta', [1, 0], [$metas->findOwned($gina, $hecha)?->numAportes, $metas->findOwned($gina, $lejos)?->numAportes]);
+
+section('Bloqueo de la cuenta entre aportes y movimientos');
+$o1 = Connection::create();
+$o1->exec('SET SESSION innodb_lock_wait_timeout = 1');
+$gmOtra = new App\Metas\GestionMetas($o1, new App\Repository\MetaRepository($o1), new App\Repository\AporteRepository($o1), new App\Repository\CuentaRepository($o1));
+Transaction::run($container->pdo(), function () use ($cuentas, $gina, $gE, $gmOtra, $lejos, $ap): void {
+    $cuentas->lockForWrite($gina, $gE);
+    $codigo = null;
+    try {
+        $gmOtra->aportar($gina, $lejos, $ap($gE, '1.00'));
+    } catch (PDOException $e) {
+        $codigo = (int) ($e->errorInfo[1] ?? 0);
+    }
+    same('mientras alguien tiene la cuenta bloqueada, un aporte espera (timeout 1205)', 1205, $codigo);
+});
+same('liberada la cuenta, el aporte pasa', 'ok', $gmOtra->aportar($gina, $lejos, $ap($gE, '1.00'))['codigo']);
+$movsOtra = new App\Movimientos\GestionMovimientos($o1, new App\Repository\MovimientoRepository($o1), new App\Repository\CuentaRepository($o1), new App\Repository\CategoriaRepository($o1));
+$ingresoId = (int) $gestion2->guardar($elena, null, $dato(['tipo' => 'ingreso', 'monto' => '10.00', 'id_categoria' => $catIngreso, 'descripcion' => null]))['id'];
+Transaction::run($container->pdo(), function () use ($cuentas, $elena, $efectivo, $movsOtra, $ingresoId): void {
+    $cuentas->lockForWrite($elena, $efectivo);
+    $codigo = null;
+    try {
+        $movsOtra->eliminar($elena, $ingresoId);
+    } catch (PDOException $e) {
+        $codigo = (int) ($e->errorInfo[1] ?? 0);
+    }
+    same('mientras la cuenta está bloqueada, eliminar un movimiento suyo también espera (timeout 1205)', 1205, $codigo);
+});
+same('liberada, se elimina', true, $movsOtra->eliminar($elena, $ingresoId));
+same('eliminar el movimiento de otro usuario no hace nada', false, $gestion2->eliminar($fabio, $ingresoId));
+same('eliminar uno inexistente', false, $gestion2->eliminar($elena, 999999));
+
 finish();
