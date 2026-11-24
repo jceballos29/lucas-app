@@ -1,0 +1,56 @@
+# ── Secretos y configuración local ──────────────────────────────────────────
+# .env y cualquier variante (.env.local, .env.production...). Solo la plantilla se versiona.
+.env
+.env.*
+!.env.example
+auth.json
+*.pem
+*.key
+
+# ── Dependencias ────────────────────────────────────────────────────────────
+/vendor/
+/src/vendor/
+/node_modules/
+composer.phar
+
+# ── Docker ──────────────────────────────────────────────────────────────────
+# Ajustes personales de Compose y datos de la BD si se usan bind mounts.
+docker-compose.override.yml
+/docker/mysql-data/
+
+# ── Registros, cachés y artefactos de pruebas ───────────────────────────────
+*.log
+/logs/
+/src/storage/
+.phpunit.result.cache
+.phpunit.cache/
+.php-cs-fixer.cache
+.phpstan.cache/
+/coverage/
+/test-results/
+/playwright-report/
+
+# ── Copias de seguridad y volcados de la base de datos ──────────────────────
+# (database/*.sql es el esquema y la seed: SÍ se versionan; los volcados no.)
+/backups/
+*.sql.gz
+*.sql.zip
+*.dump
+
+# ── Editor / sistema ────────────────────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/launch.json
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Herramientas de asistencia local (IA, automatización de navegador) ──────
+.claude
+CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+.playwright-mcp
