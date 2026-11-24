@@ -10,11 +10,13 @@ use App\View\View;
  *
  * @var string $email Correo digitado (se conserva si hay error).
  * @var string|null $error Mensaje general (credenciales inválidas, sesión caducada...).
- * @var string|null $notice Aviso informativo (p. ej. «Tu cuenta fue creada»).
+ * @var string|null $notice Aviso informativo (p. ej. «Tu sesión caducó»).
+ * @var string $noticeTone Tono del aviso: info, ok o warn.
  */
 $email = $email ?? '';
 $error = $error ?? null;
 $notice = $notice ?? null;
+$noticeTone = $noticeTone ?? 'info';
 ?>
 <div class="auth">
     <?php View::render('auth/hero') ?>
@@ -23,7 +25,7 @@ $notice = $notice ?? null;
             <?= Ui::logo('/login.php') ?>
             <h1>Iniciar sesión</h1>
             <p class="muted">Ingresa con tu correo y contraseña</p>
-            <?php if ($notice !== null): ?><?= Ui::notice($notice, 'ok') ?><?php endif; ?>
+            <?php if ($notice !== null): ?><?= Ui::notice($notice, $noticeTone) ?><?php endif; ?>
             <?php if ($error !== null): ?><?= Ui::notice($error, 'error') ?><?php endif; ?>
             <form action="/login.php" method="post" novalidate>
                 <?= csrf_field() ?>

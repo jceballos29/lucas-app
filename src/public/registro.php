@@ -4,4 +4,4 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-(new App\Controller\PreviewController())->register();
+(new App\Controller\AuthController(App\Container::shared()))->register();

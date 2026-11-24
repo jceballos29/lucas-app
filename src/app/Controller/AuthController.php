@@ -1,0 +1,198 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controller;
+
+use App\Container;
+use App\Domain\Usuario;
+use App\Http\Failure;
+use App\Http\Response;
+use App\Validation\RegistroValidator;
+use App\View\View;
+use RuntimeException;
+
+/** Registro, inicio y cierre de sesión, y la redirección de la portada según el rol (RF-01, RF-02, RF-24 a RF-27). */
+final class AuthController
+{
+    private const MENSAJES_LOGIN = [
+        'expired' => ['Tu sesión caducó por inactividad. Vuelve a iniciar sesión.', 'warn'],
+        'revoked' => ['Tu sesión se cerró porque tu cuenta ya no está activa. Si crees que es un error, contacta al administrador.', 'warn'],
+    ];
+
+    public function __construct(private readonly Container $container)
+    {
+    }
+
+    /** index.php: sin sesión → login; admin → dashboard de administración; usuario → su panel. */
+    public function home(): never
+    {
+        Response::redirect(self::homeFor(require_login()['role']));
+    }
+
+    public function login(): void
+    {
+        if (!$this->isPost()) {
+            $this->redirectIfLoggedIn();
+            [$notice, $tone] = self::MENSAJES_LOGIN[(string) ($_GET['msg'] ?? '')] ?? [null, 'info'];
+            View::page('auth/login', ['notice' => $notice, 'noticeTone' => $tone], 'Iniciar sesión', null, 'auth');
+
+            return;
+        }
+
+        $correo = self::field('correo');
+        $clave = self::field('clave', false);
+        $ip = self::ip();
+
+        try {
+            $limitador = $this->container->limitador();
+
+            if ($limitador->bloqueado('login', $correo, $ip)) {
+                $this->tooManyAttempts('auth/login', ['email' => $correo], 'Iniciar sesión');
+            }
+
+            $usuario = $this->container->autenticador()->authenticate($correo, $clave);
+
+            if ($usuario === null) {
+                $limitador->registrar('login', $correo, $ip);
+                View::page('auth/login', ['email' => $correo, 'error' => 'Correo o contraseña incorrectos.'], 'Iniciar sesión', null, 'auth');
+
+                return;
+            }
+
+            $limitador->perdonar('login', $correo);
+        } catch (RuntimeException $error) {
+            $this->failed($error, 'auth/login', ['email' => $correo], 'Iniciar sesión');
+        }
+
+        self::startSession($usuario);
+        Response::redirect(self::homeFor($usuario->rol));
+    }
+
+    public function register(): void
+    {
+        if (!$this->isPost()) {
+            $this->redirectIfLoggedIn();
+            View::page('auth/registro', [], 'Crear cuenta', null, 'auth');
+
+            return;
+        }
+
+        // El formulario NO tiene campo de rol y aquí tampoco se lee: el rol siempre es «usuario» (RF-25).
+        $result = (new RegistroValidator())->validate($_POST);
+        $data = $result['data'];
+        $errors = $result['errors'];
+        $old = ['nombre' => $data['nombre'], 'correo' => $data['correo']];
+
+        try {
+            $limitador = $this->container->limitador();
+
+            if ($limitador->bloqueado('registro', $data['correo'], self::ip())) {
+                $this->tooManyAttempts('auth/registro', ['old' => $old], 'Crear cuenta');
+            }
+
+            $limitador->registrar('registro', $data['correo'], self::ip());
+
+            if ($errors === []) {
+                $usuarios = $this->container->usuarios();
+                $id = $usuarios->findByEmail($data['correo']) === null
+                    ? $usuarios->create($data['nombre'], $data['correo'], password_hash($data['clave'], PASSWORD_DEFAULT))
+                    : null;
+
+                if ($id === null) {
+                    // D2: el registro sí avisa que el correo existe (no hay correo transaccional para ocultarlo).
+                    $errors['correo'] = 'Este correo ya está registrado. ¿Quieres iniciar sesión?';
+                } else {
+                    self::startSession(new Usuario($id, $data['nombre'], $data['correo'], '', 'COP', Usuario::ROL_USUARIO, true));
+                    Response::redirect('/panel.php');
+                }
+            }
+        } catch (RuntimeException $error) {
+            $this->failed($error, 'auth/registro', ['old' => $old], 'Crear cuenta');
+        }
+
+        View::page('auth/registro', ['old' => $old, 'errors' => $errors], 'Crear cuenta', null, 'auth');
+    }
+
+    public function logout(): never
+    {
+        Response::requirePost();
+        reject_foreign_origin();
+
+        // Sin sesión (caducó o ya salió) no hay token que comprobar: basta con ir a login.
+        if (isset($_COOKIE[SESSION_NAME])) {
+            require_csrf();
+            log_out_user();
+        }
+
+        Response::redirect('/login.php');
+    }
+
+    private static function homeFor(string $rol): string
+    {
+        return $rol === Usuario::ROL_ADMIN ? '/admin/index.php' : '/panel.php';
+    }
+
+    private static function startSession(Usuario $usuario): void
+    {
+        log_in_user(['id' => $usuario->id, 'name' => $usuario->nombre, 'email' => $usuario->correo, 'role' => $usuario->rol]);
+    }
+
+    private function redirectIfLoggedIn(): void
+    {
+        try {
+            $user = current_user();
+        } catch (RuntimeException) {
+            return; // Sin BD se muestra el formulario; el error saldrá al enviarlo.
+        }
+
+        if ($user !== null) {
+            Response::redirect(self::homeFor($user['role']));
+        }
+    }
+
+    /** ¿Es un POST? Si lo es, ya pasó la comprobación de origen y de token CSRF. */
+    private function isPost(): bool
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            return false;
+        }
+
+        reject_foreign_origin();
+        require_csrf();
+
+        return true;
+    }
+
+    /** Un campo de texto del POST; lo que no sea texto (`campo[]=x`) cuenta como vacío. */
+    private static function field(string $name, bool $trim = true): string
+    {
+        $value = $_POST[$name] ?? '';
+        $value = is_string($value) ? $value : '';
+
+        return $trim ? trim($value) : $value;
+    }
+
+    private static function ip(): string
+    {
+        return (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+    }
+
+    /** @param array<string, mixed> $data */
+    private function tooManyAttempts(string $view, array $data, string $title): never
+    {
+        http_response_code(429);
+        header('Retry-After: 900');
+        View::page($view, $data + ['error' => 'Demasiados intentos. Espera unos minutos antes de volver a intentarlo.'], $title, null, 'auth');
+        exit;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function failed(RuntimeException $error, string $view, array $data, string $title): never
+    {
+        [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
+        http_response_code($status);
+        View::page($view, $data + ['error' => $message], $title, null, 'auth');
+        exit;
+    }
+}

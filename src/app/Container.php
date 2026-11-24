@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace App;
 
+use App\Auth\Autenticador;
+use App\Auth\LimitadorIntentos;
 use App\Database\Connection;
+use App\Repository\IntentoRepository;
+use App\Repository\UsuarioRepository;
 use PDO;
 
 /**
@@ -20,11 +24,44 @@ use PDO;
  */
 final class Container
 {
+    private static ?self $shared = null;
+
     private ?PDO $pdo = null;
+    private ?UsuarioRepository $usuarios = null;
+    private ?IntentoRepository $intentos = null;
+
+    /**
+     * El contenedor de la petición en curso. Lo usan las páginas y la sesión (que comprueba el usuario en la BD en
+     * cada petición): así toda la petición comparte UNA conexión. Las pruebas construyen el suyo con `new`.
+     */
+    public static function shared(): self
+    {
+        return self::$shared ??= new self();
+    }
 
     /** La conexión (se abre la primera vez). @throws \App\Exceptions\DatabaseConnectionException */
     public function pdo(): PDO
     {
         return $this->pdo ??= Connection::create();
+    }
+
+    public function usuarios(): UsuarioRepository
+    {
+        return $this->usuarios ??= new UsuarioRepository($this->pdo());
+    }
+
+    public function intentos(): IntentoRepository
+    {
+        return $this->intentos ??= new IntentoRepository($this->pdo());
+    }
+
+    public function autenticador(): Autenticador
+    {
+        return new Autenticador($this->usuarios());
+    }
+
+    public function limitador(): LimitadorIntentos
+    {
+        return new LimitadorIntentos($this->intentos());
     }
 }

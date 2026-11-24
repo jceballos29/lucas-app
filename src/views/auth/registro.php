@@ -10,9 +10,11 @@ use App\View\View;
  *
  * @var array{nombre?: string, correo?: string} $old Valores digitados (las contraseñas nunca se devuelven).
  * @var array<string, string> $errors Error por campo (nombre, correo, clave, clave2).
+ * @var string|null $error Error general (demasiados intentos, BD caída...).
  */
 $old = $old ?? [];
 $errors = $errors ?? [];
+$error = $error ?? null;
 ?>
 <div class="auth">
     <?php View::render('auth/hero') ?>
@@ -21,6 +23,7 @@ $errors = $errors ?? [];
             <?= Ui::logo('/login.php') ?>
             <h1>Crear cuenta</h1>
             <p class="muted">Gratis y en menos de un minuto</p>
+            <?php if ($error !== null): ?><?= Ui::notice($error, 'error') ?><?php endif; ?>
             <form action="/registro.php" method="post" novalidate>
                 <?= csrf_field() ?>
                 <?= Ui::field(['id' => 'nombre', 'label' => 'Nombre completo', 'value' => $old['nombre'] ?? '', 'autocomplete' => 'name', 'required' => true, 'error' => $errors['nombre'] ?? null, 'attrs' => ['maxlength' => '80']]) ?>

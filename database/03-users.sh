@@ -21,7 +21,8 @@
 #                          usuarios de MySQL. Al añadir una tabla nueva, agrégala a APP_TABLES.
 #
 #   DB_MIGRATION_USERNAME  Usuario de MIGRACIONES y tareas manuales (migraciones, scripts, pruebas). Todos los
-#                          privilegios sobre la base de la aplicación, y nada más (ni GRANT OPTION, ni otras bases).
+#                          privilegios sobre la base de la aplicación y sobre las bases temporales de pruebas
+#                          (<base>_test%), y nada más (ni GRANT OPTION, ni otras bases).
 #                          La aplicación NO conoce su clave: no se le pasa al contenedor php (ver bin/as-migrator).
 #
 # Si DB_MIGRATION_PASSWORD no está definida no se crea el segundo usuario (y se avisa).
@@ -35,7 +36,7 @@ set -eu
 MIGRATION_USER="${DB_MIGRATION_USERNAME:-lucas_migrator}"
 
 # Tablas de la aplicación (database/01-schema.sql).
-APP_TABLES="usuarios cuentas categorias transacciones presupuestos metas_ahorro aportes_meta"
+APP_TABLES="usuarios cuentas categorias transacciones presupuestos metas_ahorro aportes_meta intentos_acceso"
 MIGRATION_PASSWORD="${DB_MIGRATION_PASSWORD:-}"
 
 # Los nombres van dentro de SQL (no se pueden enviar como parámetros): solo letras, números y guion bajo.
@@ -75,6 +76,8 @@ CREATE USER IF NOT EXISTS '$MIGRATION_USER'@'%' IDENTIFIED BY '$MIG_PW';
 ALTER USER '$MIGRATION_USER'@'%' IDENTIFIED BY '$MIG_PW';
 REVOKE ALL PRIVILEGES, GRANT OPTION FROM '$MIGRATION_USER'@'%';
 GRANT ALL PRIVILEGES ON \`$MYSQL_DATABASE\`.* TO '$MIGRATION_USER'@'%';
+-- Bases temporales de las pruebas de integración (tests/integration.php): solo las que empiezan por «<base>_test».
+GRANT ALL PRIVILEGES ON \`${MYSQL_DATABASE}\_test%\`.* TO '$MIGRATION_USER'@'%';
 SQL
     else
         echo "03-users.sh: aviso: DB_MIGRATION_PASSWORD vacía; no se crea el usuario de migraciones" >&2

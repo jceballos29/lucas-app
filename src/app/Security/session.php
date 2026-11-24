@@ -89,34 +89,50 @@ function start_app_session(): void
 }
 
 /**
- * Estado de la sesión: el usuario conectado (o null) y si acaba de caducar por inactividad.
+ * Estado de la sesión: el usuario conectado (o null), si acaba de caducar por inactividad y si se le revocó el acceso.
  * Renueva la marca de actividad si la sesión sigue viva.
  *
- * @return array{user: array{id: int, name: string, email: string}|null, expired: bool}
+ * En CADA petición vuelve a leer al usuario de la BD (una consulta por clave primaria): si un administrador lo
+ * desactivó (RF-31) la sesión se cierra en su siguiente petición, y si le cambió el rol (RF-32) el cambio vale
+ * de inmediato, sin esperar a que vuelva a entrar. El rol de la sesión es solo una copia para mostrar.
+ *
+ * @return array{user: array{id: int, name: string, email: string, role: string}|null, expired: bool, revoked: bool}
+ * @throws RuntimeException Si no se puede consultar la BD (lo traduce require_login()).
  */
 function resolve_user_session(): array
 {
     // Sin la cookie de sesión no hay sesión que consultar: no se inicia ninguna (cada visita anónima crearía
     // un archivo de sesión en el servidor). La sesión se crea al iniciar sesión (log_in_user()).
     if (session_status() !== PHP_SESSION_ACTIVE && !isset($_COOKIE[SESSION_NAME])) {
-        return ['user' => null, 'expired' => false];
+        return ['user' => null, 'expired' => false, 'revoked' => false];
     }
 
     start_app_session();
 
     if (!isset($_SESSION['user_id'])) {
-        return ['user' => null, 'expired' => false];
+        return ['user' => null, 'expired' => false, 'revoked' => false];
     }
 
     if (session_is_expired($_SESSION['last_seen'] ?? null, time())) {
         log_out_user();
 
-        return ['user' => null, 'expired' => true];
+        return ['user' => null, 'expired' => true, 'revoked' => false];
+    }
+
+    $current = \App\Container::shared()->usuarios()->findById((int) $_SESSION['user_id']);
+
+    if ($current === null || !$current->activo) {
+        log_out_user();
+
+        return ['user' => null, 'expired' => false, 'revoked' => true];
     }
 
     $_SESSION['last_seen'] = time();
+    $_SESSION['user_name'] = $current->nombre;
+    $_SESSION['user_email'] = $current->correo;
+    $_SESSION['user_role'] = $current->rol;
 
-    return ['user' => ['id' => (int) $_SESSION['user_id'], 'name' => (string) ($_SESSION['user_name'] ?? ''), 'email' => (string) ($_SESSION['user_email'] ?? '')], 'expired' => false];
+    return ['user' => ['id' => $current->id, 'name' => $current->nombre, 'email' => $current->correo, 'role' => $current->rol], 'expired' => false, 'revoked' => false];
 }
 
 /** El usuario conectado, o null. */
@@ -131,7 +147,9 @@ function current_user(): ?array
  * viejo se borra. Es la defensa contra la fijación de sesión: aunque alguien hubiera conseguido que la
  * víctima use un id que él conoce, ese id no llega a estar autenticado.
  *
- * @param array{id: int, name: string, email: string} $user
+ * El rol sale de la BD (lo pasa el controlador desde el Usuario), nunca de la petición (RF-25).
+ *
+ * @param array{id: int, name: string, email: string, role: string} $user
  */
 function log_in_user(array $user): void
 {
@@ -139,7 +157,7 @@ function log_in_user(array $user): void
     session_regenerate_id(true);
     // Se REEMPLAZA todo $_SESSION: también se descarta el token CSRF de la sesión anónima, y el primer formulario
     // de la sesión ya autenticada recibe uno nuevo (el que conociera quien vio la página de login no sirve).
-    $_SESSION = ['user_id' => $user['id'], 'user_name' => $user['name'], 'user_email' => $user['email'], 'last_seen' => time()];
+    $_SESSION = ['user_id' => $user['id'], 'user_name' => $user['name'], 'user_email' => $user['email'], 'user_role' => $user['role'], 'last_seen' => time()];
 }
 
 /** Cierra la sesión: vacía los datos, borra la cookie del navegador y destruye el archivo del servidor. */
@@ -170,17 +188,40 @@ function log_out_user(): void
  * También manda Cache-Control: no-store, para que el navegador no guarde estas páginas: tras cerrar sesión,
  * el botón «atrás» no debe enseñar el panel desde la memoria del navegador.
  *
- * @return array{id: int, name: string, email: string}
+ * @return array{id: int, name: string, email: string, role: string}
  */
 function require_login(): array
 {
     header('Cache-Control: no-store');
 
-    ['user' => $user, 'expired' => $expired] = resolve_user_session();
+    try {
+        ['user' => $user, 'expired' => $expired, 'revoked' => $revoked] = resolve_user_session();
+    } catch (RuntimeException $error) {
+        [$status, $message] = \App\Http\Failure::describe($error, 'Ocurrió un error inesperado. Inténtalo más tarde.');
+        \App\Http\Response::plain($status, $message . "\n");
+    }
 
     if ($user === null) {
-        header('Location: login.php' . ($expired ? '?msg=expired' : ''));
+        $reason = $expired ? '?msg=expired' : ($revoked ? '?msg=revoked' : '');
+        header('Location: /login.php' . $reason);
         exit;
+    }
+
+    return $user;
+}
+
+/**
+ * Exige sesión Y un rol concreto, comprobado en el servidor en cada petición (RNF-22): ocultar el menú no basta.
+ * Sin sesión redirige a login; con otro rol responde 403.
+ *
+ * @return array{id: int, name: string, email: string, role: string}
+ */
+function require_role(string $role): array
+{
+    $user = require_login();
+
+    if ($user['role'] !== $role) {
+        \App\Http\Response::plain(403, "Acceso denegado: no tienes permiso para ver esta página.\n", ['Cache-Control: no-store']);
     }
 
     return $user;

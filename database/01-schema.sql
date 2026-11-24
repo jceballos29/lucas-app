@@ -76,3 +76,13 @@ CREATE TABLE aportes_meta (
   FOREIGN KEY (id_meta)   REFERENCES metas_ahorro(id_meta) ON DELETE CASCADE,
   FOREIGN KEY (id_cuenta) REFERENCES cuentas(id_cuenta)
 );
+
+-- Intentos de acceso para limitar la fuerza bruta (RNF-24). `clave` no guarda el correo en claro:
+-- es "ip:<dirección>" o "correo:<sha256 del correo>". Las filas viejas se borran al consultar.
+CREATE TABLE intentos_acceso (
+  id_intento INT AUTO_INCREMENT PRIMARY KEY,
+  tipo       ENUM('login','registro') NOT NULL,
+  clave      VARCHAR(80) NOT NULL,
+  creado_en  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_tipo_clave_fecha (tipo, clave, creado_en)
+);

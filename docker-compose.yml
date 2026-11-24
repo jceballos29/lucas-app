@@ -7,6 +7,8 @@ services:
         HOST_GID: ${HOST_GID:-1000}
     volumes:
       - ./src:/var/www/html
+      # Esquema y seed, de solo lectura: tests/integration.php crea con ellos una BD temporal.
+      - ./database:/var/www/database:ro
     # Solo las variables que PHP necesita: ni DB_ROOT_PASSWORD ni las del usuario de migraciones (si la aplicación
     # las conociera, comprometerla daría permisos de esquema; ver bin/as-migrator).
     # Docker Compose las toma del archivo .env.
