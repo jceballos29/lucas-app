@@ -158,7 +158,7 @@ Jóvenes y estudiantes que empiezan a manejar su dinero, trabajadores dependient
 | Rendimiento y capacidad | RNF-08, RNF-19 | 7 | ✅ (medido: 500 usuarios, 0 errores) |
 | Accesibilidad | RNF-13 | 7 | ✅ (axe: 0 violaciones; sin lector de pantalla real) |
 | Disponibilidad | RNF-14 | 7 | 🟨 (`salud.php`, reinicio y copias; sin segundo servidor) |
-| Navegadores | RNF-17 | 7 | 🟨 (solo Chromium probado; el resto por auditoría de características) |
+| Navegadores | RNF-17 | 7 | 🟨 (probado en Firefox 159; Chrome/Edge/Safari solo por auditoría de características) |
 
 ## Referencias
 

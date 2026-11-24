@@ -33,7 +33,7 @@ El proyecto avanza por fases, cada una con criterios de «terminado» verificabl
 | 7 | Perfil, recuperación de contraseña por correo, eliminar la cuenta, HTTPS, copias de seguridad y verificación de rendimiento y accesibilidad | Completa |
 
 > Todas las fases están completas. La guía para ponerlo en un servidor (HTTPS, correo real, copias de seguridad, monitorización y capacidad)
-> está en [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md). Conviene una pasada manual en Firefox y Safari y una prueba con lector de pantalla antes de
+> está en [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md). Probado en Firefox; conviene una pasada manual en Chrome/Edge y Safari y una prueba con lector de pantalla antes de
 > lanzar (ver las notas de la Fase 7 en [`docs/PLAN.md`](docs/PLAN.md)).
 
 ## Funcionalidades previstas
