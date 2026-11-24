@@ -9,7 +9,7 @@ Cada fase termina en algo que funciona y se prueba en el navegador y con pruebas
 | 1 | Infraestructura de pruebas, registro, login/logout, sesión con roles, seed con admin | [x] |
 | 2 | Dashboard de administración (métricas y usuarios) | [x] |
 | 3 | Cuentas y categorías (incl. categorías predeterminadas del admin) | [x] |
-| 4 | Movimientos | [ ] |
+| 4 | Movimientos | [x] |
 | 5 | Presupuestos y metas de ahorro | [ ] |
 | 6 | Panel y reportes | [ ] |
 | 7 | Perfil, recuperación de contraseña, endurecimiento | [ ] |
@@ -74,8 +74,18 @@ Notas de la implementación:
 - **Dinero:** nace `Support\Dinero` (montos como cadenas decimales, centavos enteros para sumar, formato colombiano `1.250.000,50`); el saldo total se suma en centavos, nunca con `float`. El saldo inicial solo puede ser negativo en una tarjeta de crédito.
 - **Error corregido de la Fase 1:** la seed guardaba «Alimentación» como «AlimentaciÃ³n» porque el cliente `mysql` de la imagen arranca en `latin1`. `02-seed.sql` ahora empieza con `SET NAMES utf8mb4`, y el humo comprueba la codificación sobre la base real (la prueba de integración no lo veía porque carga la seed por PDO, que ya usa `utf8mb4`).
 
-## Fase 4 · Movimientos
+## Fase 4 · Movimientos ✅
 `MovimientoRepository` con filtros (fecha, cuenta, categoría, tipo) y paginación de 20 (RNF-09), formulario con categorías filtradas por tipo, eliminar con confirmación (`data-confirm`). Aplicar D8: comprobar en el servidor que cuenta y categoría pertenecen al usuario, que el tipo coincide, que la cuenta está activa y que el monto es positivo con ≤ 2 decimales (cadenas, nunca `float`). Alta/edición/borrado y efecto en saldo en una transacción (RF-14). Pruebas: IDs ajenos → 404; tipo discordante → error de validación.
+
+Notas de la implementación:
+- **Capas:** `MovimientoValidator` (puro: monto > 0 con ≤ 2 decimales, fecha real entre 2000 y 2100, descripción ≤ 150), `Movimientos\ReglasMovimiento` (D8, pura), `Movimientos\GestionMovimientos` (la transacción), `Movimientos\Filtros` (limpia lo que llega en la URL) y `MovimientoRepository`. Nace `Database\Transaction` como asistente común (lo usan también las reglas de administración).
+- **D8 dentro de la transacción:** se bloquea la cuenta (`SELECT … FOR UPDATE`) y con lo leído ahí se comprueba que la cuenta y la categoría sean del usuario (la categoría puede ser predeterminada), que el tipo coincida y que la cuenta esté activa; solo entonces se escribe. Una cuenta que se desactiva a la vez no recibe movimientos «a escondidas» (probado con dos conexiones reales).
+- **404 frente a error de validación:** una cuenta, categoría o movimiento ajeno (o inexistente) responde 404 y no revela que existe; un tipo que no coincide con la categoría o una cuenta inactiva dan un error en el formulario.
+- **Cuenta inactiva:** no acepta altas ni ediciones (el formulario le pide al usuario activarla u elegir otra), pero sus movimientos se pueden eliminar.
+- **RF-14:** el saldo no se guarda, se calcula, así que alta, edición y borrado lo actualizan solos; las pruebas lo verifican al centavo, también al mover un gasto de una cuenta a otra.
+- **Listado:** 20 por página, filtros por fecha (incluye ambos días), cuenta, categoría y tipo, resumen de ingresos, gastos y balance de TODO lo filtrado (no solo de la página). Los filtros inválidos se ignoran. Tras eliminar se vuelve a la misma página y filtros, aceptando solo parámetros conocidos. La paginación muestra una ventana (primera, última y vecinas) en vez de cientos de enlaces.
+- **Formulario:** el servidor pone todas las categorías en el `<select>` con su `data-tipo` y el JS deja solo las del tipo elegido (sin JS se ven todas y el servidor rechaza la que no corresponda). El monto se formatea al escribir (`1.250.000,50`).
+- El botón «Exportar CSV» queda deshabilitado hasta la Fase 6.
 
 ## Fase 5 · Presupuestos y metas
 Al empezar, decidir el servicio de correo (D7). Vistas nuevas: formularios de presupuesto y de meta/aporte.
