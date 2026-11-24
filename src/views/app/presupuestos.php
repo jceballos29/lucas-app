@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domain\Presupuesto;
 use App\Support\Dinero;
 use App\Support\Mes;
+use App\View\Avisos;
 use App\View\Html;
 use App\View\Ui;
 
@@ -41,14 +42,7 @@ $nuevo = '/presupuesto-form.php?' . http_build_query(['mes' => $mes, 'anio' => $
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
 
 <?php foreach ($presupuestos as $p): ?>
-    <?php $pr = $p->progreso(); ?>
-    <?php if ($pr['estado'] === 'cerca'): ?>
-        <?= Ui::notice(new Html('<b>Aviso:</b> llevas el <b>' . $pr['percent'] . ' %</b> del presupuesto de <b>' . escape($p->categoriaNombre) . '</b>; te quedan ' . escape(Dinero::formatear($pr['restante'])) . '.'), 'warn') ?>
-    <?php elseif ($pr['estado'] === 'limite'): ?>
-        <?= Ui::notice(new Html('<b>Aviso:</b> llegaste al límite del presupuesto de <b>' . escape($p->categoriaNombre) . '</b> (' . escape(Dinero::formatear($p->montoLimite)) . ').'), 'warn') ?>
-    <?php elseif ($pr['estado'] === 'excedido'): ?>
-        <?= Ui::notice(new Html('<b>Aviso:</b> superaste el presupuesto de <b>' . escape($p->categoriaNombre) . '</b> en ' . escape(Dinero::formatear(ltrim($pr['restante'], '-'))) . '. Revisa tus gastos de esta categoría.'), 'warn') ?>
-    <?php endif; ?>
+    <?= Avisos::presupuesto($p) ?>
 <?php endforeach; ?>
 
 <?php if ($presupuestos === []): ?>

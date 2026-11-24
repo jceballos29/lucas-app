@@ -2,68 +2,85 @@
 
 declare(strict_types=1);
 
+use App\Domain\Movimiento;
+use App\Domain\Presupuesto;
+use App\Support\Dinero;
+use App\View\Avisos;
+use App\View\Fecha;
 use App\View\Ui;
 
-/** Vista de maqueta (datos de ejemplo, sin lógica). Se conectará a datos reales en su fase. */
-$income = 1800000;
-$expense = 1120000;
-$categories = [
-    ['label' => 'Alimentación', 'value' => 40, 'tone' => 'teal'],
-    ['label' => 'Transporte', 'value' => 22, 'tone' => 'navy'],
-    ['label' => 'Servicios', 'value' => 18, 'tone' => 'sky'],
-    ['label' => 'Entretenimiento', 'value' => 12, 'tone' => 'ink'],
-    ['label' => 'Otros', 'value' => 8, 'tone' => 'soft'],
-];
-$recent = [
-    ['title' => 'Almuerzo', 'meta' => 'Alimentación · 03 nov', 'amount' => 18000, 'kind' => 'out'],
-    ['title' => 'Bus', 'meta' => 'Transporte · 02 nov', 'amount' => 12000, 'kind' => 'out'],
-    ['title' => 'Salario', 'meta' => 'Ingreso · 01 nov', 'amount' => 1800000, 'kind' => 'in'],
-    ['title' => 'Mercado', 'meta' => 'Alimentación · 31 oct', 'amount' => 95000, 'kind' => 'out'],
-];
-$budgets = [
-    ['name' => 'Alimentación', 'percent' => 82],
-    ['name' => 'Transporte', 'percent' => 40],
-];
+/**
+ * Panel del usuario (RF-21): saldo total, ingresos, gastos y balance del mes, gastos por categoría, últimos movimientos y presupuestos.
+ *
+ * @var string $nombre Primer nombre del usuario.
+ * @var string $mesTexto «noviembre de 2026».
+ * @var string $mesCorto «Noviembre».
+ * @var string $saldoTotal Suma del saldo de las cuentas activas.
+ * @var int $numCuentas Cuentas activas.
+ * @var string $ingresos Ingresos del mes.
+ * @var string $gastos Gastos del mes.
+ * @var string $balance Ingresos − gastos del mes.
+ * @var array{items: list<array{label: string, total: string, percent: float}>, total: string} $categorias
+ * @var list<Movimiento> $ultimos
+ * @var list<Presupuesto> $presupuestos Los del mes, los más gastados primero.
+ */
+$balanceNegativo = str_starts_with($balance, '-');
+$slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'value' => $i['percent']], $categorias['items']);
 ?>
-<?= Ui::pageHead('Hola, Juan', 'Resumen de noviembre de 2026', Ui::button('Nuevo movimiento', ['href' => 'movimiento-form.php', 'icon' => 'plus'])) ?>
+<?= Ui::pageHead('Hola, ' . $nombre, 'Resumen de ' . $mesTexto, Ui::button('Nuevo movimiento', ['href' => '/movimiento-form.php', 'icon' => 'plus'])) ?>
+
+<?php foreach ($presupuestos as $p): ?><?= Avisos::presupuesto($p) ?><?php endforeach; ?>
 
 <div class="dashboard">
     <section class="balance" aria-label="Resumen del mes">
         <div>
             <span class="balance__label">Saldo total</span>
-            <strong class="balance__amount"><?= escape(Ui::pesos(2450000)) ?></strong>
-            <span class="balance__note">Repartido en 3 cuentas</span>
+            <strong class="balance__amount"><?= escape(Dinero::formatear($saldoTotal)) ?></strong>
+            <span class="balance__note"><?= $numCuentas === 0 ? 'Aún no tienes cuentas activas' : 'Repartido en ' . $numCuentas . ($numCuentas === 1 ? ' cuenta' : ' cuentas') ?></span>
         </div>
         <div class="balance__month">
-            <div class="balance__month-head"><span>Noviembre</span><span>Ingresos frente a gastos</span></div>
-            <?= Ui::splitBar([['label' => 'Ingresos', 'value' => $income], ['label' => 'Gastos', 'value' => $expense]], 'Ingresos y gastos del mes') ?>
+            <div class="balance__month-head"><span><?= escape($mesCorto) ?></span><span>Ingresos frente a gastos</span></div>
+            <?= Ui::splitBar([['label' => 'Ingresos', 'value' => Dinero::aCentavos($ingresos)], ['label' => 'Gastos', 'value' => Dinero::aCentavos($gastos)]], 'Ingresos y gastos del mes') ?>
             <dl class="balance__stats">
-                <div class="balance__stat"><dt><i class="balance__dot balance__dot--in"></i>Ingresos</dt><dd><?= escape(Ui::pesos($income)) ?></dd></div>
-                <div class="balance__stat"><dt><i class="balance__dot balance__dot--out"></i>Gastos</dt><dd><?= escape(Ui::pesos($expense)) ?></dd></div>
-                <div class="balance__stat"><dt>Balance del mes</dt><dd><?= escape('+' . Ui::pesos($income - $expense)) ?></dd></div>
+                <div class="balance__stat"><dt><i class="balance__dot balance__dot--in"></i>Ingresos</dt><dd><?= escape(Dinero::formatear($ingresos)) ?></dd></div>
+                <div class="balance__stat"><dt><i class="balance__dot balance__dot--out"></i>Gastos</dt><dd><?= escape(Dinero::formatear($gastos)) ?></dd></div>
+                <div class="balance__stat"><dt>Balance del mes</dt><dd><?= Ui::money($balance, $balanceNegativo ? 'out' : 'in') ?></dd></div>
             </dl>
         </div>
     </section>
 
     <div class="grid-2">
-        <?= Ui::cardOpen(['title' => 'Gastos por categoría']) ?>
-            <?= Ui::donut($categories, 'Gráfico circular de gastos por categoría', Ui::pesos($expense), 'en gastos') ?>
+        <?= Ui::cardOpen(['title' => 'Gastos por categoría', 'action' => Ui::button('Ver reportes', ['href' => '/reportes.php', 'variant' => 'ghost', 'size' => 'sm'])]) ?>
+            <?php if ($slices === []): ?>
+                <p class="muted">Todavía no registras gastos este mes. Cuando lo hagas, verás aquí en qué se va tu dinero.</p>
+            <?php else: ?>
+                <?= Ui::donut($slices, 'Gráfico circular de gastos por categoría', Dinero::formatear($categorias['total']), 'en gastos') ?>
+            <?php endif; ?>
         <?= Ui::cardClose() ?>
 
-        <?= Ui::cardOpen(['title' => 'Últimos movimientos', 'action' => Ui::button('Ver todos', ['href' => 'movimientos.php', 'variant' => 'ghost', 'size' => 'sm'])]) ?>
-            <?php foreach ($recent as $m): ?>
-                <?= Ui::listItem($m['title'], $m['meta'], Ui::money($m['amount'], $m['kind'])) ?>
+        <?= Ui::cardOpen(['title' => 'Últimos movimientos', 'action' => Ui::button('Ver todos', ['href' => '/movimientos.php', 'variant' => 'ghost', 'size' => 'sm'])]) ?>
+            <?php if ($ultimos === []): ?>
+                <p class="muted">Aún no has registrado movimientos.</p>
+                <p><?= Ui::button($numCuentas === 0 ? 'Crear mi primera cuenta' : 'Registrar un movimiento', ['href' => $numCuentas === 0 ? '/cuenta-form.php' : '/movimiento-form.php', 'icon' => 'plus']) ?></p>
+            <?php endif; ?>
+            <?php foreach ($ultimos as $m): ?>
+                <?= Ui::listItem($m->descripcion ?? $m->categoriaNombre, $m->categoriaNombre . ' · ' . Fecha::diaMes($m->fecha), Ui::money($m->monto, $m->esIngreso() ? 'in' : 'out')) ?>
             <?php endforeach; ?>
         <?= Ui::cardClose() ?>
     </div>
 
-    <?= Ui::cardOpen(['title' => 'Presupuestos del mes', 'action' => Ui::button('Ver presupuestos', ['href' => 'presupuestos.php', 'variant' => 'ghost', 'size' => 'sm'])]) ?>
-        <?php foreach ($budgets as $b): ?>
+    <?= Ui::cardOpen(['title' => 'Presupuestos del mes', 'action' => Ui::button('Ver presupuestos', ['href' => '/presupuestos.php', 'variant' => 'ghost', 'size' => 'sm'])]) ?>
+        <?php if ($presupuestos === []): ?>
+            <p class="muted">No tienes presupuestos este mes. Fija un límite por categoría y te avisaremos al acercarte.</p>
+            <p><?= Ui::button('Crear un presupuesto', ['href' => '/presupuesto-form.php', 'icon' => 'plus']) ?></p>
+        <?php endif; ?>
+        <?php foreach (array_slice($presupuestos, 0, 4) as $p): ?>
+            <?php $pr = $p->progreso(); ?>
             <div class="budget-line">
-                <div class="budget-line__head"><span><?= escape($b['name']) ?></span><?= Ui::badge($b['percent'] . ' %', $b['percent'] >= 80 ? 'warn' : 'neutral') ?></div>
-                <?= Ui::progress($b['percent'], $b['name'], 'auto') ?>
+                <div class="budget-line__head"><span><?= escape($p->categoriaNombre) ?></span><?= Ui::badge($pr['percent'] . ' %', $pr['estado'] === 'ok' ? 'neutral' : 'warn') ?></div>
+                <?= Ui::progress($pr['percent'], 'Presupuesto de ' . $p->categoriaNombre, $pr['tone']) ?>
             </div>
         <?php endforeach; ?>
     <?= Ui::cardClose() ?>
 </div>
-<?= Ui::fab('movimiento-form.php', 'Nuevo movimiento') ?>
+<?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?>

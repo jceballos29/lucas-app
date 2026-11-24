@@ -114,7 +114,7 @@ $balance = Dinero::sumar([$totales['ingresos'], '-' . $totales['gastos']]);
 
     <div class="toolbar">
         <?= $paginas > 1 ? Ui::pagination($pagina, $paginas, $patron) : '<span></span>' ?>
-        <?= Ui::button('Exportar CSV', ['href' => '#', 'variant' => 'secondary', 'size' => 'sm', 'icon' => 'download', 'attrs' => ['aria-disabled' => 'true', 'title' => 'Disponible próximamente']]) ?>
+        <?= Ui::button('Exportar CSV', ['href' => '/exportar.php' . ($base !== '' ? '?' . $base : ''), 'variant' => 'secondary', 'size' => 'sm', 'icon' => 'download', 'attrs' => ['title' => 'Descarga los movimientos con los filtros actuales']]) ?>
     </div>
 <?php endif; ?>
 <?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?>

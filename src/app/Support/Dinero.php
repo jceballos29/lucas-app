@@ -97,4 +97,25 @@ final class Dinero
 
         return ($centavos < 0 ? '-' : '') . intdiv($abs, 100) . ($abs % 100 !== 0 ? ',' . str_pad((string) ($abs % 100), 2, '0', STR_PAD_LEFT) : '');
     }
+
+    /**
+     * Para el eje de un gráfico, corto: «$1,1 M» (millones con un decimal), «$850 mil» o «$500». El redondeo es entero
+     * (centavos), sin float, y 999.500 ya cuenta como «$1 M» en vez de «$1000 mil».
+     */
+    public static function abreviado(string $monto): string
+    {
+        $centavos = self::aCentavos($monto);
+        $abs = abs($centavos);
+
+        if ($abs >= 99_950_000) {
+            $decimas = intdiv($abs + 5_000_000, 10_000_000);
+            $texto = '$' . intdiv($decimas, 10) . ($decimas % 10 !== 0 ? ',' . $decimas % 10 : '') . ' M';
+        } elseif ($abs >= 100_000) {
+            $texto = '$' . intdiv($abs + 50_000, 100_000) . ' mil';
+        } else {
+            $texto = '$' . intdiv($abs + 50, 100);
+        }
+
+        return ($centavos < 0 ? '−' : '') . $texto;
+    }
 }

@@ -18,6 +18,7 @@ use App\Repository\IntentoRepository;
 use App\Repository\MetaRepository;
 use App\Repository\MovimientoRepository;
 use App\Repository\PresupuestoRepository;
+use App\Repository\ReporteRepository;
 use App\Repository\UsuarioRepository;
 use PDO;
 
@@ -123,5 +124,10 @@ final class Container
     public function gestionMetas(): GestionMetas
     {
         return new GestionMetas($this->pdo(), $this->metas(), $this->aportes(), $this->cuentas());
+    }
+
+    public function reportes(): ReporteRepository
+    {
+        return new ReporteRepository($this->pdo());
     }
 }

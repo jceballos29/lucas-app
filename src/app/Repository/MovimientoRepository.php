@@ -44,6 +44,36 @@ final class MovimientoRepository
         return array_map([Movimiento::class, 'fromRow'], $stmt->fetchAll());
     }
 
+    /**
+     * Lo que sigue DESPUÉS de un punto del listado (paginación por cursor): para recorrerlo entero en lotes (exportar a CSV)
+     * sin que cada lote tenga que saltarse todos los anteriores, como pasaría con un OFFSET grande. El orden es el mismo del
+     * listado (fecha y luego id, de más nuevo a más antiguo).
+     *
+     * @param array{desde: string, hasta: string, cuenta: int, categoria: int, tipo: string} $filtros
+     * @param array{fecha: string, id: int}|null $despuesDe null = desde el principio
+     * @return list<Movimiento>
+     */
+    public function searchAfter(int $userId, array $filtros, ?array $despuesDe, int $limit): array
+    {
+        [$where, $params] = self::where($userId, $filtros);
+
+        if ($despuesDe !== null) {
+            $where .= ' AND (t.fecha < :c_fecha OR (t.fecha = :c_fecha2 AND t.id_transaccion < :c_id))';
+            $params['c_fecha'] = $despuesDe['fecha'];
+            $params['c_fecha2'] = $despuesDe['fecha'];
+            $params['c_id'] = $despuesDe['id'];
+        }
+
+        $stmt = $this->pdo->prepare(self::SELECT . $where . ' ORDER BY t.fecha DESC, t.id_transaccion DESC LIMIT :limit');
+        foreach ($params as $name => $value) {
+            $stmt->bindValue($name, $value);
+        }
+        $stmt->bindValue('limit', max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_map([Movimiento::class, 'fromRow'], $stmt->fetchAll());
+    }
+
     /** @param array{desde: string, hasta: string, cuenta: int, categoria: int, tipo: string} $filtros */
     public function count(int $userId, array $filtros): int
     {

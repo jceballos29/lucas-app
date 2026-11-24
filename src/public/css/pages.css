@@ -25,6 +25,8 @@
 .balance__stat:first-child { border-top: 0; }
 .balance__stat dt { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: rgba(181, 226, 250, .85); }
 .balance__stat dd { margin: 0; font-size: var(--fs-md); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Sobre el fondo oscuro de la tarjeta, el teal oscuro de un ingreso no se lee (RNF-13): hereda el color claro; el signo +/− sigue diciendo si es ingreso o gasto. */
+.balance .money { color: inherit; }
 .balance__dot { width: 8px; height: 8px; border-radius: 50%; }
 .balance__dot--in { background: var(--teal); }
 .balance__dot--out { background: var(--sky); }
