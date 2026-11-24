@@ -39,6 +39,12 @@ final class Fecha
         return self::local($utc)?->format('d/m/Y') ?? $utc;
     }
 
+    /** «04/11/2026» de una fecha SIN hora (columna DATE, p. ej. la de un movimiento): no hay zona horaria que convertir. */
+    public static function simple(string $ymd): string
+    {
+        return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $ymd, $m) === 1 ? "$m[3]/$m[2]/$m[1]" : $ymd;
+    }
+
     private static function local(string $utc): ?DateTimeImmutable
     {
         try {

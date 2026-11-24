@@ -137,20 +137,7 @@ final class UsuarioRepository implements CredentialSource
      */
     public function transaction(callable $work): mixed
     {
-        $this->pdo->beginTransaction();
-
-        try {
-            $result = $work();
-            $this->pdo->commit();
-
-            return $result;
-        } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-
-            throw $e;
-        }
+        return \App\Database\Transaction::run($this->pdo, $work);
     }
 
     /**

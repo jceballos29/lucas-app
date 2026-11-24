@@ -174,16 +174,25 @@ final class Ui
      * Cantidad de dinero en pesos con separador de miles. `$kind`: 'plain' (neutra), 'in' (ingreso, «+») o 'out' (gasto, «−»).
      * El signo va en el texto además del color, para que no dependa de verlo.
      */
-    public static function money(int|float $amount, string $kind = 'plain'): Html
+    public static function money(int|float|string $amount, string $kind = 'plain'): Html
     {
+        // Una cadena es un monto exacto de la BD («1250.50»): se formatea sin pasar por float (RNF-16).
+        if (is_string($amount)) {
+            $negative = str_starts_with($amount, '-');
+            $text = \App\Support\Dinero::formatear(ltrim($amount, '-'));
+        } else {
+            $negative = $amount < 0;
+            $text = '$' . number_format(abs($amount), 0, ',', '.');
+        }
+
         $sign = match ($kind) {
             'in' => '+',
             'out' => '−',
-            default => $amount < 0 ? '−' : '',
+            default => $negative ? '−' : '',
         };
         $tone = in_array($kind, ['in', 'out'], true) ? $kind : 'plain';
 
-        return new Html('<span class="money money--' . $tone . '">' . $sign . '$' . number_format(abs($amount), 0, ',', '.') . '</span>');
+        return new Html('<span class="money money--' . $tone . '">' . $sign . $text . '</span>');
     }
 
     /** Pesos sin signo ni envoltorio, para frases («$330.000 de $400.000»). */
@@ -265,7 +274,8 @@ final class Ui
     /**
      * Lista desplegable. `options`: lista de textos (valor = texto) o `[valor => texto]`.
      *
-     * @param array{id: string, name?: string, label: string, options?: array<int|string, string>, selected?: string, blank?: string, flush?: bool, attrs?: array<string, string|bool|null>} $o
+     * @param array{id: string, name?: string, label: string, options?: array<int|string, string>, selected?: string, blank?: string, flush?: bool, error?: string|null, optionAttrs?: array<int|string, array<string, string>>, attrs?: array<string, string|bool|null>} $o
+     *        `optionAttrs`: atributos extra por valor de opción (p. ej. `data-tipo`); `error`: mensaje bajo el campo.
      */
     public static function select(array $o): Html
     {
@@ -279,14 +289,17 @@ final class Ui
         }
         foreach ($options as $value => $text) {
             $value = $isList ? $text : (string) $value;
-            $html .= '<option value="' . escape($value) . '"' . (($o['selected'] ?? null) === $value ? ' selected' : '') . '>' . escape($text) . '</option>';
+            $html .= '<option value="' . escape($value) . '"' . self::attrs($o['optionAttrs'][$value] ?? []) . (($o['selected'] ?? null) === $value ? ' selected' : '') . '>' . escape($text) . '</option>';
         }
 
-        $attrs = ['class' => 'select', 'id' => $id, 'name' => $o['name'] ?? $id] + ($o['attrs'] ?? []);
+        $error = $o['error'] ?? null;
+        $attrs = ['class' => 'select', 'id' => $id, 'name' => $o['name'] ?? $id, 'aria-invalid' => $error !== null ? 'true' : null, 'aria-describedby' => $error !== null ? "e-$id" : null] + ($o['attrs'] ?? []);
 
         return new Html('<div class="field' . (!empty($o['flush']) ? ' field--flush' : '') . '">'
             . '<label class="field__label" for="' . escape($id) . '">' . escape($o['label']) . '</label>'
-            . '<div class="field__control"><select' . self::attrs($attrs) . '>' . $html . '</select>' . self::icon('chevron-down', 'field__chevron') . '</div></div>');
+            . '<div class="field__control"><select' . self::attrs($attrs) . '>' . $html . '</select>' . self::icon('chevron-down', 'field__chevron') . '</div>'
+            . ($error !== null ? '<p class="field__error" id="e-' . escape($id) . '">' . self::icon('alert') . '<span>' . escape($error) . '</span></p>' : '')
+            . '</div>');
     }
 
     /**
@@ -353,13 +366,24 @@ final class Ui
             . ($trailing !== null ? '<div class="list-item__trailing">' . Html::of($trailing) . '</div>' : '') . '</div>');
     }
 
-    /** Paginación con enlaces. `$hrefPattern` lleva `%d` donde va el número de página. */
+    /**
+     * Paginación con enlaces. `$hrefPattern` lleva `%d` donde va el número de página. Con muchas páginas muestra la primera,
+     * la última y las vecinas de la actual (con «…» en los huecos) en vez de cientos de enlaces.
+     */
     public static function pagination(int $current, int $total, string $hrefPattern = '?pagina=%d', string $label = 'Paginación'): Html
     {
+        $visible = array_unique(array_filter([1, $total, ...range($current - 2, $current + 2)], static fn (int $p): bool => $p >= 1 && $p <= $total));
+        sort($visible);
+
         $html = '';
-        for ($page = 1; $page <= $total; $page++) {
+        $previous = 0;
+        foreach ($visible as $page) {
+            if ($previous !== 0 && $page - $previous > 1) {
+                $html .= '<span class="pagination__gap" aria-hidden="true">…</span>';
+            }
             $href = str_contains($hrefPattern, '%d') ? sprintf($hrefPattern, $page) : $hrefPattern;
             $html .= '<a href="' . escape($href) . '"' . ($page === $current ? ' aria-current="page"' : '') . ' aria-label="Página ' . $page . '">' . $page . '</a>';
+            $previous = $page;
         }
 
         return new Html('<nav class="pagination" aria-label="' . escape($label) . '">' . $html . '</nav>');
