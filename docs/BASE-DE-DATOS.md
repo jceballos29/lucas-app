@@ -93,6 +93,16 @@ erDiagram
 | activo | BOOLEAN | INDEX (rol, activo) | Desactivar sin borrar datos (RF-31); permite contar administradores activos (RF-33) |
 | creado_en | TIMESTAMP | | Fecha de registro |
 
+**intentos_acceso** (limitación de intentos, RNF-24)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_intento | INT AUTO_INCREMENT | PK | Identificador |
+| tipo | ENUM('login','registro') | INDEX (tipo, clave, creado_en) | Qué se intentó |
+| clave | VARCHAR(80) | | `ip:<dirección>` o `correo:<sha256 del correo>` (nunca el correo en claro) |
+| creado_en | TIMESTAMP | | Momento del intento (UTC); cuenta lo de los últimos 15 min |
+
+No tiene relaciones: es una tabla de apoyo, sin FK, que se purga sola.
+
 **cuentas**
 | Campo | Tipo | Clave | Descripción |
 |---|---|---|---|
@@ -176,7 +186,7 @@ MySQL ejecuta `database/` solo cuando el volumen está vacío, en orden alfabét
 
 | Archivo | Qué hace |
 |---|---|
-| `01-schema.sql` | Crea las 7 tablas. |
+| `01-schema.sql` | Crea las 8 tablas (7 de negocio + `intentos_acceso`). |
 | `02-seed.sql` | **Primera seed**: categorías predeterminadas y el administrador inicial (ver abajo). |
 | `03-users.sh` | Crea los usuarios de MySQL con mínimo privilegio. Va después porque los permisos por tabla exigen que existan. |
 | `migrations/NNN-*.sql` | Cambios posteriores. Se aplican a mano con `bin/as-migrator`; una base nueva ya los trae en `01-schema.sql`. |
@@ -193,11 +203,11 @@ Para empezar de cero (borra los datos): `docker compose down -v && docker compos
 | contraseña | `Admin#2026dev` (guardada como hash bcrypt, **nunca** en claro en el SQL) |
 | rol / activo | `admin` / `1` |
 
-- El hash lo genera `password_hash()` y se escribe en `02-seed.sql` con `INSERT IGNORE` (repetir la seed no duplica nada).
+- El hash lo genera `password_hash()` y se escribe en `02-seed.sql` con `INSERT IGNORE`. La seed está pensada para ejecutarse **una sola vez** (volumen vacío): el admin no se duplica gracias al `UNIQUE` del correo, pero las categorías (`categorias` no tiene clave única, y con `NULL` MySQL permite repetidos) sí se duplicarían si se lanzara a mano otra vez.
 - Es una clave **conocida y pública**: sirve para entrar la primera vez en local. Cámbiala desde el perfil o crea otro administrador
   y desactiva este antes de exponer la app (RNF-23).
-- Para un entorno real, el administrador se crea con un script de consola (`bin/as-migrator php scripts/create-admin.php correo`) que pide
-  la contraseña por terminal, y `02-seed.sql` no se usa para ese dato.
+- Para un entorno real, el administrador se crea con `bin/as-migrator php scripts/create-admin.php correo ["Nombre"]`, que pide la
+  contraseña por terminal (sin mostrarla), y `02-seed.sql` no se usa para ese dato.
 
 ### Categorías predeterminadas (RF-08)
 `id_usuario = NULL`, visibles para todos y editables solo por un administrador (RF-34):
@@ -217,8 +227,8 @@ Para empezar de cero (borra los datos): `docker compose down -v && docker compos
 
 | Usuario | Para qué | Permisos |
 |---|---|---|
-| `lucas_app` | PHP, en cada petición | `SELECT, INSERT, UPDATE, DELETE` solo sobre las 7 tablas. Sin DDL. |
-| `lucas_migrator` | Migraciones, scripts, pruebas | Todo sobre la base `lucas`, nada más. PHP no conoce su clave (`bin/as-migrator`). |
+| `lucas_app` | PHP, en cada petición | `SELECT, INSERT, UPDATE, DELETE` solo sobre las 8 tablas. Sin DDL. |
+| `lucas_migrator` | Migraciones, scripts, pruebas | Todo sobre la base `lucas` y sobre las bases temporales `lucas_test%` de las pruebas de integración; nada más. PHP no conoce su clave (`bin/as-migrator`). |
 | `root` | Administrar el servidor | Solo `DB_ROOT_PASSWORD`; la app no lo usa. |
 
 ## Consultas clave
@@ -227,4 +237,5 @@ Para empezar de cero (borra los datos): `docker compose down -v && docker compos
 - **Gasto de un presupuesto**: `SUM(monto)` de `transacciones` de gasto, de esa categoría, mes y año, del usuario.
 - **Administradores activos** (RF-33): `SELECT COUNT(*) FROM usuarios WHERE rol='admin' AND activo=1`, dentro de la misma transacción que el cambio.
 - **Registros por mes** (RF-29): `GROUP BY DATE_FORMAT(creado_en,'%Y-%m')` sobre los últimos 12 meses.
+- **Intentos recientes** (RNF-24): `COUNT(*) FROM intentos_acceso WHERE tipo=? AND clave=? AND creado_en >= NOW() - INTERVAL 900 SECOND`; máximo 5 por correo y 20 por IP.
 - Cualquier consulta de datos de un usuario lleva `WHERE id_usuario = :id` con el id **de la sesión**, nunca el de la URL (RNF-04).

@@ -24,13 +24,13 @@ El proyecto avanza por fases, cada una con criterios de «terminado» verificabl
 |---|---|---|
 | 0 | Infraestructura: Docker, PHP-FPM, nginx, MySQL, conexión PDO, sesión, CSRF, usuarios de BD con mínimo privilegio | Completa |
 | UI | Interfaz completa: sistema de diseño, 3 layouts y todas las pantallas (con datos de ejemplo) | Completa |
-| 1 | Registro, inicio de sesión y roles | Siguiente |
-| 2 | Dashboard de administración | Pendiente |
+| 1 | Registro, inicio y cierre de sesión, roles, limitación de intentos, primera seed y pruebas automáticas | Completa |
+| 2 | Dashboard de administración | Siguiente |
 | 3–6 | Cuentas, categorías, movimientos, presupuestos, metas, panel y reportes | Pendiente |
 | 7 | Perfil, recuperación de contraseña, HTTPS y endurecimiento final | Pendiente |
 
-> Hoy las pantallas se sirven con datos de ejemplo y todavía no hay autenticación real; el login es una maqueta. Las secciones de
-> *Funcionalidades* describen el alcance objetivo, no lo ya implementado.
+> Hoy el registro, el login y los permisos por rol son reales, pero el resto de pantallas siguen con datos de ejemplo (exigen sesión,
+> no guardan nada). Las secciones de *Funcionalidades* describen el alcance objetivo, no lo ya implementado.
 
 ## Funcionalidades previstas
 
@@ -157,6 +157,10 @@ lucas-app/
 ```bash
 docker compose logs -f php                          # errores de PHP
 docker compose exec php php tests/unit.php          # pruebas unitarias
+bin/as-migrator php tests/integration.php           # repositorios contra una BD temporal
+tests/smoke.sh                                      # punta a punta con curl (con la app en marcha)
+tests/run-all.sh                                    # las tres suites, en orden
+bin/as-migrator php scripts/create-admin.php correo # crear un administrador (pide la contraseña)
 docker compose exec php composer dump-autoload      # tras añadir clases
 bin/as-migrator php scripts/<script>.php            # scripts que cambian datos o esquema (usuario de migraciones)
 docker compose down -v                              # parar y BORRAR la base

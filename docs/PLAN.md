@@ -6,7 +6,7 @@ Cada fase termina en algo que funciona y se prueba en el navegador y con pruebas
 |---|---|---|
 | 0 | Esqueleto Docker/PHP funcionando | [x] |
 | UI | Migración de la interfaz (maqueta PHP sin funcionalidad, incl. registro y dashboard de admin) | [x] |
-| 1 | Infraestructura de pruebas, registro, login/logout, sesión con roles, seed con admin | [ ] |
+| 1 | Infraestructura de pruebas, registro, login/logout, sesión con roles, seed con admin | [x] |
 | 2 | Dashboard de administración (métricas y usuarios) | [ ] |
 | 3 | Cuentas y categorías (incl. categorías predeterminadas del admin) | [ ] |
 | 4 | Movimientos | [ ] |
@@ -37,16 +37,18 @@ CSS/JS en `src/public/`, layouts (`auth`, `app`, `admin`), 7 vistas de usuario (
 
 **Vistas que faltan** (se crean en la fase que las usa, con el mismo sistema de diseño): `cuenta-form` y `categorias` (Fase 3), `admin/categorias` (Fase 3), formularios de presupuesto y de meta/aporte (Fase 5), `perfil` (Fase 7).
 
-## Fase 1 · Pruebas, registro, acceso y primera seed
+## Fase 1 · Pruebas, registro, acceso y primera seed ✅
 1. **Infraestructura de pruebas** (antes de escribir lógica): `src/tests/integration.php` (BD temporal, D6), `tests/smoke.sh` (curl), `tests/run-all.sh`; ajustar `03-users.sh` para el permiso `lucas\_test%`. Los scripts de humo usan una IP/correo propios o reinician `intentos_acceso` para no chocar con la limitación.
 2. **BD:** `rol` y `activo` ya están en `01-schema.sql`. Añadir `intentos_acceso` (D1); crear `02-seed.sql` con las categorías predeterminadas y el admin inicial (`docs/BASE-DE-DATOS.md`); actualizar «7 tablas» → 8 en la documentación y `APP_TABLES`. Corregir en `BASE-DE-DATOS.md` que la seed es segura por ejecutarse una sola vez (`categorias` no tiene clave única).
 3. **Dominio y datos:** `Domain\Usuario`, `Repository\UsuarioRepository` (`findByEmail`, `findById`, `create`, `countActiveAdmins`...), `Repository\IntentoRepository`, `Container::usuarios()`.
-4. **Validación:** `Validation\RegistroValidator` (nombre 2–80, correo válido ≤120 y único, contraseña ≥ 8 y confirmada).
+4. **Validación:** `Validation\RegistroValidator` (nombre 2–80, correo válido ≤120, contraseña de 8 a 72 bytes —el límite de bcrypt— y confirmada). Es puro, como exige la arquitectura: la **unicidad** del correo la comprueba el controlador y, ante dos registros simultáneos, la clave `UNIQUE` (`create()` devuelve `null`).
 5. **Autenticación:** `Auth\Autenticador::authenticate()` con `password_verify`, rehash, rechazo de `activo = 0`, mismo mensaje y mismo coste si el correo no existe; limitación de intentos en login **y** registro (D1, D2, RNF-24).
 6. **Sesión:** `log_in_user()` guarda `user_role`. `resolve_user_session()` vuelve a leer `activo` y `rol` de la BD **en cada petición** (una consulta por clave primaria): un usuario desactivado o con otro rol lo nota de inmediato. Añadir `require_role()` (403 si el rol no coincide).
 7. **Páginas y vistas:** `registro.php` (entra al panel, D3), `login.php`, `logout.php`, `index.php` (redirección por rol) y `views/auth/{login,registro}.php`. Las páginas de maqueta pasan a exigir `require_login()` y las de `admin/` `require_role('admin')`, aunque sigan con datos de ejemplo.
 8. **Admin por consola:** `scripts/create-admin.php` (RNF-23), para entornos que no sean local.
 9. **Pruebas:** unitarias del validador y la autenticación; integración del repositorio y de la limitación de intentos; humo: registrarse → entra al panel → salir, admin entra, usuario inactivo no entra, el rol del formulario se ignora, un `usuario` recibe 403 en `admin/*` (RF-27), sin sesión se redirige a login, un usuario desactivado a mitad de sesión es expulsado.
+
+Notas de la implementación: la IP para limitar es `REMOTE_ADDR` (no se confía en `X-Forwarded-For`; tras un proxy habrá que configurarlo); un usuario desactivado ve el mismo mensaje genérico que una clave incorrecta (no se revela el estado de la cuenta); `docker-compose.yml` monta `database/` (solo lectura) en el contenedor php para que las pruebas de integración creen su BD temporal.
 
 **Listo cuando:** `admin@lucas.local` entra tras `docker compose up` con volumen vacío, cualquiera puede registrarse y queda con rol `usuario`, y `tests/run-all.sh` pasa.
 

@@ -32,10 +32,11 @@ Petición → public/*.php → Controller → (Validator) → Repository → MyS
 |---|---|---|---|
 | Entrada | `src/public/` | Un archivo por página: `require bootstrap.php` y llama a un método del controlador. | Lógica. |
 | Controlador | `app/Controller/` | Lee la petición, exige sesión/rol, valida, llama al repositorio, elige vista o redirección. | SQL, HTML. |
-| Validador | `app/Validation/` | Reglas de los datos de un formulario; devuelve errores en español. | Acceder a la BD. |
+| Validador | `app/Validation/` | Reglas de los datos de un formulario; devuelve errores en español. | Acceder a la BD (la unicidad la comprueba el controlador). |
 | Repositorio | `app/Repository/` | **Único** sitio con SQL; recibe el `PDO`; siempre filtra por `id_usuario`. | Conocer HTTP. |
 | Dominio | `app/Domain/` | Entidades pequeñas (`Usuario`, `Cuenta`, `Movimiento`...) hechas desde una fila. | I/O. |
 | Vista | `src/views/` | HTML + `if`/`foreach`; todo dato sale con `escape()`. | Consultas, decidir códigos HTTP. |
+| Autenticación | `app/Auth/` | `Autenticador` (credenciales, rehash), `LimitadorIntentos`. | HTTP, SQL. |
 | Infraestructura | `app/{Config,Database,Http,Logging,Security,View}`, `Container.php` | Ya existe (Fase 0). | — |
 
 `Container` construye los repositorios con la conexión **perezosa** (no se abre hasta que alguien la pide).
@@ -48,7 +49,7 @@ lucas-app/
 ├── docker/{nginx,php}/         configuración de nginx (CSP, cabeceras) y PHP (ini seguro + ini de desarrollo, xdebug)
 ├── database/                   01-schema.sql · 02-seed.sql · 03-users.sh · migrations/
 ├── docs/                       esta documentación
-├── tests/                      pruebas de punta a punta (shell + curl)
+├── tests/                      smoke.sh (curl) y run-all.sh (todas las suites)
 └── src/
     ├── bootstrap.php           autoload de Composer
     ├── app/                    clases (namespace App\) y funciones globales (support.php, Security/*.php)
@@ -116,10 +117,11 @@ flowchart TD
     A -- sí --> OK
 ```
 
-- Sesión en `$_SESSION` (`user_id`, `user_name`, `user_email`, **`user_role`**), cookie `lucas_session` `HttpOnly` + `SameSite=Lax`
+- Sesión en `$_SESSION` (`user_id`, `user_name`, `user_email`, **`user_role`**; son una copia para mostrar), cookie `lucas_session` `HttpOnly` + `SameSite=Lax`
   (+ `Secure` si `APP_ORIGIN` es https), caduca a los 30 min de inactividad (RNF-06), id regenerado al iniciar sesión.
-- `require_login()` (existe) exige sesión. Se añadirán `require_role('admin')` y la comprobación de `activo` en cada petición, para que
-  desactivar a alguien lo expulse de inmediato y no solo en su próximo login.
+- `require_login()` exige sesión y `require_role('admin')` además el rol (403 si no coincide). **En cada petición** `resolve_user_session()` vuelve a leer
+  al usuario de la BD (por clave primaria): si está inactivo se cierra la sesión (`login.php?msg=revoked`) y un cambio de rol vale al instante.
+- **Limitación de intentos** (RNF-24): `Auth\LimitadorIntentos` sobre la tabla `intentos_acceso`; 429 con `Retry-After` al pasarse (5 por correo, 20 por IP, 15 min).
 - Contraseñas con `password_hash(PASSWORD_DEFAULT)` y `password_verify()`; se rehashean al iniciar sesión si el algoritmo cambió (RNF-01).
 - **Propiedad de los datos:** el `id_usuario` de cada consulta sale de la sesión. Si un id de la URL no pertenece al usuario, la respuesta es 404 (RNF-04).
 - **El rol no se confía al cliente:** se lee de la BD al iniciar sesión y se guarda en la sesión; ningún formulario público lo acepta (RF-25).
