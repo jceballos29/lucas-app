@@ -1,0 +1,75 @@
+/* ==========================================================
+   Lucas · Tokens de diseño
+   Paleta de marca: #061A24 (ink) · #0B3A53 (navy) · #0FA3B1 (teal) · #B5E2FA (sky) · #F3FAFF (mist)
+   Los demás tonos se derivan de estos cinco; los comentarios indican el contraste medido (WCAG).
+   ========================================================== */
+:root {
+  /* Marca */
+  --ink: #061A24;
+  --navy: #0B3A53;
+  --teal: #0FA3B1;
+  --sky: #B5E2FA;
+  --mist: #F3FAFF;
+  --white: #fff;
+
+  /* Derivados */
+  --teal-text: #0A7680;          /* teal para TEXTO: 5,4:1 sobre blanco (el teal puro solo da 3,0:1) */
+  --teal-strong: #075A63;        /* texto sobre fondo teal claro: 6,9:1 */
+  --teal-tint: #DDF3F5;
+  --sky-tint: #E6F3FB;
+  --sky-soft: #7FB6CF;           /* 5.ª porción de los gráficos */
+  --muted: #4A6B7D;              /* texto secundario: 5,7:1 sobre blanco */
+  --line: #DAE8F1;               /* divisores y bordes de tarjetas */
+  --field-border: #7B9DB0;       /* borde de controles: ≥ 3:1 (WCAG 1.4.11) */
+  --surface: var(--white);
+  --canvas: var(--mist);
+
+  /* Estado (único color funcional añadido a la paleta: errores y presupuesto excedido) */
+  --danger: #B3261E;             /* 6,5:1 sobre blanco */
+  --danger-text: #9A1F18;        /* 7,1:1 sobre --danger-tint */
+  --danger-tint: #FDECEA;
+
+  /* Tipografía (pila del sistema: sin fuentes externas, la CSP no las admite) */
+  --font: Inter, "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fs-xs: .75rem;
+  --fs-sm: .8125rem;
+  --fs-base: .9375rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.5rem;
+
+  /* Espaciado (múltiplos de 4) */
+  --s-1: .25rem;
+  --s-2: .5rem;
+  --s-3: .75rem;
+  --s-4: 1rem;
+  --s-5: 1.25rem;
+  --s-6: 1.5rem;
+  --s-8: 2rem;
+  --s-10: 2.5rem;
+
+  /* Forma */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+
+  /* Elevación (sutil: el borde ya separa; la sombra solo da un poco de aire) */
+  --sh-1: 0 1px 2px rgba(6, 26, 36, .04), 0 1px 3px rgba(6, 26, 36, .03);
+  --sh-2: 0 6px 20px -6px rgba(6, 26, 36, .16), 0 2px 6px rgba(6, 26, 36, .05);
+  --sh-3: 0 24px 48px -12px rgba(6, 26, 36, .35);
+
+  /* Movimiento */
+  --t: 160ms cubic-bezier(.4, 0, .2, 1);
+
+  /* Capas */
+  --z-fab: 20;
+  --z-header: 30;
+  --z-overlay: 40;
+  --z-sidebar: 50;
+
+  --sidebar-w: 264px;
+  --content-max: 1180px;
+}

@@ -1,0 +1,128 @@
+/* ==========================================================
+   Lucas · Piezas propias de cada pantalla
+   Solo composición de los componentes: aquí no se redefine ningún componente.
+   ========================================================== */
+
+/* ---------- Panel: tarjeta de saldo (la pieza protagonista) ---------- */
+.balance {
+  display: grid; gap: var(--s-6); padding: var(--s-6);
+  border-radius: 20px; color: var(--white); box-shadow: var(--sh-2);
+  background:
+    radial-gradient(520px 280px at 100% 0%, rgba(15, 163, 177, .30), transparent 65%),
+    linear-gradient(150deg, var(--ink), var(--navy));
+}
+.balance__label { font-size: var(--fs-sm); color: rgba(181, 226, 250, .85); }
+.balance__amount {
+  display: block; margin-top: 6px; font-size: clamp(2.25rem, 7vw, 3.25rem); font-weight: 600;
+  letter-spacing: -.035em; line-height: 1; font-variant-numeric: tabular-nums;
+}
+.balance__note { display: block; margin-top: var(--s-3); font-size: var(--fs-sm); color: rgba(181, 226, 250, .75); }
+.balance__month { padding-top: var(--s-5); border-top: 1px solid rgba(181, 226, 250, .16); }
+.balance__month-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-3); font-size: var(--fs-sm); color: rgba(181, 226, 250, .85); }
+.balance .split { background: rgba(181, 226, 250, .1); margin-bottom: var(--s-4); }
+.balance__stats { display: grid; margin: 0; }
+.balance__stat { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: 10px 0; border-top: 1px solid rgba(181, 226, 250, .1); }
+.balance__stat:first-child { border-top: 0; }
+.balance__stat dt { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: rgba(181, 226, 250, .85); }
+.balance__stat dd { margin: 0; font-size: var(--fs-md); font-weight: 600; font-variant-numeric: tabular-nums; }
+.balance__dot { width: 8px; height: 8px; border-radius: 50%; }
+.balance__dot--in { background: var(--teal); }
+.balance__dot--out { background: var(--sky); }
+
+.dashboard { display: grid; gap: var(--s-4); }
+
+/* ---------- Presupuestos ---------- */
+.budget { display: flex; flex-direction: column; gap: var(--s-4); }
+.budget__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.budget__name { font-weight: 650; font-size: var(--fs-md); }
+.budget__foot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); font-size: var(--fs-sm); color: var(--muted); }
+.budget__foot b { font-size: var(--fs-base); color: var(--ink); font-variant-numeric: tabular-nums; }
+.budget__foot b.is-over { color: var(--danger-text); }
+.budget-line + .budget-line { margin-top: var(--s-5); }
+.budget-line__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); margin-bottom: 8px; }
+
+.month-nav { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--white); }
+.month-nav .icon-btn { border-color: transparent; }
+.month-nav__label { min-width: 148px; padding: 0 var(--s-2); text-align: center; font-weight: 600; }
+
+/* ---------- Metas ---------- */
+.goal { display: flex; flex-direction: column; gap: var(--s-4); }
+.goal__head { display: flex; align-items: center; gap: var(--s-3); }
+.goal__icon { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: var(--r-md); background: var(--sky-tint); color: var(--navy); }
+.goal__icon .icon { width: 22px; height: 22px; }
+.goal.is-done .goal__icon { background: var(--teal-tint); color: var(--teal-strong); }
+.goal__title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.goal__name { font-weight: 650; font-size: var(--fs-md); }
+.goal__due { font-size: var(--fs-sm); color: var(--muted); }
+.goal__amount { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.goal__amount small { font-size: var(--fs-base); font-weight: 500; letter-spacing: 0; color: var(--muted); }
+.goal__foot { display: flex; align-items: baseline; justify-content: space-between; font-size: var(--fs-sm); color: var(--muted); }
+.goal__foot b { font-size: var(--fs-base); color: var(--ink); }
+.goal__body { display: grid; gap: var(--s-3); }
+
+/* ---------- Cuentas ---------- */
+.account { display: flex; flex-direction: column; gap: var(--s-5); }
+.account__head { display: flex; align-items: center; gap: var(--s-3); }
+.account__icon { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: var(--r-md); background: var(--sky-tint); color: var(--navy); }
+.account__icon .icon { width: 22px; height: 22px; }
+.account__name { flex: 1; min-width: 0; font-weight: 650; font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account__balance small { display: block; font-size: var(--fs-sm); color: var(--muted); }
+.account__balance strong { font-size: var(--fs-2xl); font-weight: 650; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+.account__actions { display: flex; justify-content: flex-end; }
+
+/* ---------- Filtros (plegados en móvil, siempre visibles desde 768 px) ---------- */
+.filters { margin-bottom: var(--s-4); }
+.filters__summary {
+  display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 var(--s-4);
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--white);
+  font-weight: 600; color: var(--navy); cursor: pointer; list-style: none;
+}
+.filters__summary::-webkit-details-marker { display: none; }
+.filters__summary span { display: inline-flex; align-items: center; gap: 10px; }
+.filters__chevron { transition: transform var(--t); }
+.filters[open] .filters__chevron { transform: rotate(180deg); }
+.filters__form {
+  display: grid; gap: var(--s-3); margin-top: var(--s-3); padding: var(--s-4);
+  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--white); box-shadow: var(--sh-1);
+}
+.filters__form .btn { align-self: end; min-height: 46px; }
+
+/* ---------- Búsqueda ---------- */
+.search { display: flex; gap: var(--s-2); margin-bottom: var(--s-4); }
+.search__field { position: relative; flex: 1; }
+.search__field .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--muted); pointer-events: none; }
+.search__field .input { padding-left: 42px; }
+
+/* ---------- Tablas: celdas compuestas ---------- */
+.cell-title { font-weight: 600; }
+.cell-sub { display: block; font-size: var(--fs-sm); color: var(--muted); font-weight: 400; }
+.cell-person { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+.row-actions form { margin: 0; }
+.muted-note { font-size: var(--fs-sm); color: var(--muted); }
+
+/* ---------- Administración ---------- */
+.stat-list .list-item__meta { white-space: normal; }
+
+/* ---------- Páginas técnicas (status.php, diseño «plain») ---------- */
+.main__inner > h1 { font-size: var(--fs-xl); margin-bottom: var(--s-4); }
+.main__inner > h2 { font-size: var(--fs-md); margin: var(--s-6) 0 var(--s-2); }
+.main__inner > p { margin-bottom: var(--s-3); }
+
+/* ======================= ≥ 520px ======================= */
+@media (min-width: 520px) {
+  .balance__stats { grid-template-columns: repeat(3, 1fr); gap: var(--s-4); }
+  .balance__stat { flex-direction: column; align-items: flex-start; gap: 4px; padding: 0; border-top: 0; }
+}
+
+/* ======================= ≥ 768px ======================= */
+@media (min-width: 768px) {
+  .balance { grid-template-columns: minmax(0, .85fr) minmax(0, 1.4fr); gap: var(--s-10); padding: var(--s-8); align-items: center; }
+  .balance__month { padding: 0 0 0 var(--s-10); border-top: 0; border-left: 1px solid rgba(181, 226, 250, .16); }
+  .filters__summary { display: none; }
+  .filters__form { grid-template-columns: repeat(3, 1fr); margin-top: 0; }
+}
+
+/* ======================= ≥ 1024px ======================= */
+@media (min-width: 1024px) {
+  .filters__form { grid-template-columns: repeat(5, minmax(0, 1fr)) auto; }
+}
