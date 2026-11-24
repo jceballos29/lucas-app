@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App;
 
+use App\Admin\GestionUsuarios;
 use App\Auth\Autenticador;
 use App\Auth\LimitadorIntentos;
 use App\Database\Connection;
+use App\Repository\AdminStatsRepository;
 use App\Repository\IntentoRepository;
 use App\Repository\UsuarioRepository;
 use PDO;
@@ -63,5 +65,15 @@ final class Container
     public function limitador(): LimitadorIntentos
     {
         return new LimitadorIntentos($this->intentos());
+    }
+
+    public function adminStats(): AdminStatsRepository
+    {
+        return new AdminStatsRepository($this->pdo());
+    }
+
+    public function gestionUsuarios(): GestionUsuarios
+    {
+        return new GestionUsuarios($this->usuarios());
     }
 }

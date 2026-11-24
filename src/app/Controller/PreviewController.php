@@ -9,9 +9,8 @@ use App\View\View;
 
 /**
  * TEMPORAL: muestra las pantallas pendientes con datos de ejemplo y SIN funcionalidad (no guardan nada), para validar la
- * interfaz antes de construirla de verdad. Desde la Fase 1 SÍ exigen sesión (`require_login()`) y las de administración,
- * rol `admin` (`require_role()`). Cada método se reemplaza, fase a fase, por su controlador real (PanelController,
- * AdminController...) y al terminar la migración esta clase se borra.
+ * interfaz antes de construirla de verdad. Desde la Fase 1 SÍ exigen sesión (`require_login()`). Cada método se reemplaza, fase a fase, por su controlador real
+ * (PanelController, CuentaController...) y al terminar la migración esta clase se borra.
  *
  * Los POST solo comprueban origen y CSRF y redirigen para poder recorrer el flujo: no guardan nada.
  */
@@ -34,18 +33,6 @@ final class PreviewController
         }
 
         View::page("app/$view", [], $title, $user, 'app', $nav ?? $view);
-    }
-
-    /** Páginas del administrador: `$view` es el nombre en views/admin/ y la clave del menú. */
-    public function admin(string $view, string $title, string $nav): void
-    {
-        $user = require_role('admin');
-
-        if ($this->isPost()) {
-            Response::redirect($_SERVER['REQUEST_URI'] ?? '/admin/index.php');
-        }
-
-        View::page("admin/$view", [], $title, $user, 'admin', $nav);
     }
 
     private function isPost(): bool
