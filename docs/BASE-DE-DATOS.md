@@ -97,11 +97,20 @@ erDiagram
 | Campo | Tipo | Clave | Descripción |
 |---|---|---|---|
 | id_intento | INT AUTO_INCREMENT | PK | Identificador |
-| tipo | ENUM('login','registro') | INDEX (tipo, clave, creado_en) | Qué se intentó |
+| tipo | ENUM('login','registro','recuperacion','clave') | INDEX (tipo, clave, creado_en) | Qué se intentó (`clave` = cambio de contraseña desde el perfil) |
 | clave | VARCHAR(80) | | `ip:<dirección>` o `correo:<sha256 del correo>` (nunca el correo en claro) |
 | creado_en | TIMESTAMP | | Momento del intento (UTC); cuenta lo de los últimos 15 min |
 
 No tiene relaciones: es una tabla de apoyo, sin FK, que se purga sola.
+
+**restablecimientos** (recuperar contraseña, RF-04)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_restablecimiento | INT AUTO_INCREMENT | PK | Identificador |
+| id_usuario | INT | FK → usuarios (CASCADE) | A quién pertenece el enlace |
+| token_hash | CHAR(64) | UNIQUE | SHA-256 del token: el token en sí **nunca** se guarda |
+| creado_en · expira_en | TIMESTAMP | | Vigencia de 30 minutos |
+| usado_en | TIMESTAMP NULL | | Se llena al usarlo: un enlace sirve una sola vez |
 
 **cuentas**
 | Campo | Tipo | Clave | Descripción |
@@ -186,10 +195,10 @@ MySQL ejecuta `database/` solo cuando el volumen está vacío, en orden alfabét
 
 | Archivo | Qué hace |
 |---|---|
-| `01-schema.sql` | Crea las 8 tablas (7 de negocio + `intentos_acceso`). |
+| `01-schema.sql` | Crea las 9 tablas (7 de negocio + `intentos_acceso` + `restablecimientos`). |
 | `02-seed.sql` | **Primera seed**: categorías predeterminadas y el administrador inicial (ver abajo). |
 | `03-users.sh` | Crea los usuarios de MySQL con mínimo privilegio. Va después porque los permisos por tabla exigen que existan. |
-| `migrations/NNN-*.sql` | Cambios posteriores. Se aplican a mano con `bin/as-migrator`; una base nueva ya los trae en `01-schema.sql`. |
+| `migrations/NNN-*.sql` | Cambios posteriores, **idempotentes**. `bin/as-migrator php scripts/migrate.php` aplica los pendientes y los anota en la tabla `migraciones`; una base nueva ya los trae en `01-schema.sql`. Si una migración añade tablas, vuelve a ejecutar `03-users.sh` para dar permisos a la aplicación. |
 
 Para empezar de cero (borra los datos): `docker compose down -v && docker compose up -d --build`.
 
@@ -224,11 +233,15 @@ Para empezar de cero (borra los datos): `docker compose down -v && docker compos
 | Entretenimiento | `#EF8354` | | |
 | Otros gastos | `#8DA0AB` | | |
 
+## Copias de seguridad (RNF-15)
+
+`bin/backup-db` genera un volcado comprimido y consistente (`--single-transaction`, no bloquea la aplicación), comprueba que sea legible y conserva las últimas 8; `bin/restore-db` lo carga en una base **vacía** (nunca pisa datos; por defecto en `lucas_test_restore`, para probarlo). `tests/backup.sh` verifica el ciclo completo comparando las filas de cada tabla. Programación semanal y recuperación tras un desastre: [`DESPLIEGUE.md`](DESPLIEGUE.md).
+
 ## Permisos de MySQL
 
 | Usuario | Para qué | Permisos |
 |---|---|---|
-| `lucas_app` | PHP, en cada petición | `SELECT, INSERT, UPDATE, DELETE` solo sobre las 8 tablas. Sin DDL. |
+| `lucas_app` | PHP, en cada petición | `SELECT, INSERT, UPDATE, DELETE` solo sobre las 9 tablas. Sin DDL (tampoco sobre `migraciones`). |
 | `lucas_migrator` | Migraciones, scripts, pruebas | Todo sobre la base `lucas` y sobre las bases temporales `lucas_test%` de las pruebas de integración; nada más. PHP no conoce su clave (`bin/as-migrator`). |
 | `root` | Administrar el servidor | Solo `DB_ROOT_PASSWORD`; la app no lo usa. |
 

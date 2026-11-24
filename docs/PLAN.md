@@ -12,7 +12,7 @@ Cada fase termina en algo que funciona y se prueba en el navegador y con pruebas
 | 4 | Movimientos | [x] |
 | 5 | Presupuestos y metas de ahorro | [x] |
 | 6 | Panel y reportes | [x] |
-| 7 | Perfil, recuperación de contraseña, endurecimiento | [ ] |
+| 7 | Perfil, recuperación de contraseña, endurecimiento | [x] |
 
 ## Decisiones tomadas
 
@@ -33,7 +33,7 @@ Cambiar cualquiera de ellas obliga a revisar las fases indicadas.
 Docker (nginx, php-fpm, MySQL, Adminer), conexión PDO, sesión/CSRF/origen, vistas, pruebas unitarias (`src/tests/unit.php`), usuarios de BD con mínimo privilegio.
 
 ## UI · Interfaz migrada ✅
-CSS/JS en `src/public/`, layouts (`auth`, `app`, `admin`), 7 vistas de usuario (`views/app/`), `registro`, `recuperar`, y el dashboard de administración (`admin/index`, `admin/usuarios`) con datos de ejemplo servidos por `Controller\PreviewController` (temporal: cada método se reemplaza por su controlador real en su fase y la clase se borra al final).
+CSS/JS en `src/public/`, layouts (`auth`, `app`, `admin`), 7 vistas de usuario (`views/app/`), `registro`, `recuperar`, y el dashboard de administración (`admin/index`, `admin/usuarios`) con datos de ejemplo servidos por `Controller\PreviewController` (temporal; se reemplazó por controladores reales fase a fase y la clase se **eliminó en la Fase 7**).
 
 **Vistas que faltan** (se crean en la fase que las usa, con el mismo sistema de diseño): `cuenta-form` y `categorias` (Fase 3), `admin/categorias` (Fase 3), formularios de presupuesto y de meta/aporte (Fase 5), `perfil` (Fase 7).
 
@@ -110,7 +110,7 @@ Notas de la implementación:
 - **CSV (`exportar.php`):** es un `GET` que solo lee (sin CSRF) y exporta los movimientos del usuario con los mismos filtros del listado; también se llega desde reportes (el mes mostrado). Formato pensado para Excel en español: separador `;`, BOM UTF-8, fechas ISO y montos con coma decimal sin separador de miles (`18000,50`). Se genera por lotes de 1.000 filas con **paginación por cursor** (`fecha`, `id`) en vez de `OFFSET`, con un tope de 100.000 filas. `Export\Csv` neutraliza la inyección de fórmulas en todo texto del usuario (descripción, categoría y cuenta), también si empieza por espacios, tabulador o retorno de carro, y entrecomilla lo que lleve `;`, comillas o saltos de línea. El administrador exporta solo lo suyo (RNF-21).
 - **Contraste (RNF-13):** en la tarjeta oscura del panel el monto de un ingreso heredaba un teal pensado para fondo claro; ahora hereda el color claro y el signo +/− sigue indicando ingreso o gasto.
 
-## Fase 7 · Cierre
+## Fase 7 · Cierre ✅
 - `perfil.php` (vista nueva): nombre, moneda, cambio de contraseña (RF-03).
 - Recuperación por correo (RF-04) con el servicio elegido en D7: token de un solo uso, hash en BD, caducidad corta, misma respuesta exista o no el correo.
 - Eliminar cuenta y datos (RNF-20) según D5, con prueba de que no quedan filas del usuario en ninguna tabla.
@@ -118,8 +118,43 @@ Notas de la implementación:
 - **Verificación transversal** (hasta ahora sin dueño): tiempos de carga (RNF-08), prueba de carga ligera hacia 500 usuarios simultáneos (RNF-19), navegadores soportados (RNF-17) y plan de disponibilidad (RNF-14).
 - Borrar `PreviewController` y comprobar que no quedan rutas de maqueta.
 
+Notas de la implementación:
+
+**Recuperación de contraseña (RF-04, D7).**
+- `recuperar.php` pide el enlace y `restablecer.php?token=` elige la clave nueva. El token (256 bits al azar) vale **30 minutos** y se usa **una sola vez**; en la BD solo está su hash SHA-256 (tabla `restablecimientos`) y pedir uno nuevo anula el anterior. Se gasta dentro de una transacción con la fila bloqueada, así que dos usos simultáneos no se pisan.
+- **Misma respuesta exista o no el correo** (RNF-24): el aviso es idéntico, y además la respuesta se envía **antes** de hacer el trabajo (`fastcgi_finish_request`), de modo que el tiempo de respuesta tampoco delata nada. Una cuenta desactivada tampoco recibe correo. Cada petición cuenta para el límite (5 por correo y 20 por IP en 15 min); al pasarse no se envía nada pero la respuesta no cambia.
+- **D7 implementada:** `Mail\SmtpMailer` es un cliente SMTP mínimo sin dependencias (EHLO, STARTTLS o TLS, AUTH LOGIN, DATA con *dot-stuffing*), configurado con `MAIL_*`; `Mail\Message` arma el mensaje (puro) y rechaza saltos de línea en cabeceras (inyección de `Bcc:`) y direcciones inválidas. En desarrollo el correo llega a **Mailpit** (`http://127.0.0.1:8025`) y las pruebas leen ahí los correos reales.
+- **Cambiar la contraseña cierra las demás sesiones:** la sesión guarda una huella del hash con el que se abrió y `resolve_user_session()` la compara en cada petición, sin añadir columnas. La sesión desde la que se cambia la clave sigue abierta (con id renovado). Un rehash al iniciar sesión ya devuelve el usuario con el hash nuevo (si no, la sesión recién abierta se cerraría).
+
+**Perfil (RF-03).** `perfil.php` (también para el administrador): nombre, moneda, cambio de contraseña (pide la actual, con límite de intentos propio, RNF-24) y eliminar la cuenta. La **moneda** solo cambia el símbolo con el que se muestran los montos (`$`, `US$`, `€`, `MX$`): Lucas no convierte entre monedas (fuera de alcance).
+
+**Eliminar la cuenta (RNF-20, D5).** `Usuarios\EliminarCuenta` borra, en una transacción y en un orden explícito (aportes → movimientos → presupuestos → metas → cuentas → categorías → tokens → usuario), todo lo del usuario, y también los intentos de acceso que guardan el hash de su correo. Pide la contraseña. Un **administrador no puede eliminar su propia cuenta** (como RF-33: otro administrador debe quitarle el rol antes). Las pruebas comprueban fila por fila, en las 9 tablas, que no queda nada y que los datos de otra persona quedan intactos.
+
+**Migraciones.** `bin/as-migrator php scripts/migrate.php` aplica `database/migrations/*.sql` (idempotentes) y las anota en `migraciones`; la 001 crea `restablecimientos` y amplía los tipos de `intentos_acceso`. Una base nueva ya trae todo en `01-schema.sql`. `PreviewController` se **eliminó**: ya no queda ninguna pantalla de maqueta.
+
+**Producción (RNF-07).** `docker-compose.prod.yml` (solo, no como complemento) con `APP_ENV=production`, nginx con TLS 1.2/1.3, HSTS, redirección 80→443, límite de tasa en las páginas de acceso, reinicio automático, sin Adminer/Mailpit y sin puertos de la BD. **Se verificó levantando la pila de verdad** con un certificado autofirmado: HTTP/2, HSTS, cookie `Secure; HttpOnly; SameSite=Lax`, `status.php` en 404, errores ocultos, inicio de sesión por HTTPS y un POST con origen `http://` rechazado (403). Guía completa en [`DESPLIEGUE.md`](DESPLIEGUE.md). Las cabeceras de seguridad se comparten en `docker/nginx/security-headers.conf` (un `add_header` dentro de un `location` reemplaza al del nivel superior, así que se incluye en cada bloque).
+
+**Copias de seguridad (RNF-15).** `bin/backup-db` (volcado consistente y comprimido, comprobado, permisos 600, conserva las últimas 8) y `bin/restore-db` (restaura solo en una base vacía; por defecto en `lucas_test_restore`). `tests/backup.sh` hace una copia real, la restaura y compara las filas de cada tabla. Programarla cada semana está en `DESPLIEGUE.md`. **Una copia en el mismo servidor no protege de perderlo:** hay que sincronizarla fuera.
+
+**Rendimiento (RNF-08, RNF-19)** — medido con `tests/carga.py` (500 usuarios con sesión: inicio de sesión con bcrypt y luego panel, movimientos, cuentas, presupuestos, reportes, metas y categorías, con 2–8 s de «lectura» entre páginas), en una máquina de **4 núcleos** y con el generador de carga en la misma máquina:
+
+| Escenario | Peticiones | Errores | Páginas p95 | Login p95 |
+|---|---|---|---|---|
+| 500 usuarios llegando en 150 s, 90 s de carga | 17.711 (71,5 pet/s) | **0** | **7 ms** (máx. 0,3 s) | 0,26 s |
+| 500 inicios de sesión en 20 s (oleada extrema), 5 procesos PHP | 6.726 | 0 | 5,4 s | 8,0 s |
+| Lo mismo con 40 procesos PHP | 6.932 | 0 | 4,3 s | 9,2 s |
+
+El primer escenario es el que describe RNF-19 y lo cumple con holgura. La oleada extrema **no la arregla subir los procesos**: el límite es la CPU, porque el inicio de sesión cuesta ~240 ms de bcrypt *a propósito* (coste 12) y 500 en 20 s son ~25 por segundo contra una capacidad de unos 16 por segundo en 4 núcleos; por eso solo se encolan, sin errores. Se mantiene el coste 12 (rebajarlo es una decisión de seguridad, no de rendimiento). Se dejó el pool en 40 procesos (configurable con `PHP_FPM_*`) como margen para consultas lentas, aunque la mejora medida fue pequeña. **RNF-08:** una primera visita pesa unos **19 KB comprimidos** (CSS/JS con gzip, y caché de 30 días con `?v=<fecha>`), ≈0,64 s a 4 Mbps con latencia incluida. El HTML **no** se comprime a propósito: con el token CSRF y texto reflejado sería vulnerable a BREACH.
+
+**Accesibilidad (RNF-13).** `axe-core` 4.10 (WCAG 2.0/2.1/2.2 A y AA y buenas prácticas) sobre **21 combinaciones de pantalla** (13 de usuario, 4 públicas y 4 de administración, con datos reales): **0 violaciones**. Se comprobó con un control positivo (errores inyectados a propósito: lo detectó). `axe` no puede evaluar el contraste sobre el degradado de la tarjeta oscura del panel; se calculó a mano: entre 7,6:1 y 17,8:1 (mínimo 4,5:1). A mano también: enlace «Saltar al contenido», indicador de foco en los 22 elementos enfocables del formulario de movimiento, diálogo de confirmación (foco dentro, Esc cierra y devuelve el foco), sin desplazamiento horizontal a 320 px en 9 pantallas, zoom del 200 %. **No se probó con un lector de pantalla real** (NVDA, VoiceOver): `axe` y las pruebas de teclado detectan una parte de los problemas, no todos.
+
+**Navegadores (RNF-17).** Solo se ejecutó en **Chromium**; no hay Firefox ni Safari en este entorno. Lo que se hizo fue **auditar las características usadas**: el JavaScript es casi ES5 (solo `<dialog>.showModal()`, Safari ≥ 15.4) y el CSS usa `color-mix()` (Chrome/Edge ≥ 111, Firefox ≥ 113, Safari ≥ 16.2), `inset`, `:focus-visible`, `clamp()`, `dvh` (con alternativa `vh`) y `backdrop-filter` (decorativo, con prefijo `-webkit-`). Todo es anterior a «las últimas dos versiones» de 2026, **pero no está verificado en los otros motores**: conviene una pasada manual en Firefox y Safari antes de lanzar.
+
+**Disponibilidad (RNF-14).** `salud.php` (200 `{"estado":"ok"}` o 503, sin revelar nada) para un monitor externo, `restart: unless-stopped`, healthcheck en nginx y copias semanales. El 98 % mensual son ~14 h de caída al mes: una máquina con reinicio automático y copias lo cumple, pero no sobrevive a una avería de hardware (haría falta un segundo servidor).
 ## Pruebas (todas las fases)
 - `docker compose exec php php tests/unit.php` — lógica pura (`src/tests/unit.php`).
 - `bin/as-migrator php tests/integration.php` — repositorios contra una BD temporal `lucas_test_*` (D6); se crea en la Fase 1.
+- `tests/backup.sh` — copia de seguridad real, restauración y comparación de filas (Fase 7).
 - `tests/smoke.sh` — punta a punta con `curl` desde la raíz (flujos, CSRF, permisos, 403/404); se crea en la Fase 1.
-- `tests/run-all.sh` — todo lo anterior; se ejecuta antes de dar una fase por terminada.
+- `tests/carga.py` — carga con 500 usuarios (manual, no entra en `run-all.sh`; Fase 7).
+- `tests/run-all.sh` — todo lo anterior (salvo la carga); se ejecuta antes de dar una fase por terminada.

@@ -30,11 +30,11 @@ El proyecto avanza por fases, cada una con criterios de «terminado» verificabl
 | 4 | Movimientos: alta, edición, eliminación, filtros y paginación; el saldo de las cuentas se actualiza solo | Completa |
 | 5 | Presupuestos mensuales con avisos al 80 % y al superar el límite, y metas de ahorro con aportes desde una cuenta | Completa |
 | 6 | Panel con el resumen del mes, reportes (gastos por categoría y evolución mensual) y exportación de movimientos a CSV | Completa |
-| 7 | Perfil, recuperación de contraseña, HTTPS y endurecimiento final | Siguiente (Fase 7) |
+| 7 | Perfil, recuperación de contraseña por correo, eliminar la cuenta, HTTPS, copias de seguridad y verificación de rendimiento y accesibilidad | Completa |
 
-> Hoy casi todo es real: registro, login, roles, administración de usuarios, cuentas, categorías, movimientos, presupuestos, metas, panel,
-> reportes y exportación a CSV. Faltan el perfil, la recuperación de contraseña (su página es una maqueta: no envía correos) y el
-> endurecimiento final. Las secciones de *Funcionalidades* describen el alcance objetivo, no lo ya implementado.
+> Todas las fases están completas. La guía para ponerlo en un servidor (HTTPS, correo real, copias de seguridad, monitorización y capacidad)
+> está en [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md). Conviene una pasada manual en Firefox y Safari y una prueba con lector de pantalla antes de
+> lanzar (ver las notas de la Fase 7 en [`docs/PLAN.md`](docs/PLAN.md)).
 
 ## Funcionalidades previstas
 
@@ -113,6 +113,7 @@ La primera vez, MySQL crea la base y las tablas, y PHP genera `vendor/`. Espera 
 | Aplicación | <http://localhost:8090> |
 | Diagnóstico (solo `APP_ENV=local`) | <http://localhost:8090/status.php> |
 | Adminer (servidor `db`, base `lucas`) | <http://localhost:8091> |
+| Mailpit (correos que envía la aplicación, p. ej. recuperar contraseña) | <http://localhost:8025> |
 
 Todos los puertos escuchan únicamente en `127.0.0.1`.
 
@@ -120,6 +121,7 @@ Todos los puertos escuchan únicamente en `127.0.0.1`.
 [panel](http://localhost:8090/panel.php) · [movimientos](http://localhost:8090/movimientos.php) ·
 [cuentas](http://localhost:8090/cuentas.php) · [presupuestos](http://localhost:8090/presupuestos.php) ·
 [metas](http://localhost:8090/metas.php) · [reportes](http://localhost:8090/reportes.php) ·
+[perfil](http://localhost:8090/perfil.php) · [recuperar contraseña](http://localhost:8090/recuperar.php) ·
 [admin](http://localhost:8090/admin/index.php) · [usuarios](http://localhost:8090/admin/usuarios.php)
 
 > Las claves de `.env.example` son de desarrollo y están pensadas solo para tu máquina. Cámbialas antes de exponer la aplicación.
@@ -131,7 +133,9 @@ Todo sale de `.env` (nunca se versiona; la plantilla es `.env.example`).
 | Variable | Descripción | Por defecto |
 |---|---|---|
 | `APP_ENV` | `local`: errores en pantalla y `status.php`. Cualquier otro valor: modo seguro. | `local` |
-| `APP_PORT` · `ADMINER_PORT` | Puertos locales | `8090` · `8091` |
+| `APP_PORT` · `ADMINER_PORT` · `MAILPIT_PORT` | Puertos locales | `8090` · `8091` · `8025` |
+| `MAIL_HOST` · `MAIL_PORT` · `MAIL_ENCRYPTION` · `MAIL_USER` · `MAIL_PASSWORD` · `MAIL_FROM` | SMTP (en desarrollo, Mailpit; ver `docs/DESPLIEGUE.md`) | `mailpit` · `1025` · `none` |
+| `PHP_FPM_MAX_CHILDREN` (y `START_SERVERS`, `MIN_SPARE`, `MAX_SPARE`) | Tamaño del pool de PHP-FPM | `40` |
 | `APP_ORIGIN` | Origen público para validar los POST; con HTTPS activa la cookie `Secure` | `http://localhost:APP_PORT` |
 | `DB_HOST` · `DB_PORT` · `DB_DATABASE` | Conexión a MySQL | `db` · `3306` · `lucas` |
 | `DB_USERNAME` · `DB_PASSWORD` | Usuario de la aplicación (mínimo privilegio) | `lucas_app` |
@@ -163,7 +167,11 @@ docker compose logs -f php                          # errores de PHP
 docker compose exec php php tests/unit.php          # pruebas unitarias
 bin/as-migrator php tests/integration.php           # repositorios contra una BD temporal
 tests/smoke.sh                                      # punta a punta con curl (con la app en marcha)
-tests/run-all.sh                                    # las tres suites, en orden
+tests/backup.sh                                     # copia de seguridad real + restauración
+tests/run-all.sh                                    # todas las suites, en orden
+python3 tests/carga.py --setup --users 500          # prueba de carga (ver docs/DESPLIEGUE.md; --cleanup al terminar)
+bin/as-migrator php scripts/migrate.php             # aplica las migraciones pendientes
+bin/backup-db                                       # copia de seguridad de la base (semanal en producción)
 bin/as-migrator php scripts/create-admin.php correo # crear un administrador (pide la contraseña)
 docker compose exec php composer dump-autoload      # tras añadir clases
 bin/as-migrator php scripts/<script>.php            # scripts que cambian datos o esquema (usuario de migraciones)

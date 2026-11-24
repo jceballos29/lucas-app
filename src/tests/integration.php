@@ -19,6 +19,7 @@ use App\Auth\LimitadorIntentos;
 use App\Config\Environment;
 use App\Container;
 use App\Database\Connection;
+use App\Database\SqlScript;
 use App\Database\Transaction;
 use App\Support\Dinero;
 
@@ -57,13 +58,8 @@ putenv("DB_DATABASE=$dbName");
 $pdo = Connection::create();
 
 foreach (['01-schema.sql', '02-seed.sql'] as $file) {
-    $sql = (string) file_get_contents(dirname(__DIR__, 2) . '/database/' . $file);
-    $sql = preg_replace('/^--.*$/m', '', $sql) ?? '';
-
-    foreach (preg_split('/;\s*(?:\n|$)/', $sql) ?: [] as $statement) {
-        if (trim($statement) !== '') {
-            $pdo->exec($statement);
-        }
+    foreach (SqlScript::statements((string) file_get_contents(dirname(__DIR__, 2) . '/database/' . $file)) as $statement) {
+        $pdo->exec($statement);
     }
 }
 
@@ -772,5 +768,197 @@ same('con filtros solo trae lo filtrado', true, (static function () use ($movs, 
 })());
 same('un cursor pasado el final no trae nada', [], $movs->searchAfter($ines, $sinF, ['fecha' => '1999-01-01', 'id' => 1], 50));
 same('otro usuario no recibe los míos', 2, count($movs->searchAfter($jaime, $sinF, null, 50)));
+
+// ---- Recuperación de contraseña (RF-04) ---------------------------------------------------------------------------------
+
+section('RecuperacionClave: pedir el enlace');
+$correos = new class implements App\Mail\Mailer {
+    /** @var list<array{to: string, subject: string, body: string}> */
+    public array $enviados = [];
+    public bool $fallar = false;
+    public function send(string $to, string $subject, string $body): void
+    {
+        if ($this->fallar) {
+            throw new App\Mail\MailException('SMTP caído');
+        }
+        $this->enviados[] = ['to' => $to, 'subject' => $subject, 'body' => $body];
+    }
+};
+$container->useMailer($correos);
+$tokens = $container->restablecimientos();
+$recup = new App\Auth\RecuperacionClave($container->pdo(), $usuarios, $tokens, $correos, 'https://lucas.ejemplo.com');
+$olga = (int) $usuarios->create('Olga', 'olga@correo.com', password_hash('clave-vieja-1', PASSWORD_DEFAULT));
+$cuentaTokens = static fn (int $uid): int => (int) $pdo->query("SELECT COUNT(*) FROM restablecimientos WHERE id_usuario = $uid")->fetchColumn();
+$tokenDe = static function (array $mail): string {
+    preg_match('/token=([a-f0-9]{64})/', $mail['body'], $m);
+    return $m[1] ?? '';
+};
+
+$recup->solicitar('olga@correo.com');
+same('un correo registrado recibe un mensaje', 1, count($correos->enviados));
+$mail = $correos->enviados[0];
+same('dirigido a esa persona, con asunto claro', ['olga@correo.com', 'Restablece tu contraseña de Lucas'], [$mail['to'], $mail['subject']]);
+$token1 = $tokenDe($mail);
+same('con un enlace con token de 64 hexadecimales hacia el origen configurado', true, str_contains($mail['body'], 'https://lucas.ejemplo.com/restablecer.php?token=') && strlen($token1) === 64);
+same('el cuerpo saluda por el nombre y avisa de la vigencia', true, str_contains($mail['body'], 'Hola Olga') && str_contains($mail['body'], '30 minutos'));
+same('en la BD NO está el token, solo su hash (SHA-256)', [0, 1], [(int) $pdo->query("SELECT COUNT(*) FROM restablecimientos WHERE token_hash = '$token1'")->fetchColumn(), (int) $pdo->query('SELECT COUNT(*) FROM restablecimientos WHERE token_hash = ' . $pdo->quote(hash('sha256', $token1)))->fetchColumn()]);
+same('el enlace vale', true, $recup->esValido($token1));
+$expira = (int) $pdo->query("SELECT TIMESTAMPDIFF(MINUTE, NOW(), expira_en) FROM restablecimientos WHERE id_usuario = $olga")->fetchColumn();
+same('caduca en unos 30 minutos', true, $expira >= 29 && $expira <= 30);
+
+$antes = count($correos->enviados);
+$recup->solicitar('nadie@correo.com');
+same('un correo que no existe: no se envía nada', $antes, count($correos->enviados));
+same('ni se guarda nada', 0, (int) $pdo->query("SELECT COUNT(*) FROM restablecimientos WHERE id_usuario NOT IN ($olga)")->fetchColumn());
+$recup->solicitar('  OLGA@Correo.com ');
+same('el correo no distingue mayúsculas ni espacios', $antes + 1, count($correos->enviados));
+$token2 = $tokenDe($correos->enviados[$antes]);
+same('pedir otro enlace anula el anterior', [false, true], [$recup->esValido($token1), $recup->esValido($token2)]);
+same('queda un solo enlace pendiente', 1, $cuentaTokens($olga));
+$pdo->exec("UPDATE usuarios SET activo = 0 WHERE id_usuario = $olga");
+$antes = count($correos->enviados);
+$recup->solicitar('olga@correo.com');
+same('una cuenta desactivada no recibe enlaces', $antes, count($correos->enviados));
+$pdo->exec("UPDATE usuarios SET activo = 1 WHERE id_usuario = $olga");
+
+$correos->fallar = true;
+$sinError = true;
+try {
+    $recup->solicitar('olga@correo.com');
+} catch (Throwable) {
+    $sinError = false;
+}
+same('si el servidor de correo falla, no se propaga el error (se registra)', true, $sinError);
+$correos->fallar = false;
+
+section('RecuperacionClave: usar el enlace');
+$recup->solicitar('olga@correo.com');
+$token = $tokenDe($correos->enviados[array_key_last($correos->enviados)]);
+same('un token con forma inválida no sirve', [false, false], [$recup->esValido('abc'), $recup->restablecer('abc', 'clave-nueva-1')]);
+same('un token con forma válida pero falso no sirve', false, $recup->restablecer(str_repeat('0', 64), 'clave-nueva-1'));
+same('restablecer con el token vigente', true, $recup->restablecer($token, 'clave-nueva-1'));
+$olgaAhora = $usuarios->findById($olga);
+same('la contraseña nueva funciona y la vieja ya no', [true, false], [password_verify('clave-nueva-1', (string) $olgaAhora?->contrasenaHash), password_verify('clave-vieja-1', (string) $olgaAhora?->contrasenaHash)]);
+same('el token queda gastado: no se puede usar dos veces', [false, false], [$recup->esValido($token), $recup->restablecer($token, 'otra-clave-99')]);
+same('y la contraseña no cambió con el segundo intento', true, password_verify('clave-nueva-1', (string) $usuarios->findById($olga)?->contrasenaHash));
+same('el enlace se marcó como usado', 1, (int) $pdo->query("SELECT COUNT(*) FROM restablecimientos WHERE id_usuario = $olga AND usado_en IS NOT NULL")->fetchColumn());
+
+$recup->solicitar('olga@correo.com');
+$tokenViejo = $tokenDe($correos->enviados[array_key_last($correos->enviados)]);
+$pdo->exec("UPDATE restablecimientos SET expira_en = NOW() - INTERVAL 1 MINUTE WHERE id_usuario = $olga AND usado_en IS NULL");
+same('un enlace caducado no sirve', [false, false], [$recup->esValido($tokenViejo), $recup->restablecer($tokenViejo, 'clave-nueva-2')]);
+same('y la contraseña sigue igual', true, password_verify('clave-nueva-1', (string) $usuarios->findById($olga)?->contrasenaHash));
+
+$recup->solicitar('olga@correo.com');
+$tokenA = $tokenDe($correos->enviados[array_key_last($correos->enviados)]);
+$pdo->exec("INSERT INTO restablecimientos (id_usuario, token_hash, expira_en) VALUES ($olga, " . $pdo->quote(hash('sha256', str_repeat('c', 64))) . ', NOW() + INTERVAL 10 MINUTE)');
+same('al usar un enlace, los demás pendientes se borran', [true, 1], [$recup->restablecer($tokenA, 'clave-nueva-3'), $cuentaTokens($olga)]);
+$recup->solicitar('olga@correo.com');
+$tokenB = $tokenDe($correos->enviados[array_key_last($correos->enviados)]);
+$pdo->exec("UPDATE usuarios SET activo = 0 WHERE id_usuario = $olga");
+same('una cuenta desactivada no puede restablecer, aunque tenga el enlace', [false, true], [$recup->restablecer($tokenB, 'clave-nueva-4'), password_verify('clave-nueva-3', (string) $usuarios->findById($olga)?->contrasenaHash)]);
+$pdo->exec("UPDATE usuarios SET activo = 1 WHERE id_usuario = $olga");
+same('y el enlace sigue sin gastarse (no se perdió por el intento fallido)', true, $recup->esValido($tokenB));
+
+$o2 = Connection::create();
+$o2->exec('SET SESSION innodb_lock_wait_timeout = 1');
+$recup2 = new App\Auth\RecuperacionClave($o2, new App\Repository\UsuarioRepository($o2), new App\Repository\RestablecimientoRepository($o2), $correos, 'https://x');
+Transaction::run($container->pdo(), function () use ($tokens, $tokenB, $recup2): void {
+    $tokens->lockValid(hash('sha256', $tokenB));
+    $codigo = null;
+    try {
+        $recup2->restablecer($tokenB, 'carrera-1234');
+    } catch (PDOException $e) {
+        $codigo = (int) ($e->errorInfo[1] ?? 0);
+    }
+    same('dos usos simultáneos del mismo enlace: el segundo espera (timeout 1205), no se pisan', 1205, $codigo);
+});
+
+section('Sesión y rehash: la huella debe coincidir con la BD');
+$usuarios->updatePasswordHash($olga, password_hash('clave-rehash-1', PASSWORD_BCRYPT, ['cost' => 4]));
+$entra = (new Autenticador($usuarios))->authenticate('olga@correo.com', 'clave-rehash-1');
+same('tras el rehash, el usuario devuelto lleva el hash que quedó en la BD', (string) $usuarios->findById($olga)?->contrasenaHash, $entra?->contrasenaHash);
+same('así la huella de sesión coincide y no se cierra la sesión recién abierta', password_fingerprint((string) $usuarios->findById($olga)?->contrasenaHash), password_fingerprint((string) $entra?->contrasenaHash));
+
+// ---- Perfil y eliminación de la cuenta (RF-03, RNF-20, D5) ----------------------------------------------------------------
+
+section('Perfil: updateProfile');
+$usuarios->updateProfile($olga, 'Olga Lucía', 'EUR');
+same('se guardan nombre y moneda', ['Olga Lucía', 'EUR'], [$usuarios->findById($olga)?->nombre, $usuarios->findById($olga)?->moneda]);
+same('lo demás no cambia', ['olga@correo.com', 'usuario'], [$usuarios->findById($olga)?->correo, $usuarios->findById($olga)?->rol]);
+
+section('EliminarCuenta: borra TODO y solo lo del usuario');
+$borrar = $container->eliminarCuenta();
+$vic = (int) $usuarios->create('Víctor', 'victor@correo.com', 'x');
+$otra = (int) $usuarios->create('Otra persona', 'otra@correo.com', 'x');
+$vcE = $cuentas->create($vic, 'Efectivo', 'efectivo', '1000.00');
+$vcB = $cuentas->create($vic, 'Banco', 'bancaria', '500.00');
+$ocE = $cuentas->create($otra, 'Efectivo de otra', 'efectivo', '700.00');
+$vCat = $categorias->create($vic, 'Categoría de Víctor', 'gasto', '#123456');
+$oCat = $categorias->create($otra, 'Categoría de otra', 'gasto', '#654321');
+$kDef = (int) $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'gasto' LIMIT 1")->fetchColumn();
+$ins($vic, $vcE, $vCat, 'gasto', '10.00', '2026-11-01');   // usa su propia categoría
+$ins($vic, $vcE, $kDef, 'gasto', '20.00', '2026-11-02');   // usa una predeterminada
+$ins($vic, $vcB, $kDef, 'gasto', '30.00', '2026-11-03');
+$ins($otra, $ocE, $oCat, 'gasto', '40.00', '2026-11-04');
+$presupuestos->create($vic, $vCat, 11, 2026, '100.00');
+$presupuestos->create($vic, $kDef, 11, 2026, '200.00');
+$presupuestos->create($otra, $kDef, 11, 2026, '300.00');
+$mV = $metas->create($vic, 'Meta de Víctor', '5000.00', null);
+$mO = $metas->create($otra, 'Meta de otra', '5000.00', null);
+$gm->aportar($vic, $mV, ['id_cuenta' => $vcE, 'monto' => '100.00', 'fecha' => '2026-11-05']);
+$gm->aportar($vic, $mV, ['id_cuenta' => $vcB, 'monto' => '50.00', 'fecha' => '2026-11-06']);
+$gm->aportar($otra, $mO, ['id_cuenta' => $ocE, 'monto' => '60.00', 'fecha' => '2026-11-06']);
+$pdo->exec("INSERT INTO restablecimientos (id_usuario, token_hash, expira_en) VALUES ($vic, " . $pdo->quote(str_repeat('d', 64)) . ', NOW() + INTERVAL 10 MINUTE)');
+$limVic = new LimitadorIntentos($container->intentos());
+$limVic->registrar('login', 'victor@correo.com', '10.1.1.1');
+$limVic->registrar('recuperacion', 'victor@correo.com', '10.1.1.1');
+$filasDe = static function (int $uid) use ($pdo): array {
+    $q = static fn (string $sql): int => (int) $pdo->query($sql)->fetchColumn();
+    return [
+        'usuarios' => $q("SELECT COUNT(*) FROM usuarios WHERE id_usuario = $uid"),
+        'cuentas' => $q("SELECT COUNT(*) FROM cuentas WHERE id_usuario = $uid"),
+        'categorias' => $q("SELECT COUNT(*) FROM categorias WHERE id_usuario = $uid"),
+        'transacciones' => $q("SELECT COUNT(*) FROM transacciones WHERE id_usuario = $uid"),
+        'presupuestos' => $q("SELECT COUNT(*) FROM presupuestos WHERE id_usuario = $uid"),
+        'metas' => $q("SELECT COUNT(*) FROM metas_ahorro WHERE id_usuario = $uid"),
+        'aportes' => $q("SELECT COUNT(*) FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario = $uid) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_usuario = $uid)"),
+        'restablecimientos' => $q("SELECT COUNT(*) FROM restablecimientos WHERE id_usuario = $uid"),
+    ];
+};
+$antesVic = $filasDe($vic);
+same('antes: Víctor tiene datos en todas las tablas', true, !in_array(0, $antesVic, true));
+$otraAntes = $filasDe($otra);
+$catsDef = (int) $pdo->query('SELECT COUNT(*) FROM categorias WHERE id_usuario IS NULL')->fetchColumn();
+$huellasAntes = (int) $pdo->query("SELECT COUNT(*) FROM intentos_acceso WHERE clave = '" . LimitadorIntentos::claveCorreo('victor@correo.com') . "'")->fetchColumn();
+same('y hay intentos de acceso con el hash de su correo', 2, $huellasAntes);
+
+same('eliminar la cuenta de un usuario normal', 'ok', $borrar->eliminar($vic));
+same('NO queda ninguna fila suya en ninguna tabla (RNF-20)', array_fill_keys(array_keys($antesVic), 0), $filasDe($vic));
+same('ni rastro de su correo en los intentos de acceso', 0, (int) $pdo->query("SELECT COUNT(*) FROM intentos_acceso WHERE clave = '" . LimitadorIntentos::claveCorreo('victor@correo.com') . "'")->fetchColumn());
+same('los datos de otra persona quedan intactos', $otraAntes, $filasDe($otra));
+same('y las categorías predeterminadas también', $catsDef, (int) $pdo->query('SELECT COUNT(*) FROM categorias WHERE id_usuario IS NULL')->fetchColumn());
+same('el saldo de la otra persona sigue intacto (700 − 40 de gasto − 60 de aporte)', '600.00', (string) $cuentas->findOwned($otra, $ocE)?->saldo);
+same('eliminarla otra vez: ya no existe', 'no_existe', $borrar->eliminar($vic));
+same('un usuario que no existe', 'no_existe', $borrar->eliminar(999999));
+$adminAntes = $usuarios->findById($adminId);
+same('un administrador no puede eliminar su propia cuenta', 'es_admin', $borrar->eliminar($adminId));
+same('y su cuenta sigue ahí', $adminAntes?->correo, $usuarios->findById($adminId)?->correo);
+same('eliminar a quien no tiene datos también funciona', ['ok', 0], (static function () use ($usuarios, $borrar, $filasDe): array {
+    $vacio = (int) $usuarios->create('Vacío', 'vacio@correo.com', 'x');
+    return [$borrar->eliminar($vacio), $filasDe($vacio)['usuarios']];
+})());
+
+section('Migraciones');
+same('las migraciones son idempotentes: aplicar de nuevo la 001 no falla ni cambia nada', true, (static function () use ($pdo): bool {
+    foreach (SqlScript::statements((string) file_get_contents(dirname(__DIR__, 2) . '/database/migrations/001-recuperacion-de-clave.sql')) as $s) {
+        $pdo->exec($s);
+    }
+    return (int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'restablecimientos'")->fetchColumn() === 1;
+})());
+same('intentos_acceso admite los tipos nuevos', true, (static function () use ($pdo): bool {
+    $pdo->exec("INSERT INTO intentos_acceso (tipo, clave) VALUES ('recuperacion', 'x'), ('clave', 'y')");
+    return true;
+})());
 
 finish();

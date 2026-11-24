@@ -150,7 +150,9 @@ same('contraseña incorrecta', null, $auth->authenticate('ana@correo.com', 'mala
 same('correo inexistente', null, $auth->authenticate('nadie@correo.com', 'secreta123'));
 same('usuario inactivo con la clave correcta no entra', null, $auth->authenticate('baja@correo.com', 'secreta123'));
 same('una clave correcta no vuelve a hashear si el hash está al día', null, $fake->newHash);
-same('un hash viejo se rehashea al entrar', 3, $auth->authenticate('vieja@correo.com', 'secreta123')?->id);
+$viejo = $auth->authenticate('vieja@correo.com', 'secreta123');
+same('un hash viejo se rehashea al entrar', 3, $viejo?->id);
+same('y el usuario devuelto lleva ya el hash NUEVO (la huella de sesión debe coincidir con la BD)', $fake->newHash, $viejo?->contrasenaHash);
 same('el hash nuevo es válido y más fuerte', true, $fake->newHash !== null && password_verify('secreta123', $fake->newHash) && !password_needs_rehash($fake->newHash, PASSWORD_DEFAULT));
 same('el hash de la seed del admin corresponde a la clave documentada', true, (static function (): bool {
     preg_match("/'(\\\$2y\\\$[^']+)'/", (string) file_get_contents(dirname(__DIR__, 2) . '/database/02-seed.sql'), $m);
@@ -538,5 +540,115 @@ same('los porcentajes suman 100', 100.0, round(array_sum(array_column($g7['items
 same('el 33,3 % de un tercio', 33.3, K::agrupar([$fila('A', '1'), $fila('B', '1'), $fila('C', '1')])['items'][0]['percent']);
 same('sin gastos', ['items' => [], 'total' => '0.00'], K::agrupar([]));
 same('con total cero no divide por cero', 0.0, K::agrupar([$fila('A', '0.00')])['items'][0]['percent']);
+
+section('Mail\Message: construcción de correos (RF-04)');
+use App\Mail\Message as Msg;
+$fecha = 'Tue, 24 Nov 2026 10:00:00 -0500';
+$msg = Msg::build('lucas@ejemplo.com', 'Lucas', 'ana@correo.com', 'Restablece tu contraseña', "Hola María,\n.línea con punto\nFin", $fecha, 'abc123@ejemplo.com');
+[$cabeceras, $cuerpo] = explode("\r\n\r\n", $msg, 2);
+same('lleva From, To y Date', true, str_contains($cabeceras, 'From: Lucas <lucas@ejemplo.com>') && str_contains($cabeceras, 'To: <ana@correo.com>') && str_contains($cabeceras, "Date: $fecha"));
+same('el asunto con tildes va codificado (RFC 2047)', 'Subject: =?UTF-8?B?' . base64_encode('Restablece tu contraseña') . '?=', explode("\r\n", $cabeceras)[3]);
+same('declara UTF-8 y base64', true, str_contains($cabeceras, 'charset=UTF-8') && str_contains($cabeceras, 'Content-Transfer-Encoding: base64'));
+same('el cuerpo decodifica exactamente al texto original (con tildes y líneas que empiezan con punto)', "Hola María,\n.línea con punto\nFin", rtrim(base64_decode(str_replace("\r\n", '', $cuerpo)), "\n"));
+same('ninguna línea del cuerpo pasa de 76 caracteres', true, (static function () use ($cuerpo): bool {
+    foreach (explode("\r\n", $cuerpo) as $linea) {
+        if (strlen($linea) > 76) {
+            return false;
+        }
+    }
+    return true;
+})());
+same('un asunto ASCII no se codifica', 'Hola', Msg::encodeHeader('Hola'));
+same('el asunto con eñe sí', true, str_starts_with(Msg::encodeHeader('Ñandú'), '=?UTF-8?B?'));
+foreach ([
+    'un salto de línea en el destinatario (Bcc inyectado)' => ['lucas@ejemplo.com', 'Lucas', "ana@correo.com\r\nBcc: espia@evil.com", 'Asunto'],
+    'un salto de línea en el asunto' => ['lucas@ejemplo.com', 'Lucas', 'ana@correo.com', "Asunto\r\nBcc: espia@evil.com"],
+    'un salto de línea en el remitente' => ["lucas@ejemplo.com\nBcc: x@y.com", 'Lucas', 'ana@correo.com', 'Asunto'],
+    'un salto de línea en el nombre del remitente' => ['lucas@ejemplo.com', "Lucas\r\nBcc: x@y.com", 'ana@correo.com', 'Asunto'],
+    'un carácter nulo en el asunto' => ['lucas@ejemplo.com', 'Lucas', 'ana@correo.com', "As\0unto"],
+] as $caso => [$de, $nombre, $para, $asunto]) {
+    same("se rechaza $caso", true, (static function () use ($de, $nombre, $para, $asunto, $fecha): bool {
+        try {
+            Msg::build($de, $nombre, $para, $asunto, 'x', $fecha, 'id@x.com');
+        } catch (App\Mail\MailException) {
+            return true;
+        }
+        return false;
+    })());
+}
+same('un destinatario que no es un correo se rechaza', true, (static function () use ($fecha): bool {
+    try {
+        Msg::build('lucas@ejemplo.com', 'Lucas', 'no-es-un-correo', 'Asunto', 'x', $fecha, 'id@x.com');
+    } catch (App\Mail\MailException) {
+        return true;
+    }
+    return false;
+})());
+same('dot-stuffing: una línea que empieza con punto lleva otro delante', "uno\r\n..dos\r\n...tres\r\n.\r\n", Msg::forData("uno\n.dos\n..tres"));
+same('termina con la línea de un solo punto', true, str_ends_with(Msg::forData("a\nb"), "\r\n.\r\n"));
+same('los fines de línea pasan a CRLF', "a\r\nb\r\n.\r\n", Msg::forData("a\nb\n"));
+same('un punto en medio de la línea no se toca', "a.b\r\n.\r\n", Msg::forData('a.b'));
+
+section('ClaveValidator, tokens y huella de sesión');
+use App\Validation\ClaveValidator as CV;
+same('una contraseña válida', [], CV::errores('secreta123', 'secreta123'));
+same('muy corta', ['clave'], array_keys(CV::errores('corta', 'corta')));
+same('de 8 caracteres exactos', [], CV::errores('12345678', '12345678'));
+same('de más de 72 bytes', ['clave'], array_keys(CV::errores(str_repeat('a', 73), str_repeat('a', 73))));
+same('72 bytes exactos', [], CV::errores(str_repeat('a', 72), str_repeat('a', 72)));
+same('que no coincide', ['clave2'], array_keys(CV::errores('secreta123', 'otra-clave')));
+same('con otros nombres de campo', ['clave_nueva2'], array_keys(CV::errores('secreta123', 'x', 'clave_nueva', 'clave_nueva2')));
+same('el registro usa las mismas reglas', true, CV::MIN === App\Validation\RegistroValidator::CLAVE_MIN && CV::MAX_BYTES === App\Validation\RegistroValidator::CLAVE_MAX_BYTES);
+use App\Auth\RecuperacionClave as RC;
+same('un token de 64 hexadecimales tiene forma válida', true, RC::formaValida(str_repeat('ab12', 16)));
+same('uno corto no', false, RC::formaValida('abc'));
+same('uno con mayúsculas no', false, RC::formaValida(str_repeat('AB12', 16)));
+same('uno con caracteres raros no', false, RC::formaValida(str_repeat('ab1;', 16)));
+same('uno vacío no', false, RC::formaValida(''));
+same('el hash de un token es SHA-256 (64 hexadecimales) y distinto del token', true, RC::hashToken(str_repeat('ab12', 16)) !== str_repeat('ab12', 16) && strlen(RC::hashToken('x')) === 64);
+same('la huella de sesión es estable', password_fingerprint('hash-1'), password_fingerprint('hash-1'));
+same('y cambia si cambia el hash', true, password_fingerprint('hash-1') !== password_fingerprint('hash-2'));
+same('no contiene el hash', false, str_contains(password_fingerprint('hash-secreto'), 'secreto'));
+
+section('PerfilValidator y Usuario');
+$pf = new App\Validation\PerfilValidator();
+same('datos válidos', [], $pf->validate(['nombre' => ' Ana  María ', 'moneda' => 'USD'])['errors']);
+same('el nombre se limpia', 'Ana María', $pf->validate(['nombre' => ' Ana  María ', 'moneda' => 'COP'])['data']['nombre']);
+same('nombre corto', true, isset($pf->validate(['nombre' => 'A', 'moneda' => 'COP'])['errors']['nombre']));
+same('nombre de 81 caracteres', true, isset($pf->validate(['nombre' => str_repeat('a', 81), 'moneda' => 'COP'])['errors']['nombre']));
+same('moneda desconocida', true, isset($pf->validate(['nombre' => 'Ana', 'moneda' => 'XXX'])['errors']['moneda']));
+same('moneda con forma de arreglo', true, isset($pf->validate(['nombre' => 'Ana', 'moneda' => ['COP']])['errors']['moneda']));
+$u0 = new App\Domain\Usuario(1, 'Ana', 'a@x.com', 'hash-viejo', 'COP', 'usuario', true);
+$u1 = $u0->conContrasenaHash('hash-nuevo');
+same('conContrasenaHash cambia solo el hash', ['hash-nuevo', 1, 'Ana', 'a@x.com'], [$u1->contrasenaHash, $u1->id, $u1->nombre, $u1->correo]);
+same('y no toca el original (inmutable)', 'hash-viejo', $u0->contrasenaHash);
+
+section('Moneda (RF-03)');
+same('por defecto «$»', '$1.250', D::formatear('1250.00'));
+D::usarMoneda('USD');
+same('USD', 'US$1.250', D::formatear('1250.00'));
+same('con decimales', 'US$1.250,50', D::formatear('1250.50'));
+same('negativo', '−US$80', D::formatear('-80.00'));
+same('abreviado', 'US$1,1 M', D::abreviado('1120000'));
+same('Ui::money con una cadena', '<span class="money money--in">+US$18.000,50</span>', (string) App\View\Ui::money('18000.50', 'in'));
+same('Ui::money con un entero', '<span class="money money--plain">US$5.000</span>', (string) App\View\Ui::money(5000));
+D::usarMoneda('EUR');
+same('EUR', '€1.250', D::formatear('1250.00'));
+D::usarMoneda('MXN');
+same('MXN', 'MX$1.250', D::formatear('1250.00'));
+D::usarMoneda('XXX');
+same('una moneda desconocida cae a «$»', '$1.250', D::formatear('1250.00'));
+D::usarMoneda('COP');
+same('COP es «$» otra vez', '$1.250', D::formatear('1250.00'));
+same('el símbolo actual', '$', D::simbolo());
+same('toda moneda del perfil tiene símbolo', true, array_reduce(array_values(D::MONEDAS), static fn (bool $ok, string $s): bool => $ok && $s !== '', true));
+
+section('SqlScript');
+use App\Database\SqlScript as SQ;
+same('parte en sentencias y quita comentarios', ['CREATE TABLE a (x INT)', "INSERT INTO a VALUES (1)"], SQ::statements("-- comentario\nCREATE TABLE a (x INT);\n\n-- otro\nINSERT INTO a VALUES (1);\n"));
+same('ignora lo vacío', [], SQ::statements("-- nada\n\n;\n"));
+same('una sentencia sin «;» final', ['SELECT 1'], SQ::statements('SELECT 1'));
+same('un «;» dentro de una línea no corta', ["INSERT INTO t VALUES ('a;b')"], SQ::statements("INSERT INTO t VALUES ('a;b');"));
+same('las migraciones del proyecto se parten bien', true, count(SQ::statements((string) file_get_contents(dirname(__DIR__, 2) . '/database/migrations/001-recuperacion-de-clave.sql'))) === 2);
 
 finish();

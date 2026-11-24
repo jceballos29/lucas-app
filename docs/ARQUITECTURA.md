@@ -11,6 +11,7 @@ flowchart LR
     N -->|FastCGI :9000| P[php-fpm 8.4]
     P -->|PDO :3306| D[(MySQL 8.4)]
     A[Adminer :8091] --> D
+    P -->|SMTP :1025| M[Mailpit :8025]
 ```
 
 | Servicio | Imagen | Puerto local |
@@ -19,6 +20,9 @@ flowchart LR
 | `php` | `docker/php/Dockerfile` (php 8.4-fpm + pdo_mysql, intl, zip, opcache, xdebug) | — |
 | `db` | mysql 8.4 | — (solo red interna) |
 | `adminer` | adminer 6.3 | `127.0.0.1:8091` |
+| `mailpit` | axllent/mailpit 1.21 (solo desarrollo: captura los correos sin enviarlos) | `127.0.0.1:8025` |
+
+Producción (`docker-compose.prod.yml`, ver [`DESPLIEGUE.md`](DESPLIEGUE.md)) usa solo `nginx` (HTTPS), `php` y `db`, con el SMTP real y sin Adminer ni Mailpit.
 
 ## Capas
 
@@ -39,6 +43,8 @@ Petición → public/*.php → Controller → (Validator) → Repository → MyS
 | Autenticación | `app/Auth/` | `Autenticador` (credenciales, rehash), `LimitadorIntentos`. | HTTP, SQL. |
 | Movimientos | `app/Movimientos/` | `ReglasMovimiento` (D8, puras), `GestionMovimientos` (la transacción con la cuenta bloqueada) y `Filtros` (limpia la URL del listado). | HTTP, HTML. |
 | Presupuestos y metas | `app/Presupuestos/`, `app/Metas/` | `ReglasPresupuesto` y `ReglasAporte` (puras), `GestionMetas` (aportar, editar, cancelar y eliminar, cada una en una transacción con la cuenta y la meta bloqueadas). | HTTP, HTML. |
+| Correo | `app/Mail/` | `Mailer` (interfaz), `SmtpMailer` (cliente SMTP mínimo, sin dependencias) y `Message` (arma el mensaje; puro; rechaza inyección de cabeceras). | HTTP, SQL. |
+| Usuarios | `app/Usuarios/` | `EliminarCuenta`: borra la cuenta y todos sus datos en una transacción y en orden (D5). | HTTP, HTML. |
 | Reportes y exportación | `app/Reportes/`, `app/Export/` | `Categorias` (agrupa los gastos para el gráfico) y `Csv` (formato para Excel y neutralización de fórmulas), ambas puras. | HTTP, SQL. |
 | Utilidades | `app/Support/` | `Dinero` (montos exactos y formato colombiano), `Progreso` (avance de presupuestos y metas en centavos), `Mes` (mes y año de la URL, ventana de fechas). | HTTP, SQL. |
 | Administración | `app/Admin/` | `ReglasAdmin` (RF-33, puras) y `GestionUsuarios` (la transacción con `FOR UPDATE`). | HTTP, HTML. |
@@ -71,7 +77,9 @@ lucas-app/
 | `index.php` | público | GET | Redirige: sin sesión → `login.php`; `admin` → `admin/index.php`; `usuario` → `panel.php`. |
 | `registro.php` | público | GET/POST | Crea un usuario con rol `usuario` (RF-24). |
 | `login.php` · `logout.php` | público · sesión | GET/POST · POST | Inicia/cierra sesión (RF-02). |
-| `recuperar.php` | público | GET/POST | Enlace de recuperación por correo (RF-04). |
+| `recuperar.php` | público | GET/POST | Pide el enlace de recuperación por correo (RF-04). Misma respuesta exista o no el correo. |
+| `restablecer.php?token=` | público | GET/POST | Elige la contraseña nueva con el enlace del correo (RF-04). |
+| `salud.php` | público | GET | `200 {"estado":"ok"}` o `503`, para monitorizar (RNF-14). No revela nada. |
 | `panel.php` | usuario | GET | Ingresos, gastos y balance del mes; saldo total (RF-21). |
 | `movimientos.php` · `movimiento-form.php` · `movimiento-eliminar.php` | usuario | GET/POST | Listado con filtros y paginación; crear, editar, eliminar (RF-10 a RF-14). |
 | `cuentas.php` · `cuenta-form.php` | usuario | GET/POST | RF-05 a RF-07. |
@@ -126,6 +134,7 @@ flowchart TD
   (+ `Secure` si `APP_ORIGIN` es https), caduca a los 30 min de inactividad (RNF-06), id regenerado al iniciar sesión.
 - `require_login()` exige sesión y `require_role('admin')` además el rol (403 si no coincide). **En cada petición** `resolve_user_session()` vuelve a leer
   al usuario de la BD (por clave primaria): si está inactivo se cierra la sesión (`login.php?msg=revoked`) y un cambio de rol vale al instante.
+- **Recuperar contraseña** (RF-04): token de 256 bits, solo su hash en BD, 30 min y un solo uso (se gasta en una transacción con la fila bloqueada). La respuesta de `recuperar.php` se envía antes de trabajar (`fastcgi_finish_request`) y es idéntica exista o no el correo. Cambiar la contraseña cierra las demás sesiones: la sesión guarda una huella del hash y se compara en cada petición.
 - **Panel, reportes y CSV** (RF-21 a RF-23): `ReporteRepository` agrega por mes con la ventana `fecha >= … AND fecha < …`. `exportar.php` es un GET que solo lee y recorre los movimientos por lotes con paginación por cursor; todo texto del usuario pasa por `Csv::texto()` contra la inyección de fórmulas.
 - **Presupuestos y metas** (RF-15 a RF-20): lo gastado de un presupuesto y lo ahorrado de una meta se calculan al leer (nunca quedan desactualizados). Aportar bloquea la cuenta y la meta; cancelar una meta devuelve el dinero a las cuentas; el aviso de presupuesto (RF-17) se calcula al momento, sin guardarse.
 - **Movimientos** (RF-10 a RF-14): guardar un movimiento bloquea la cuenta (`FOR UPDATE`) y comprueba D8 dentro de la transacción; lo ajeno o inexistente responde 404. El saldo se calcula, así que no hay que «actualizarlo».

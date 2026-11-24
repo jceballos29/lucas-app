@@ -152,8 +152,13 @@ Jóvenes y estudiantes que empiezan a manejar su dinero, trabajadores dependient
 | Presupuestos | RF-15 a RF-17 | 5 | ✅ |
 | Metas de ahorro | RF-18 a RF-20 | 5 | ✅ |
 | Panel y reportes | RF-21 a RF-23 | 6 | ✅ |
-| Perfil y recuperar contraseña | RF-03, RF-04, RNF-20 | 7 | ⬜ |
-| Verificación transversal | RNF-07, RNF-08, RNF-13 a RNF-15, RNF-17, RNF-19 | 7 | ⬜ |
+| Perfil y recuperar contraseña | RF-03, RF-04, RNF-20 | 7 | ✅ |
+| HTTPS y producción | RNF-07 | 7 | ✅ (verificado con certificado autofirmado) |
+| Copias de seguridad | RNF-15 | 7 | ✅ (restauración probada) |
+| Rendimiento y capacidad | RNF-08, RNF-19 | 7 | ✅ (medido: 500 usuarios, 0 errores) |
+| Accesibilidad | RNF-13 | 7 | ✅ (axe: 0 violaciones; sin lector de pantalla real) |
+| Disponibilidad | RNF-14 | 7 | 🟨 (`salud.php`, reinicio y copias; sin segundo servidor) |
+| Navegadores | RNF-17 | 7 | 🟨 (solo Chromium probado; el resto por auditoría de características) |
 
 ## Referencias
 
