@@ -11,7 +11,9 @@ use App\Database\Connection;
 use App\Repository\AdminStatsRepository;
 use App\Repository\CategoriaRepository;
 use App\Repository\CuentaRepository;
+use App\Movimientos\GestionMovimientos;
 use App\Repository\IntentoRepository;
+use App\Repository\MovimientoRepository;
 use App\Repository\UsuarioRepository;
 use PDO;
 
@@ -87,5 +89,15 @@ final class Container
     public function categorias(): CategoriaRepository
     {
         return new CategoriaRepository($this->pdo());
+    }
+
+    public function movimientos(): MovimientoRepository
+    {
+        return new MovimientoRepository($this->pdo());
+    }
+
+    public function gestionMovimientos(): GestionMovimientos
+    {
+        return new GestionMovimientos($this->pdo(), $this->movimientos(), $this->cuentas(), $this->categorias());
     }
 }

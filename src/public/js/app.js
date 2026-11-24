@@ -42,19 +42,25 @@
     });
   });
 
-  /* 4. Categorías según el tipo de movimiento (gasto / ingreso).
-        Con PHP estas listas vendrán de la tabla "categorias". */
+  /* 4. Categorías según el tipo de movimiento (gasto / ingreso). El servidor pone TODAS las categorías en el <select>, cada
+        una con data-tipo; aquí se dejan solo las del tipo elegido. Sin JS se ven todas y el servidor rechaza la que no
+        corresponda (el tipo se comprueba siempre allí). */
   var tipoRadios = document.querySelectorAll('input[name="tipo"]');
   var categoria = document.getElementById('categoria');
-  if (tipoRadios.length && categoria) {
-    var cats = {
-      gasto: ['Alimentación', 'Transporte', 'Servicios', 'Entretenimiento', 'Salud', 'Educación', 'Otros'],
-      ingreso: ['Salario', 'Ventas', 'Regalos', 'Otros ingresos']
-    };
+  if (tipoRadios.length && categoria && categoria.querySelector('option[data-tipo]')) {
+    var todas = Array.prototype.map.call(categoria.options, function (o) {
+      return { value: o.value, text: o.textContent, tipo: o.getAttribute('data-tipo') };
+    });
     var fill = function (tipo) {
+      var actual = categoria.value;
       categoria.innerHTML = '';
-      cats[tipo].forEach(function (n) {
-        var o = document.createElement('option'); o.value = n; o.textContent = n; categoria.appendChild(o);
+      todas.forEach(function (c) {
+        if (c.tipo !== null && c.tipo !== tipo) return;          // la opción en blanco no tiene tipo y se queda
+        var o = document.createElement('option');
+        o.value = c.value; o.textContent = c.text;
+        if (c.tipo !== null) o.setAttribute('data-tipo', c.tipo);
+        if (c.value === actual) o.selected = true;
+        categoria.appendChild(o);
       });
     };
     tipoRadios.forEach(function (r) { r.addEventListener('change', function () { fill(r.value); }); });
@@ -120,11 +126,16 @@
   document.querySelectorAll('[data-color]').forEach(function (el) { if (/^#[0-9a-fA-F]{6}$/.test(el.dataset.color)) el.style.setProperty('--swatch', el.dataset.color); });
   document.querySelectorAll('[data-h]').forEach(function (el) { el.style.setProperty('--h', el.dataset.h); });
 
-  /* 6. Formato de miles en campos de monto (visual). Con PHP, limpia el valor antes de guardar. */
+  /* 6. Formato de miles en campos de monto (visual): «1.250.000,50». Acepta una coma decimal con hasta 2 decimales; el
+        servidor (Support\Dinero) entiende ese mismo formato. */
   document.querySelectorAll('input[data-money]').forEach(function (inp) {
     inp.addEventListener('input', function () {
-      var digits = inp.value.replace(/\D/g, '');
-      inp.value = digits ? Number(digits).toLocaleString('es-CO') : '';
+      var limpio = inp.value.replace(/[^\d,]/g, '');
+      var partes = limpio.split(',');
+      var entero = partes[0].replace(/^0+(?=\d)/, '').slice(0, 10);   // DECIMAL(12,2): 10 dígitos enteros
+      var texto = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      if (partes.length > 1) texto += ',' + partes.slice(1).join('').slice(0, 2);
+      inp.value = texto;
     });
   });
 })();

@@ -29,7 +29,7 @@ final class PreviewController
         $user = require_login();
 
         if ($this->isPost()) {
-            Response::redirect('/' . ($view === 'movimiento-form' ? 'movimientos' : $view) . '.php');
+            Response::redirect('/' . $view . '.php');
         }
 
         View::page("app/$view", [], $title, $user, 'app', $nav ?? $view);
