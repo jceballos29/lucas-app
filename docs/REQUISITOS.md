@@ -149,8 +149,8 @@ Jóvenes y estudiantes que empiezan a manejar su dinero, trabajadores dependient
 | Cuentas | RF-05 a RF-07 | 3 | ✅ |
 | Categorías (incl. predeterminadas del admin) | RF-08, RF-09, RF-34 | 3 | ✅ |
 | Movimientos | RF-10 a RF-14 | 4 | ✅ |
-| Presupuestos | RF-15 a RF-17 | 5 | ⬜ |
-| Metas de ahorro | RF-18 a RF-20 | 5 | ⬜ |
+| Presupuestos | RF-15 a RF-17 | 5 | ✅ |
+| Metas de ahorro | RF-18 a RF-20 | 5 | ✅ |
 | Panel y reportes | RF-21 a RF-23 | 6 | ⬜ |
 | Perfil y recuperar contraseña | RF-03, RF-04, RNF-20 | 7 | ⬜ |
 | Verificación transversal | RNF-07, RNF-08, RNF-13 a RNF-15, RNF-17, RNF-19 | 7 | ⬜ |

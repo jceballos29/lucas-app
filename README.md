@@ -28,11 +28,12 @@ El proyecto avanza por fases, cada una con criterios de «terminado» verificabl
 | 2 | Dashboard de administración: métricas globales, usuarios (búsqueda, paginación, activar/desactivar, cambiar rol) | Completa |
 | 3 | Cuentas con saldo calculado y categorías (propias y predeterminadas del administrador) | Completa |
 | 4 | Movimientos: alta, edición, eliminación, filtros y paginación; el saldo de las cuentas se actualiza solo | Completa |
-| 5–6 | Presupuestos, metas, panel y reportes | Siguiente (Fase 5) |
+| 5 | Presupuestos mensuales con avisos al 80 % y al superar el límite, y metas de ahorro con aportes desde una cuenta | Completa |
+| 6 | Panel y reportes | Siguiente (Fase 6) |
 | 7 | Perfil, recuperación de contraseña, HTTPS y endurecimiento final | Pendiente |
 
-> Hoy el registro, el login, los permisos por rol y la administración de usuarios, las cuentas, las categorías y los movimientos son reales, pero las pantallas del usuario (panel,
-> presupuestos, metas y reportes) siguen con datos de ejemplo (exigen sesión, no guardan nada). Las secciones de *Funcionalidades* describen el alcance objetivo, no lo ya implementado.
+> Hoy el registro, el login, los permisos por rol y la administración de usuarios, las cuentas, las categorías, los movimientos, los presupuestos y las metas son reales, pero el panel
+> y los reportes siguen con datos de ejemplo (exigen sesión, no guardan nada). Las secciones de *Funcionalidades* describen el alcance objetivo, no lo ya implementado.
 
 ## Funcionalidades previstas
 

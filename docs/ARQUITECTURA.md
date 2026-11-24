@@ -38,7 +38,8 @@ Petición → public/*.php → Controller → (Validator) → Repository → MyS
 | Vista | `src/views/` | HTML + `if`/`foreach`; todo dato sale con `escape()`. | Consultas, decidir códigos HTTP. |
 | Autenticación | `app/Auth/` | `Autenticador` (credenciales, rehash), `LimitadorIntentos`. | HTTP, SQL. |
 | Movimientos | `app/Movimientos/` | `ReglasMovimiento` (D8, puras), `GestionMovimientos` (la transacción con la cuenta bloqueada) y `Filtros` (limpia la URL del listado). | HTTP, HTML. |
-| Utilidades | `app/Support/` | `Dinero` (montos exactos y formato colombiano). | HTTP, SQL. |
+| Presupuestos y metas | `app/Presupuestos/`, `app/Metas/` | `ReglasPresupuesto` y `ReglasAporte` (puras), `GestionMetas` (aportar, editar, cancelar y eliminar, cada una en una transacción con la cuenta y la meta bloqueadas). | HTTP, HTML. |
+| Utilidades | `app/Support/` | `Dinero` (montos exactos y formato colombiano), `Progreso` (avance de presupuestos y metas en centavos), `Mes` (mes y año de la URL, ventana de fechas). | HTTP, SQL. |
 | Administración | `app/Admin/` | `ReglasAdmin` (RF-33, puras) y `GestionUsuarios` (la transacción con `FOR UPDATE`). | HTTP, HTML. |
 | Infraestructura | `app/{Config,Database,Http,Logging,Security,View}`, `Container.php` | Ya existe (Fase 0). | — |
 
@@ -124,6 +125,7 @@ flowchart TD
   (+ `Secure` si `APP_ORIGIN` es https), caduca a los 30 min de inactividad (RNF-06), id regenerado al iniciar sesión.
 - `require_login()` exige sesión y `require_role('admin')` además el rol (403 si no coincide). **En cada petición** `resolve_user_session()` vuelve a leer
   al usuario de la BD (por clave primaria): si está inactivo se cierra la sesión (`login.php?msg=revoked`) y un cambio de rol vale al instante.
+- **Presupuestos y metas** (RF-15 a RF-20): lo gastado de un presupuesto y lo ahorrado de una meta se calculan al leer (nunca quedan desactualizados). Aportar bloquea la cuenta y la meta; cancelar una meta devuelve el dinero a las cuentas; el aviso de presupuesto (RF-17) se calcula al momento, sin guardarse.
 - **Movimientos** (RF-10 a RF-14): guardar un movimiento bloquea la cuenta (`FOR UPDATE`) y comprueba D8 dentro de la transacción; lo ajeno o inexistente responde 404. El saldo se calcula, así que no hay que «actualizarlo».
 - **Administración de usuarios** (RF-31 a RF-33): activar/desactivar y cambiar rol van en una transacción que bloquea a los admins activos (`FOR UPDATE`, siempre por id) y al objetivo; quien actúa debe seguir siendo admin activo dentro de ella. Los avisos tras la redirección usan `Http\Flash`.
 - **Limitación de intentos** (RNF-24): `Auth\LimitadorIntentos` sobre la tabla `intentos_acceso`; 429 con `Retry-After` al pasarse (5 por correo, 20 por IP, 15 min).

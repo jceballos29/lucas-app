@@ -10,7 +10,7 @@ Cada fase termina en algo que funciona y se prueba en el navegador y con pruebas
 | 2 | Dashboard de administración (métricas y usuarios) | [x] |
 | 3 | Cuentas y categorías (incl. categorías predeterminadas del admin) | [x] |
 | 4 | Movimientos | [x] |
-| 5 | Presupuestos y metas de ahorro | [ ] |
+| 5 | Presupuestos y metas de ahorro | [x] |
 | 6 | Panel y reportes | [ ] |
 | 7 | Perfil, recuperación de contraseña, endurecimiento | [ ] |
 
@@ -26,7 +26,7 @@ Cambiar cualquiera de ellas obliga a revisar las fases indicadas.
 | D4 | **Borrar categorías (RF-09, RF-34):** si tienen movimientos o presupuestos se **rechaza** con un mensaje claro; no se borra en silencio ni se reasigna. Las cuentas con movimientos se desactivan (RF-06). | 3 |
 | D5 | **Eliminar cuenta de usuario (RNF-20):** en una sola transacción, en orden explícito (aportes → movimientos → presupuestos → metas → cuentas → categorías → usuario). No se confía en el orden de los `ON DELETE CASCADE`, porque `transacciones` y `aportes_meta` referencian `cuentas` sin cascada. | 7 |
 | D6 | **BD de pruebas:** `lucas_migrator` recibe `ALL` sobre `lucas\_test%`; `integration.php` crea una base temporal con ese prefijo, aplica `01-schema.sql` y la borra al terminar. Nunca toca `lucas`. | 1 |
-| D7 | **Servicio de correo** (RF-04): se elige al empezar la Fase 5 (SMTP propio, Mailpit en local); se implementa en la Fase 7. | 5, 7 |
+| D7 | **Servicio de correo** (RF-04) — **decidido en la Fase 5, se implementa en la 7:** envío por **SMTP** con un cliente mínimo hecho a mano (la arquitectura no admite dependencias de terceros), configurado por variables de entorno (`MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_FROM`) para poder apuntar a cualquier proveedor; en desarrollo, un contenedor **Mailpit** que captura los correos sin enviarlos. Si más adelante se prefiere un proveedor concreto (SES, Mailgun...), solo cambian esas variables. | 5, 7 |
 | D8 | **Reglas de dinero:** el `tipo` del movimiento debe coincidir con el de su categoría; una cuenta inactiva no acepta movimientos ni aportes; un aporte no puede superar el saldo de la cuenta; los presupuestos solo admiten categorías de gasto. Todo se valida en el servidor. | 4, 5 |
 
 ## Fase 0 · Esqueleto ✅
@@ -87,10 +87,18 @@ Notas de la implementación:
 - **Formulario:** el servidor pone todas las categorías en el `<select>` con su `data-tipo` y el JS deja solo las del tipo elegido (sin JS se ven todas y el servidor rechaza la que no corresponda). El monto se formatea al escribir (`1.250.000,50`).
 - El botón «Exportar CSV» queda deshabilitado hasta la Fase 6.
 
-## Fase 5 · Presupuestos y metas
-Al empezar, decidir el servicio de correo (D7). Vistas nuevas: formularios de presupuesto y de meta/aporte.
-- Presupuesto único por (usuario, categoría, mes, año), solo categorías de gasto; barra de progreso (RF-16). **Avisos (RF-17):** al 80 % y al superar el 100 % se muestran como aviso en `presupuestos.php` y en el panel, y como `notice` tras guardar un gasto que cruce el umbral; se calculan al leer, no se guardan.
+## Fase 5 · Presupuestos y metas ✅
+D7 (correo) decidido; vistas nuevas: formularios de presupuesto y de meta/aporte.
+- Presupuesto único por (usuario, categoría, mes, año), solo categorías de gasto; barra de progreso (RF-16). **Avisos (RF-17):** al 80 % y al superar el 100 % se muestran como aviso en `presupuestos.php` y como `notice` tras guardar un gasto; se calculan al leer, no se guardan. **El aviso en el panel se hace en la Fase 6**, cuando el panel deje de ser una maqueta: `PresupuestoRepository::alertas()` ya lo deja listo.
 - Metas con aportes desde una cuenta activa con saldo suficiente (D8): el aporte y el cambio de estado a `lograda` van en una transacción. Pruebas: aporte que supera el saldo rechazado; meta que alcanza el objetivo pasa a `lograda`.
+
+Notas de la implementación:
+- **Avance exacto:** `Support\Progreso` compara en centavos enteros (nunca `float`): 79,99 % no avisa y 80,00 % sí; «límite alcanzado» (gastado exactamente lo presupuestado) se distingue de «excedido» (un centavo más), aunque ambos den 100 %. `Support\Mes` valida el mes y año de la URL y calcula la ventana de fechas (`fecha >= primer día AND fecha < primer día del mes siguiente`, que usa el índice por fecha).
+- **Presupuestos:** solo se edita el límite (la categoría y el mes definen *qué* presupuesto es; el formulario no puede cambiarlos). Un presupuesto repetido lo impide la clave `UNIQUE`. Lo gastado se calcula al leer (suma de gastos de la categoría en el mes), así que nunca queda desactualizado. El aviso al guardar un gasto se calcula con el mes de la *fecha* del movimiento.
+- **Metas y aportes (D8):** `Metas\GestionMetas` hace cada operación en una transacción. `aportar` bloquea primero la cuenta y luego la meta (`FOR UPDATE`), lee el saldo ya con los bloqueos, aplica `ReglasAporte` e inserta; si el total alcanza el objetivo, pasa la meta a `lograda` en la misma transacción. Un aporte igual al saldo es válido (deja la cuenta en cero); un centavo más, no. Se puede aportar de más (la meta queda lograda y «faltante» nunca es negativo).
+- **Cancelar una meta devuelve el dinero:** como los aportes restan del saldo de la cuenta, cancelar borra los aportes y los fondos vuelven a sus cuentas (el diálogo de confirmación lo dice). Una meta lograda no se cancela ni se edita; una meta solo se elimina si no tiene aportes (una cancelada ya no los tiene).
+- **Concurrencia:** eliminar un movimiento también bloquea su cuenta (`GestionMovimientos::eliminar`): quitar un ingreso baja el saldo y no debe cruzarse con un aporte que acaba de comprobar que había saldo. Probado con dos conexiones reales.
+- **Cuenta inactiva en el formulario de aporte:** si la cuenta se desactiva con el formulario abierto, el error se ve en el campo (se incluye la cuenta elegida, marcada «inactiva»).
 
 ## Fase 6 · Panel y reportes
 Panel del mes (ingresos, gastos, balance, saldo total), gráficos por categoría y evolución mensual con SVG/CSS propios (sin CDN, por la CSP), exportación CSV (RF-21 a RF-23). El CSV **neutraliza la inyección de fórmulas** (prefijo `'` en celdas que empiezan con `=`, `+`, `-`, `@`) y solo exporta los datos del usuario de la sesión.
