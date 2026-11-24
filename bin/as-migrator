@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#
+# Ejecuta un comando en el contenedor php CONECTADO A LA BD COMO EL USUARIO DE MIGRACIONES, no como el de la
+# aplicación (que solo puede leer y escribir filas). Para lo que cambia datos o esquema desde la consola:
+#
+#   bin/as-migrator php scripts/create-admin.php correo@ejemplo.com
+#   bin/as-migrator php scripts/seed-demo.php 35
+#   bin/as-migrator php tests/integration.php
+#
+# Las credenciales salen de .env y se pasan solo a ESTE proceso (docker compose exec -e VAR, sin escribir la clave
+# en la línea de comandos): el contenedor php en marcha y la aplicación web siguen sin conocerlas.
+
+set -eu
+cd "$(dirname "$0")/.."
+
+[ $# -gt 0 ] || { echo "Uso: bin/as-migrator <comando>   (p. ej. php scripts/create-admin.php correo@ejemplo.com)" >&2; exit 2; }
+[ -f .env ] || { echo "No existe .env (cópialo de .env.example)." >&2; exit 2; }
+
+# Se lee .env sin ejecutarlo (no es un script de shell).
+value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2-; }
+DB_USERNAME="$(value DB_MIGRATION_USERNAME)"; DB_USERNAME="${DB_USERNAME:-lucas_migrator}"
+DB_PASSWORD="$(value DB_MIGRATION_PASSWORD)"
+[ -n "$DB_PASSWORD" ] || { echo "Falta DB_MIGRATION_PASSWORD en .env (ver .env.example)." >&2; exit 2; }
+export DB_USERNAME DB_PASSWORD
+
+# Con una terminal (p. ej. para la contraseña de create-admin.php) hace falta TTY; con una tubería, no (-T).
+tty_flag=(); [ -t 0 ] || tty_flag=(-T)
+exec docker compose exec "${tty_flag[@]}" -e DB_USERNAME -e DB_PASSWORD php "$@"

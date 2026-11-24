@@ -1,0 +1,78 @@
+CREATE TABLE usuarios (
+  id_usuario      INT AUTO_INCREMENT PRIMARY KEY,
+  nombre          VARCHAR(80)  NOT NULL,
+  correo          VARCHAR(120) NOT NULL UNIQUE,
+  contrasena_hash VARCHAR(255) NOT NULL,
+  moneda          CHAR(3)      NOT NULL DEFAULT 'COP',
+  rol             ENUM('usuario','admin') NOT NULL DEFAULT 'usuario',
+  activo          BOOLEAN      NOT NULL DEFAULT TRUE,
+  creado_en       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_rol_activo (rol, activo)
+);
+
+CREATE TABLE cuentas (
+  id_cuenta     INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario    INT NOT NULL,
+  nombre        VARCHAR(60) NOT NULL,
+  tipo          ENUM('efectivo','bancaria','tarjeta_credito','ahorro') NOT NULL,
+  saldo_inicial DECIMAL(12,2) NOT NULL DEFAULT 0,
+  activa        BOOLEAN NOT NULL DEFAULT TRUE,
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+);
+
+CREATE TABLE categorias (
+  id_categoria INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario   INT NULL,
+  nombre       VARCHAR(50) NOT NULL,
+  tipo         ENUM('ingreso','gasto') NOT NULL,
+  color        CHAR(7) NOT NULL DEFAULT '#888888',
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+);
+
+CREATE TABLE transacciones (
+  id_transaccion INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario     INT NOT NULL,
+  id_cuenta      INT NOT NULL,
+  id_categoria   INT NOT NULL,
+  tipo           ENUM('ingreso','gasto') NOT NULL,
+  monto          DECIMAL(12,2) NOT NULL CHECK (monto > 0),
+  fecha          DATE NOT NULL,
+  descripcion    VARCHAR(150),
+  creado_en      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (id_usuario)   REFERENCES usuarios(id_usuario)     ON DELETE CASCADE,
+  FOREIGN KEY (id_cuenta)    REFERENCES cuentas(id_cuenta),
+  FOREIGN KEY (id_categoria) REFERENCES categorias(id_categoria),
+  INDEX idx_usuario_fecha (id_usuario, fecha)
+);
+
+CREATE TABLE presupuestos (
+  id_presupuesto INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario     INT NOT NULL,
+  id_categoria   INT NOT NULL,
+  mes            TINYINT NOT NULL CHECK (mes BETWEEN 1 AND 12),
+  anio           SMALLINT NOT NULL,
+  monto_limite   DECIMAL(12,2) NOT NULL CHECK (monto_limite > 0),
+  UNIQUE (id_usuario, id_categoria, mes, anio),
+  FOREIGN KEY (id_usuario)   REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+  FOREIGN KEY (id_categoria) REFERENCES categorias(id_categoria)
+);
+
+CREATE TABLE metas_ahorro (
+  id_meta        INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario     INT NOT NULL,
+  nombre         VARCHAR(80) NOT NULL,
+  monto_objetivo DECIMAL(12,2) NOT NULL CHECK (monto_objetivo > 0),
+  fecha_limite   DATE,
+  estado         ENUM('en_curso','lograda','cancelada') NOT NULL DEFAULT 'en_curso',
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+);
+
+CREATE TABLE aportes_meta (
+  id_aporte INT AUTO_INCREMENT PRIMARY KEY,
+  id_meta   INT NOT NULL,
+  id_cuenta INT NOT NULL,
+  monto     DECIMAL(12,2) NOT NULL CHECK (monto > 0),
+  fecha     DATE NOT NULL,
+  FOREIGN KEY (id_meta)   REFERENCES metas_ahorro(id_meta) ON DELETE CASCADE,
+  FOREIGN KEY (id_cuenta) REFERENCES cuentas(id_cuenta)
+);
