@@ -17,7 +17,9 @@ final class CuentaRepository
             c.saldo_inicial
             + COALESCE((SELECT SUM(t.monto) FROM transacciones t WHERE t.id_cuenta = c.id_cuenta AND t.tipo = 'ingreso'), 0)
             - COALESCE((SELECT SUM(t.monto) FROM transacciones t WHERE t.id_cuenta = c.id_cuenta AND t.tipo = 'gasto'), 0)
-            - COALESCE((SELECT SUM(a.monto) FROM aportes_meta a WHERE a.id_cuenta = c.id_cuenta), 0) AS saldo
+            - COALESCE((SELECT SUM(a.monto) FROM aportes_meta a WHERE a.id_cuenta = c.id_cuenta), 0)
+            - COALESCE((SELECT SUM(tr.monto) FROM transferencias tr WHERE tr.id_cuenta_origen = c.id_cuenta), 0)
+            + COALESCE((SELECT SUM(tr.monto) FROM transferencias tr WHERE tr.id_cuenta_destino = c.id_cuenta), 0) AS saldo
         FROM cuentas c";
 
     public function __construct(private readonly PDO $pdo)

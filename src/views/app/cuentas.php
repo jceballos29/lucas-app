@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domain\Cuenta;
 use App\Support\Dinero;
+use App\View\Html;
 use App\View\Ui;
 
 /**
@@ -14,8 +15,12 @@ use App\View\Ui;
  * @var array{tone: string, message: string}|null $flash
  */
 $flash = $flash ?? null;
+$acciones = Html::join([
+    Ui::button('Transferir', ['href' => '/transferencia-form.php', 'variant' => 'secondary', 'icon' => 'transfer']),
+    Ui::button('Nueva cuenta', ['href' => '/cuenta-form.php', 'icon' => 'plus']),
+]);
 ?>
-<?= Ui::pageHead('Cuentas', 'Dónde tienes tu dinero · Saldo total ' . Dinero::formatear($total), Ui::button('Nueva cuenta', ['href' => '/cuenta-form.php', 'icon' => 'plus'])) ?>
+<?= Ui::pageHead('Cuentas', 'Dónde tienes tu dinero · Saldo total ' . Dinero::formatear($total), $acciones) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
 

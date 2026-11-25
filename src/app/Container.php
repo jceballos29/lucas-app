@@ -23,7 +23,9 @@ use App\Repository\MovimientoRepository;
 use App\Repository\PresupuestoRepository;
 use App\Repository\ReporteRepository;
 use App\Repository\RestablecimientoRepository;
+use App\Repository\TransferenciaRepository;
 use App\Repository\UsuarioRepository;
+use App\Transferencias\GestionTransferencias;
 use App\Usuarios\EliminarCuenta;
 use PDO;
 
@@ -110,6 +112,16 @@ final class Container
     public function gestionMovimientos(): GestionMovimientos
     {
         return new GestionMovimientos($this->pdo(), $this->movimientos(), $this->cuentas(), $this->categorias());
+    }
+
+    public function transferencias(): TransferenciaRepository
+    {
+        return new TransferenciaRepository($this->pdo());
+    }
+
+    public function gestionTransferencias(): GestionTransferencias
+    {
+        return new GestionTransferencias($this->pdo(), $this->transferencias(), $this->cuentas());
     }
 
     public function presupuestos(): PresupuestoRepository

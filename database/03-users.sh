@@ -36,7 +36,7 @@ set -eu
 MIGRATION_USER="${DB_MIGRATION_USERNAME:-lucas_migrator}"
 
 # Tablas de la aplicación (database/01-schema.sql).
-APP_TABLES="usuarios cuentas categorias transacciones presupuestos metas_ahorro aportes_meta intentos_acceso restablecimientos"
+APP_TABLES="usuarios cuentas categorias transacciones presupuestos metas_ahorro aportes_meta transferencias intentos_acceso restablecimientos"
 MIGRATION_PASSWORD="${DB_MIGRATION_PASSWORD:-}"
 
 # Los nombres van dentro de SQL (no se pueden enviar como parámetros): solo letras, números y guion bajo.

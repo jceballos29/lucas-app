@@ -968,4 +968,73 @@ same('intentos_acceso admite los tipos nuevos', true, (static function () use ($
     return true;
 })());
 
+section('GestionTransferencias: transferencias entre cuentas y pago de tarjetas (Fase 8)');
+$gt = $container->gestionTransferencias();
+$trRepo = $container->transferencias();
+$tUser = (int) $usuarios->create('Tomás', 'tomas@correo.com', 'x');
+$tOtro = (int) $usuarios->create('Otro', 'otro.tomas@correo.com', 'x');
+$tAhorros = $cuentas->create($tUser, 'Ahorros', 'ahorro', '1000000.00');
+$tEfectivo = $cuentas->create($tUser, 'Efectivo', 'efectivo', '50000.00');
+$tVisa = $cuentas->create($tUser, 'Visa', 'tarjeta_credito', '-400000.00');
+$tAjena = $cuentas->create($tOtro, 'Ajena', 'efectivo', '500000.00');
+
+$resT1 = $gt->guardar($tUser, null, [
+    'id_cuenta_origen' => $tAhorros,
+    'id_cuenta_destino' => $tEfectivo,
+    'monto' => '200000.00',
+    'fecha' => '2026-11-25',
+    'descripcion' => 'Retiro cajero',
+]);
+same('transferencia válida de Ahorros a Efectivo', 'ok', $resT1['codigo']);
+same('Ahorros baja 200.000 y Efectivo sube 200.000', ['800000.00', '250000.00'], [
+    (string) $cuentas->findOwned($tUser, $tAhorros)?->saldo,
+    (string) $cuentas->findOwned($tUser, $tEfectivo)?->saldo,
+]);
+
+$resT2 = $gt->guardar($tUser, null, [
+    'id_cuenta_origen' => $tAhorros,
+    'id_cuenta_destino' => $tVisa,
+    'monto' => '150000.00',
+    'fecha' => '2026-11-25',
+    'descripcion' => 'Abono tarjeta Visa',
+]);
+same('abono a tarjeta de crédito desde Ahorros', 'ok', $resT2['codigo']);
+same('Ahorros baja a 650.000 y la deuda de Visa baja de -400.000 a -250.000', ['650000.00', '-250000.00'], [
+    (string) $cuentas->findOwned($tUser, $tAhorros)?->saldo,
+    (string) $cuentas->findOwned($tUser, $tVisa)?->saldo,
+]);
+same('las transferencias NO cuentan como ingresos ni gastos en los reportes del mes', ['0.00', '0.00'], array_values($reportes->totalesMes($tUser, 11, 2026)));
+same('superar el saldo de la cuenta de origen se rechaza', 'saldo_insuficiente', $gt->guardar($tUser, null, [
+    'id_cuenta_origen' => $tEfectivo,
+    'id_cuenta_destino' => $tAhorros,
+    'monto' => '900000.00',
+    'fecha' => '2026-11-25',
+    'descripcion' => null,
+])['codigo']);
+same('usar una cuenta ajena se rechaza como cuenta_ajena', 'cuenta_ajena', $gt->guardar($tUser, null, [
+    'id_cuenta_origen' => $tAhorros,
+    'id_cuenta_destino' => $tAjena,
+    'monto' => '1000.00',
+    'fecha' => '2026-11-25',
+    'descripcion' => null,
+])['codigo']);
+
+$t1Id = (int) $resT1['id'];
+same('editar transferencia de 200.000 a 100.000 recalcula ambas cuentas', 'ok', $gt->guardar($tUser, $t1Id, [
+    'id_cuenta_origen' => $tAhorros,
+    'id_cuenta_destino' => $tEfectivo,
+    'monto' => '100000.00',
+    'fecha' => '2026-11-25',
+    'descripcion' => 'Retiro menor',
+])['codigo']);
+same('saldos tras editar: Ahorros 750.000, Efectivo 150.000', ['750000.00', '150000.00'], [
+    (string) $cuentas->findOwned($tUser, $tAhorros)?->saldo,
+    (string) $cuentas->findOwned($tUser, $tEfectivo)?->saldo,
+]);
+same('eliminar transferencia devuelve el dinero a origen', 'ok', $gt->eliminar($tUser, $t1Id)['codigo']);
+same('saldos tras eliminar: Ahorros 850.000, Efectivo 50.000', ['850000.00', '50000.00'], [
+    (string) $cuentas->findOwned($tUser, $tAhorros)?->saldo,
+    (string) $cuentas->findOwned($tUser, $tEfectivo)?->saldo,
+]);
+
 finish();

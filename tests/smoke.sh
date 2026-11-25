@@ -27,6 +27,7 @@ cleanup() {
     # Orden explícito: transacciones y aportes referencian cuentas sin cascada (ver D5 en docs/PLAN.md).
     sql "DELETE r FROM restablecimientos r JOIN usuarios u ON u.id_usuario = r.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE a FROM aportes_meta a JOIN metas_ahorro m ON m.id_meta = a.id_meta JOIN usuarios u ON u.id_usuario = m.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
+    sql "DELETE tr FROM transferencias tr JOIN usuarios u ON u.id_usuario = tr.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE p FROM presupuestos p JOIN usuarios u ON u.id_usuario = p.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE t FROM transacciones t JOIN usuarios u ON u.id_usuario = t.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE FROM categorias WHERE id_usuario IS NULL AND nombre LIKE 'Smoke-Cat%'" >/dev/null 2>&1
@@ -1246,6 +1247,44 @@ login "$J6" "$U6" "mala-clave-6"
 check "el 6.º intento se bloquea con 429" "429" "$CODE"; contains "con un aviso claro" "Demasiados intentos" "$TMP/body"
 check "y manda Retry-After" "Retry-After: 900" "$(grep -i '^retry-after' "$TMP/hdr" | tr -d '\r')"
 sql "DELETE FROM intentos_acceso" >/dev/null
+
+echo; echo "== Transferencias entre cuentas y pago de tarjetas (Fase 8)"
+JTR="$(new_jar)"; UTR="smoke_${RUN}_tr@correo.com"; register "$JTR" "$UTR" "$P"
+UTRID="$(uid "$UTR")"
+request "$J7" GET /transferencias.php;      check "sin sesión, transferencias exige login" "302 /login.php" "$CODE $LOC"
+request "$J7" GET /transferencia-form.php;  check "y el formulario también" "302 /login.php" "$CODE $LOC"
+request "$JTR" GET /transferencias.php;     check "el listado de transferencias responde 200" "200" "$CODE"
+contains "con menos de 2 cuentas invita a crear cuentas" "dos cuentas activas" "$TMP/body"
+
+post_form "$JTR" /cuenta-form.php /cuenta-form.php "nombre=Banco" "tipo=bancaria" "saldo_inicial=1.000.000"
+post_form "$JTR" /cuenta-form.php /cuenta-form.php "nombre=Visa" "tipo=tarjeta_credito" "saldo_inicial=-300.000"
+CBANCO="$(sql "SELECT id_cuenta FROM cuentas WHERE id_usuario=$UTRID AND nombre='Banco'")"
+CVISA="$(sql "SELECT id_cuenta FROM cuentas WHERE id_usuario=$UTRID AND nombre='Visa'")"
+
+post_form "$JTR" /transferencia-form.php /transferencia-form.php "id_cuenta_origen=$CBANCO" "id_cuenta_destino=$CVISA" "monto=200.000" "fecha=$HOY_APP" "descripcion=Pago cuota Visa"
+check "registrar transferencia redirige al listado" "302 /transferencias.php" "$CODE $LOC"
+TRID="$(sql "SELECT id_transferencia FROM transferencias WHERE id_usuario=$UTRID")"
+request "$JTR" GET /transferencias.php
+contains "muestra la transferencia registrada" "Pago cuota Visa" "$TMP/body"
+contains "con el monto formateado" '$200.000' "$TMP/body"
+request "$JTR" GET /cuentas.php
+contains "Banco bajó a 800.000" '$800.000' "$TMP/body"
+contains "y la deuda de Visa bajó a -100.000" '−$100.000' "$TMP/body"
+
+post_form "$JTR" /transferencia-form.php /transferencia-form.php "id_cuenta_origen=$CBANCO" "id_cuenta_destino=$CBANCO" "monto=10.000" "fecha=$HOY_APP"
+contains "misma cuenta origen y destino se rechaza" "distinta de la cuenta de origen" "$TMP/body"
+post_form "$JTR" /transferencia-form.php /transferencia-form.php "id_cuenta_origen=$CBANCO" "id_cuenta_destino=$CVISA" "monto=900.000" "fecha=$HOY_APP"
+contains "transferir más del saldo disponible se rechaza" "no alcanza para realizar esta operación" "$TMP/body"
+
+request "$JTR" GET "/transferencia-form.php?id=$TRID"
+contains "editar carga el monto con puntos de miles" 'value="200.000"' "$TMP/body"
+post_form "$JTR" /transferencia-form.php "/transferencia-form.php?id=$TRID" "id=$TRID" "id_cuenta_origen=$CBANCO" "id_cuenta_destino=$CVISA" "monto=300.000" "fecha=$HOY_APP" "descripcion=Pago total Visa"
+check "guardar edición redirige al listado" "302 /transferencias.php" "$CODE $LOC"
+check "Visa quedó en 0.00 y Banco en 700.000" "700000.00|0.00" "$(sql "SELECT CONCAT((SELECT c.saldo_inicial - COALESCE((SELECT SUM(monto) FROM transferencias WHERE id_cuenta_origen=c.id_cuenta),0) FROM cuentas c WHERE c.id_cuenta=$CBANCO),'|',(SELECT c.saldo_inicial + COALESCE((SELECT SUM(monto) FROM transferencias WHERE id_cuenta_destino=c.id_cuenta),0) FROM cuentas c WHERE c.id_cuenta=$CVISA))")"
+
+post_form "$JTR" /transferencias.php /transferencias.php "id=$TRID" "accion=eliminar"
+check "eliminar transferencia redirige al listado" "302 /transferencias.php" "$CODE $LOC"
+check "la transferencia se borró de la BD" "0" "$(sql "SELECT COUNT(*) FROM transferencias WHERE id_transferencia=$TRID")"
 
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

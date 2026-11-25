@@ -79,6 +79,7 @@ final class UsuarioRepository implements CredentialSource
     {
         foreach ([
             'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario = :id)',
+            'DELETE FROM transferencias WHERE id_usuario = :id',
             'DELETE FROM transacciones WHERE id_usuario = :id',
             'DELETE FROM presupuestos WHERE id_usuario = :id',
             'DELETE FROM metas_ahorro WHERE id_usuario = :id',
