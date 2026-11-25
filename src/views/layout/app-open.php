@@ -14,6 +14,7 @@ $items = [
     ['href' => '/categorias.php', 'label' => 'Categorías', 'key' => 'categorias', 'icon' => 'target'],
     ['href' => '/presupuestos.php', 'label' => 'Presupuestos', 'key' => 'presupuestos', 'icon' => 'pie'],
     ['href' => '/metas.php', 'label' => 'Metas de ahorro', 'key' => 'metas', 'icon' => 'flag'],
+    ['href' => '/deudas.php', 'label' => 'Deudas', 'key' => 'deudas', 'icon' => 'coins'],
     ['href' => '/reportes.php', 'label' => 'Reportes', 'key' => 'reportes', 'icon' => 'chart'],
     ['href' => '/espacios.php', 'label' => 'Espacios / Familia', 'key' => 'espacios', 'icon' => 'users'],
     ['href' => '/perfil.php', 'label' => 'Mi perfil', 'key' => 'perfil', 'icon' => 'shield'],

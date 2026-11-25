@@ -102,11 +102,13 @@ final class UsuarioRepository implements CredentialSource
                     ->execute(['u' => $nuevoOwner, 'e' => $espacioId, 'id' => $id]);
             } else {
                 foreach ([
+                    'DELETE FROM pagos_deuda WHERE id_deuda IN (SELECT id_deuda FROM deudas WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
                     'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
                     'DELETE FROM movimientos_recurrentes WHERE id_espacio = :e',
                     'DELETE FROM transferencias WHERE id_espacio = :e',
                     'DELETE FROM transacciones WHERE id_espacio = :e',
                     'DELETE FROM presupuestos WHERE id_espacio = :e',
+                    'DELETE FROM deudas WHERE id_espacio = :e',
                     'DELETE FROM metas_ahorro WHERE id_espacio = :e',
                     'DELETE FROM cuentas WHERE id_espacio = :e',
                     'DELETE FROM categorias WHERE id_espacio = :e',
@@ -125,7 +127,7 @@ final class UsuarioRepository implements CredentialSource
             ->execute(['id' => $id, 'id2' => $id]);
 
         // Reasignar registros financieros en espacios compartidos que aún continúan con otros miembros al propietario del espacio.
-        foreach (['cuentas', 'categorias', 'transacciones', 'transferencias', 'presupuestos', 'metas_ahorro', 'movimientos_recurrentes'] as $tabla) {
+        foreach (['cuentas', 'categorias', 'transacciones', 'transferencias', 'presupuestos', 'metas_ahorro', 'deudas', 'movimientos_recurrentes'] as $tabla) {
             $this->pdo->prepare(
                 "UPDATE $tabla t JOIN espacios e ON e.id_espacio = t.id_espacio
                  SET t.id_usuario = e.id_creador
@@ -133,12 +135,20 @@ final class UsuarioRepository implements CredentialSource
             )->execute(['id' => $id]);
         }
 
+        $this->pdo->prepare(
+            "UPDATE pagos_deuda pd JOIN deudas d ON d.id_deuda = pd.id_deuda JOIN espacios e ON e.id_espacio = d.id_espacio
+             SET pd.id_usuario = e.id_creador
+             WHERE pd.id_usuario = :id AND d.id_espacio IS NOT NULL"
+        )->execute(['id' => $id]);
+
         foreach ([
+            'DELETE FROM pagos_deuda WHERE id_deuda IN (SELECT id_deuda FROM deudas WHERE id_usuario = :id AND id_espacio IS NULL) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_usuario = :id2 AND id_espacio IS NULL)',
             'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario = :id AND id_espacio IS NULL) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_usuario = :id2 AND id_espacio IS NULL)',
             'DELETE FROM movimientos_recurrentes WHERE id_usuario = :id AND id_espacio IS NULL',
             'DELETE FROM transferencias WHERE id_usuario = :id AND id_espacio IS NULL',
             'DELETE FROM transacciones WHERE id_usuario = :id AND id_espacio IS NULL',
             'DELETE FROM presupuestos WHERE id_usuario = :id AND id_espacio IS NULL',
+            'DELETE FROM deudas WHERE id_usuario = :id AND id_espacio IS NULL',
             'DELETE FROM metas_ahorro WHERE id_usuario = :id AND id_espacio IS NULL',
             'DELETE FROM cuentas WHERE id_usuario = :id AND id_espacio IS NULL',
             'DELETE FROM categorias WHERE id_usuario = :id AND id_espacio IS NULL',

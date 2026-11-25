@@ -161,3 +161,10 @@ input[type="color"].input { width: 96px; height: 44px; padding: 4px; cursor: poi
 .sidebar__space-name { font-weight: 650; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar__space-link { flex: none; padding: 4px 8px; border-radius: 6px; background: rgba(181, 226, 250, .14); color: var(--sky); font-weight: 600; transition: background-color var(--t), color var(--t); }
 .sidebar__space-link:hover { background: rgba(181, 226, 250, .25); color: var(--white); }
+
+/* Deudas: comparador Bola de Nieve vs. Avalancha */
+.debt-plan { display: grid; gap: var(--s-2); margin: var(--s-4) 0 0; }
+.debt-plan > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s-2); padding: 8px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
+.debt-plan > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.debt-plan dt { color: var(--muted); }
+.debt-plan dd { margin: 0; font-weight: 550; text-align: right; }

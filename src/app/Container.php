@@ -9,11 +9,13 @@ use App\Auth\Autenticador;
 use App\Auth\LimitadorIntentos;
 use App\Auth\RecuperacionClave;
 use App\Database\Connection;
+use App\Deudas\GestionDeudas;
 use App\Espacios\GestionEspacios;
 use App\Repository\AdminStatsRepository;
 use App\Repository\AporteRepository;
 use App\Repository\CategoriaRepository;
 use App\Repository\CuentaRepository;
+use App\Repository\DeudaRepository;
 use App\Repository\EspacioRepository;
 use App\Mail\Mailer;
 use App\Mail\SmtpMailer;
@@ -166,6 +168,16 @@ final class Container
     public function gestionMetas(): GestionMetas
     {
         return new GestionMetas($this->pdo(), $this->metas(), $this->aportes(), $this->cuentas());
+    }
+
+    public function deudas(): DeudaRepository
+    {
+        return new DeudaRepository($this->pdo());
+    }
+
+    public function gestionDeudas(): GestionDeudas
+    {
+        return new GestionDeudas($this->pdo(), $this->deudas(), $this->cuentas());
     }
 
     public function reportes(): ReporteRepository

@@ -26,6 +26,8 @@ cleanup() {
     sql "DELETE FROM intentos_acceso" >/dev/null 2>&1
     # Orden explícito: transacciones y aportes referencian cuentas sin cascada (ver D5 en docs/PLAN.md).
     sql "DELETE r FROM restablecimientos r JOIN usuarios u ON u.id_usuario = r.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
+    sql "DELETE pd FROM pagos_deuda pd JOIN usuarios u ON u.id_usuario = pd.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
+    sql "DELETE d FROM deudas d JOIN usuarios u ON u.id_usuario = d.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE a FROM aportes_meta a JOIN metas_ahorro m ON m.id_meta = a.id_meta JOIN usuarios u ON u.id_usuario = m.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE mr FROM movimientos_recurrentes mr JOIN usuarios u ON u.id_usuario = mr.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE tr FROM transferencias tr JOIN usuarios u ON u.id_usuario = tr.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
@@ -1367,6 +1369,24 @@ check "volver al espacio personal redirige al panel" "302 /panel.php" "$CODE $LO
 request "$JTR" GET /cuentas.php
 contains "en el espacio personal vuelven a verse las cuentas personales (Banco y Visa)" "Banco" "$TMP/body"
 absent "y no se mezcla la Cuenta Hogar en el espacio personal" "Cuenta Hogar" "$TMP/body"
+
+echo; echo "== Deudas, cálculo de intereses y estrategias Bola de Nieve / Avalancha (Fase 11)"
+request "$J7" GET /deudas.php;           check "sin sesión, deudas exige login" "302 /login.php" "$CODE $LOC"
+request "$J7" GET /deuda-form.php;       check "y el formulario también" "302 /login.php" "$CODE $LOC"
+request "$JTR" GET /deudas.php;          check "el listado de deudas responde 200" "200" "$CODE"
+contains "sin deudas invita a registrar la primera" "Registrar mi primera deuda" "$TMP/body"
+
+post_form "$JTR" /deuda-form.php /deuda-form.php "nombre=Prestamo Libre" "acreedor=Banco Popular" "monto_inicial=500.000" "tasa_mensual=2" "cuota_minima=110.000" "dia_pago=15"
+check "crear deuda redirige al listado" "302 /deudas.php" "$CODE $LOC"
+DEUDAID="$(sql "SELECT id_deuda FROM deudas WHERE id_usuario=$UTRID")"
+request "$JTR" GET "/deudas.php?extra=50.000"
+contains "muestra la deuda y el simulador Bola de Nieve vs. Avalancha" "Método Bola de Nieve" "$TMP/body"
+contains "muestra el método Avalancha" "Método Avalancha" "$TMP/body"
+contains "calcula el interés mensual (2 % de 500.000 = 10.000)" '$10.000' "$TMP/body"
+
+post_form "$JTR" /deuda-pago.php "/deuda-pago.php?id=$DEUDAID" "id=$DEUDAID" "id_cuenta=$CBANCO" "monto_total=110.000" "modo_pago=cuota" "fecha=$HOY_APP" "descripcion=Primera cuota"
+check "registrar pago de cuota redirige al listado de deudas" "302 /deudas.php" "$CODE $LOC"
+check "desglosó 10.000 a intereses y 100.000 a capital" "100000.00|10000.00" "$(sql "SELECT CONCAT(abono_capital,'|',pago_interes) FROM pagos_deuda WHERE id_deuda=$DEUDAID")"
 
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

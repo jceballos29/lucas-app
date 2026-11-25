@@ -1128,4 +1128,48 @@ same('si Ana elimina su cuenta de usuario, Luis es promovido a propietario y el 
     (string) $cuentas->findOwned($f2, $cFamiliar, $espId)?->saldo,
 ]);
 
+section('GestionDeudas: préstamos, desglose capital/interés y liquidación (Fase 11)');
+$gd = $container->gestionDeudas();
+$dRepo = $container->deudas();
+$dUser = (int) $usuarios->create('Daniel Deudas', 'daniel.deudas@correo.com', 'x');
+$dCuenta = $cuentas->create($dUser, 'Ahorros Daniel', 'ahorro', '2000000.00');
+$deudaId = $dRepo->create($dUser, [
+    'nombre' => 'Crédito Libre Inversión',
+    'acreedor' => 'Banco X',
+    'monto_inicial' => '1000000.00',
+    'tasa_mensual_bps' => 200, // 2,00 % M.V. -> interés primer mes = 20.000
+    'cuota_minima' => '220000.00',
+    'dia_pago' => 15,
+]);
+$pago1 = $gd->registrarPago($dUser, $deudaId, [
+    'id_cuenta' => $dCuenta,
+    'monto_total' => '220000.00',
+    'modo_pago' => 'cuota',
+    'fecha' => '2026-11-15',
+    'descripcion' => 'Cuota 1',
+]);
+same('registrar primera cuota de 220.000 desglosa 20.000 interés y 200.000 capital', ['ok', '200000.00', '20000.00', '800000.00', false], [
+    $pago1['codigo'],
+    $pago1['abono_capital'],
+    $pago1['pago_interes'],
+    $pago1['nuevo_saldo'],
+    $pago1['pagada'],
+]);
+same('el saldo de la cuenta de ahorros bajó 220.000 (a 1.780.000)', '1780000.00', (string) $cuentas->findOwned($dUser, $dCuenta)?->saldo);
+same('una deuda con pagos registrados no se puede eliminar para no descuadrar el saldo de la cuenta', 'tiene_pagos', $gd->eliminar($dUser, $deudaId));
+
+$pago2 = $gd->registrarPago($dUser, $deudaId, [
+    'id_cuenta' => $dCuenta,
+    'monto_total' => '800000.00',
+    'modo_pago' => 'capital',
+    'fecha' => '2026-11-20',
+    'descripcion' => 'Abono total a capital',
+]);
+same('liquidar los 800.000 restantes con abono a capital marca la deuda como pagada', ['ok', '0.00', true, 'pagada'], [
+    $pago2['codigo'],
+    $pago2['nuevo_saldo'],
+    $pago2['pagada'],
+    $dRepo->findOwned($dUser, $deudaId)?->estado,
+]);
+
 finish();

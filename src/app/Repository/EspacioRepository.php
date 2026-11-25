@@ -95,11 +95,13 @@ final class EspacioRepository
     public function deleteWithAllData(int $espacioId): void
     {
         foreach ([
+            'DELETE FROM pagos_deuda WHERE id_deuda IN (SELECT id_deuda FROM deudas WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
             'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
             'DELETE FROM movimientos_recurrentes WHERE id_espacio = :e',
             'DELETE FROM transferencias WHERE id_espacio = :e',
             'DELETE FROM transacciones WHERE id_espacio = :e',
             'DELETE FROM presupuestos WHERE id_espacio = :e',
+            'DELETE FROM deudas WHERE id_espacio = :e',
             'DELETE FROM metas_ahorro WHERE id_espacio = :e',
             'DELETE FROM cuentas WHERE id_espacio = :e',
             'DELETE FROM categorias WHERE id_espacio = :e',

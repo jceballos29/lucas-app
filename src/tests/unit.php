@@ -732,4 +732,45 @@ same('nombre corto en espacio', true, isset($ev->validateEspacio(['nombre' => 'A
 same('invitación válida', [], $ev->validateInvitacion(['correo' => 'Pareja@Correo.com ', 'rol' => 'editor'])['errors']);
 same('invitación con rol propietario no se permite directamente', true, isset($ev->validateInvitacion(['correo' => 'a@b.com', 'rol' => 'propietario'])['errors']['rol']));
 
+section('Deuda, ReglasPagoDeuda y PlanificadorDeudas: Bola de Nieve vs. Avalancha (Fase 11)');
+use App\Domain\Deuda;
+use App\Deudas\ReglasPagoDeuda as RPD;
+use App\Deudas\PlanificadorDeudas as PD;
+use App\Validation\DeudaValidator;
+same('parseTasaBps convierte porcentaje mensual a puntos básicos enteros', [185, 200, 0, 50], [
+    DeudaValidator::parseTasaBps('1,85'),
+    DeudaValidator::parseTasaBps('2 %'),
+    DeudaValidator::parseTasaBps('0'),
+    DeudaValidator::parseTasaBps('0.5'),
+]);
+same('calcularInteres de 1.000.000 al 1,85 % M.V. (185 bps) = 18.500,00', '18500.00', Deuda::calcularInteres('1000000.00', 185));
+$cuentaDeudaOk = ['nombre' => 'Ahorros', 'tipo' => 'ahorro', 'activa' => true];
+$infoDeuda = ['estado' => 'activa', 'saldo_capital' => '1000000.00', 'tasa_mensual_bps' => 200]; // 2% M.V. -> interés = 20.000
+$pagoCuota = RPD::evaluar($cuentaDeudaOk, $infoDeuda, '500000.00', '120000.00', 'cuota');
+same('en pago de cuota de 120.000 con interés de 20.000: 20.000 van a interés y 100.000 a capital', ['ok', '100000.00', '20000.00', '900000.00'], [
+    $pagoCuota['codigo'],
+    $pagoCuota['abono_capital'],
+    $pagoCuota['pago_interes'],
+    $pagoCuota['nuevo_saldo_capital'],
+]);
+$pagoExtra = RPD::evaluar($cuentaDeudaOk, $infoDeuda, '500000.00', '120000.00', 'capital');
+same('en abono extraordinario a capital: 100 % va a capital y 0 a interés', ['ok', '120000.00', '0.00', '880000.00'], [
+    $pagoExtra['codigo'],
+    $pagoExtra['abono_capital'],
+    $pagoExtra['pago_interes'],
+    $pagoExtra['nuevo_saldo_capital'],
+]);
+same('si el abono supera el saldo de la deuda se rechaza', RPD::SUPERA_SALDO_DEUDA, RPD::evaluar($cuentaDeudaOk, $infoDeuda, '5000000.00', '1500000.00', 'capital')['codigo']);
+same('si la cuenta no tiene saldo suficiente se rechaza', RPD::SALDO_INSUFICIENTE, RPD::evaluar($cuentaDeudaOk, $infoDeuda, '50000.00', '120000.00', 'cuota')['codigo']);
+
+$dPequenaBarata = new Deuda(1, 1, 'Tienda (pequeña)', null, '400000.00', 50, '100000.00', 10, 'activa'); // 0,5% M.V., saldo 400k
+$dGrandeCara = new Deuda(2, 1, 'Tarjeta (cara)', null, '1200000.00', 250, '150000.00', 15, 'activa');    // 2,5% M.V., saldo 1.2M
+$comp = PD::comparar([$dPequenaBarata, $dGrandeCara], '100000.00');
+same('Bola de Nieve ataca primero la deuda más pequeña', 'Tienda (pequeña)', $comp['bolaNieve']['primeraDeuda']);
+same('Avalancha ataca primero la deuda con mayor tasa de interés', 'Tarjeta (cara)', $comp['avalancha']['primeraDeuda']);
+same('Avalancha paga menos o igual intereses totales que Bola de Nieve y que solo mínimos', true,
+    D::aCentavos($comp['avalancha']['intereses']) <= D::aCentavos($comp['bolaNieve']['intereses'])
+    && D::aCentavos($comp['bolaNieve']['intereses']) < D::aCentavos($comp['minimos']['intereses'])
+);
+
 finish();
