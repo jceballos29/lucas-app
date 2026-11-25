@@ -82,7 +82,8 @@ final class SmtpMailer implements Mailer
             if ($this->encryption === 'starttls') {
                 $this->command($socket, 'STARTTLS', [220]);
 
-                if (@stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT) !== true) {
+                $cryptoMethod = STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT;
+                if (@stream_socket_enable_crypto($socket, true, $cryptoMethod) !== true) {
                     throw new MailException('No se pudo establecer la conexión cifrada (STARTTLS).');
                 }
 

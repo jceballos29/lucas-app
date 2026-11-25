@@ -39,9 +39,12 @@ final class RecuperacionController
 
         try {
             $limitador = $this->container->limitador();
-            // Cada petición cuenta, exista o no el correo (RNF-24); si se pasó del límite no se envía nada, pero la respuesta es la misma.
+            // Cada petición cuenta, exista o no el correo (RNF-24); si se pasó del límite no se envía nada ni se siguen
+            // acumulando filas que renovarían indefinidamente la ventana de bloqueo, pero la respuesta es la misma.
             $bloqueado = $limitador->bloqueado('recuperacion', $correo, $ip);
-            $limitador->registrar('recuperacion', $correo, $ip);
+            if (!$bloqueado) {
+                $limitador->registrar('recuperacion', $correo, $ip);
+            }
         } catch (RuntimeException $error) {
             [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
             http_response_code($status);

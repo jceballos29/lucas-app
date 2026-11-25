@@ -26,7 +26,7 @@ COPY zz-pool.conf /usr/local/etc/php-fpm.d/zz-pool.conf
 COPY php.ini /usr/local/etc/php/conf.d/99-app.ini
 # Ajustes de desarrollo: solo se cargan si APP_ENV=local (ver PHP_INI_SCAN_DIR en docker-compose.yml)
 COPY php.local.ini /usr/local/etc/php/env/local/99-dev.ini
-COPY xdebug.ini /usr/local/etc/php/conf.d/99-xdebug.ini
+COPY xdebug.ini /usr/local/etc/php/env/local/99-xdebug.ini
 
 COPY entrypoint.sh /usr/local/bin/app-entrypoint.sh
 

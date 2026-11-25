@@ -585,6 +585,17 @@ same('un destinatario que no es un correo se rechaza', true, (static function ()
     }
     return false;
 })());
+same('un destinatario con < o > (inyección en sobre SMTP) se rechaza', true, (static function () use ($fecha): bool {
+    try {
+        Msg::build('lucas@ejemplo.com', 'Lucas', '"a><b"@ejemplo.com', 'Asunto', 'x', $fecha, 'id@x.com');
+    } catch (App\Mail\MailException) {
+        return true;
+    }
+    return false;
+})());
+same('Logger::format neutraliza saltos de línea y caracteres de control (CWE-117)', '[test] /ruta falsa: fallo [31m limpio', (static function (): string {
+    return App\Logging\Logger::format('test', "/ruta\r\nfalsa", new RuntimeException("fallo\x1b[31m\nlimpio"));
+})());
 same('dot-stuffing: una línea que empieza con punto lleva otro delante', "uno\r\n..dos\r\n...tres\r\n.\r\n", Msg::forData("uno\n.dos\n..tres"));
 same('termina con la línea de un solo punto', true, str_ends_with(Msg::forData("a\nb"), "\r\n.\r\n"));
 same('los fines de línea pasan a CRLF', "a\r\nb\r\n.\r\n", Msg::forData("a\nb\n"));

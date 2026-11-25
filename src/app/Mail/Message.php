@@ -24,7 +24,7 @@ final class Message
         }
 
         foreach (['remitente' => $from, 'destinatario' => $to] as $campo => $valor) {
-            if (filter_var($valor, FILTER_VALIDATE_EMAIL) === false) {
+            if (preg_match('/[<>\s]/', $valor) === 1 || filter_var($valor, FILTER_VALIDATE_EMAIL) === false) {
                 throw new MailException("El $campo no es una dirección válida.");
             }
         }

@@ -95,6 +95,9 @@ request "$J" GET /movimientos.php;  check "las páginas de maqueta exigen sesió
 request "$J" GET /admin/index.php;  check "el dashboard de admin exige sesión" "302 /login.php" "$CODE $LOC"
 request "$J" GET /admin/usuarios.php; check "la lista de usuarios exige sesión" "302 /login.php" "$CODE $LOC"
 request "$J" GET /login.php;        check "login.php responde 200" "200" "$CODE"
+contains "envía cabecera Cross-Origin-Opener-Policy" "Cross-Origin-Opener-Policy: same-origin" "$TMP/hdr"
+request "$J" GET /login.php/x.php;  check "una ruta .php con PATH_INFO falso es 404 (no ejecuta login.php)" "404" "$CODE"
+request "$J" GET /no-existe.php;    check "un .php inexistente es 404" "404" "$CODE"
 request "$J" GET /registro.php;     check "registro.php responde 200" "200" "$CODE"
 request "$J" GET /logout.php;       check "logout por GET no está permitido" "405" "$CODE"
 

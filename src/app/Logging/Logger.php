@@ -18,18 +18,27 @@ final class Logger
      * @param string $step El paso en el que ocurrió (connection, query, config...).
      * @param Throwable $error La excepción a registrar.
      */
+    public static function format(string $step, string $requestUri, Throwable $error): string
+    {
+        $targetError = $error->getPrevious() ?? $error;
+        $code = self::sanitize((string) $targetError->getCode());
+        $uri = self::sanitize($requestUri);
+        $detail = self::sanitize($targetError->getMessage());
+
+        // En errores de consulta getCode() es el SQLSTATE como TEXTO ('42S02'), por eso se compara con '' y '0'.
+        return $code !== '0' && $code !== ''
+            ? sprintf('[%s] %s: (%s) %s', self::sanitize($step), $uri, $code, $detail)
+            : sprintf('[%s] %s: %s', self::sanitize($step), $uri, $detail);
+    }
+
     public static function exception(string $step, Throwable $error): void
     {
-        $requestUri = $_SERVER['REQUEST_URI'] ?? 'CLI';
-        $targetError = $error->getPrevious() ?? $error;
-        $code = $targetError->getCode();
-        $detail = $targetError->getMessage();
+        error_log(self::format($step, (string) ($_SERVER['REQUEST_URI'] ?? 'CLI'), $error));
+    }
 
-        // En errores de consulta getCode() es el SQLSTATE como TEXTO ('42S02'), por eso se compara con '' y 0.
-        $formattedLog = $code !== 0 && $code !== ''
-            ? sprintf('[%s] %s: (%s) %s', $step, $requestUri, $code, $detail)
-            : sprintf('[%s] %s: %s', $step, $requestUri, $detail);
-
-        error_log($formattedLog);
+    /** Elimina saltos de línea y caracteres de control para evitar inyección de logs o secuencias ANSI (CWE-117). */
+    public static function sanitize(string $text): string
+    {
+        return preg_replace('/[\x00-\x1F\x7F]+/', ' ', $text) ?? '';
     }
 }

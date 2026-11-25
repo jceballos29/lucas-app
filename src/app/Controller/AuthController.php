@@ -93,9 +93,10 @@ final class AuthController
                 $this->tooManyAttempts('auth/registro', ['old' => $old], 'Crear cuenta');
             }
 
-            $limitador->registrar('registro', $data['correo'], self::ip());
-
             if ($errors === []) {
+                // Solo se contabiliza para el correo cuando el formulario es válido: así un tercero no puede bloquear un correo
+                // ajeno enviando contraseñas que no coinciden.
+                $limitador->registrar('registro', $data['correo'], self::ip());
                 $usuarios = $this->container->usuarios();
                 $hash = password_hash($data['clave'], PASSWORD_DEFAULT);
                 $id = $usuarios->findByEmail($data['correo']) === null
