@@ -30,16 +30,18 @@ final class PresupuestoController
         $user = require_login();
         $espacioId = $user['espacio_id'] ?? null;
         ['mes' => $mes, 'anio' => $anio] = Mes::desde($_GET, new DateTimeImmutable('now'));
+        $anterior = Mes::anterior($mes, $anio);
 
         try {
             $repo = $this->container->presupuestos();
 
             if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 require_espacio_write($user);
-                $this->eliminar($user['id'], $espacioId);
+                $this->procesarAccion($user['id'], $mes, $anio, $espacioId);
             }
 
             $lista = $repo->listByMonth($user['id'], $mes, $anio, $espacioId);
+            $listaAnterior = $repo->listByMonth($user['id'], $anterior['mes'], $anterior['anio'], $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -50,9 +52,10 @@ final class PresupuestoController
         View::page('app/presupuestos', [
             'mes' => $mes,
             'anio' => $anio,
-            'anterior' => Mes::anterior($mes, $anio),
+            'anterior' => $anterior,
             'siguiente' => Mes::siguiente($mes, $anio),
             'presupuestos' => $lista,
+            'numMesAnterior' => count($listaAnterior),
             'presupuestado' => $presupuestado,
             'gastado' => $gastado,
             'flash' => Flash::pull(),
@@ -155,15 +158,114 @@ final class PresupuestoController
         ], $presupuesto === null ? 'Nuevo presupuesto' : 'Editar presupuesto', $user, 'app', 'presupuestos');
     }
 
-    /** POST de eliminación desde el listado. */
-    private function eliminar(int $userId, ?int $espacioId): never
+    /** Asistente guiado de presupuestos con la regla 50/30/20 (Fase 12). */
+    public function asistente(): void
+    {
+        $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
+        $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+        ['mes' => $mes, 'anio' => $anio] = Mes::desde($isPost ? $_POST : $_GET, new DateTimeImmutable('now'));
+
+        try {
+            $categorias = array_values(array_filter(
+                $this->container->categorias()->listVisible($user['id'], $espacioId),
+                static fn (Categoria $c): bool => $c->tipo === 'gasto'
+            ));
+
+            // Estimar ingreso mensual a partir de los ingresos recurrentes fijos o los ingresos del mes.
+            $ingresosFijos = [];
+            foreach ($this->container->recurrentes()->listByUser($user['id'], $espacioId) as $r) {
+                if ($r->activo && $r->esIngreso()) {
+                    $ingresosFijos[] = \App\Support\Frecuencia::equivalenteMensual($r->monto, $r->frecuencia);
+                }
+            }
+            $ingresoEstimado = Dinero::sumar($ingresosFijos);
+            if (Dinero::aCentavos($ingresoEstimado) <= 0) {
+                $ingresoEstimado = $this->container->reportes()->totalesMes($user['id'], $mes, $anio, $espacioId)['ingresos'];
+            }
+            if (Dinero::aCentavos($ingresoEstimado) <= 0) {
+                $ingresoEstimado = '3000000.00';
+            }
+
+            $ingresoInput = is_string($_GET['ingreso'] ?? null) ? trim($_GET['ingreso']) : '';
+            $ingresoBase = ($ingresoInput !== '' ? Dinero::parse($ingresoInput) : null) ?? $ingresoEstimado;
+            if (Dinero::aCentavos($ingresoBase) <= 0) {
+                $ingresoBase = $ingresoEstimado;
+            }
+
+            $distribucion = \App\Presupuestos\Asistente503020::distribuir($ingresoBase, $categorias);
+            $errors = [];
+
+            if ($isPost) {
+                reject_foreign_origin();
+                require_csrf();
+
+                $limites = is_array($_POST['limites'] ?? null) ? $_POST['limites'] : [];
+                $montosValidos = [];
+                foreach ($limites as $catIdRaw => $textoMonto) {
+                    if (!is_int($catIdRaw) && (!is_string($catIdRaw) || !ctype_digit($catIdRaw))) {
+                        continue;
+                    }
+                    $txt = is_string($textoMonto) ? trim($textoMonto) : '';
+                    if ($txt === '' || $txt === '0') {
+                        continue;
+                    }
+                    $parsed = Dinero::parse($txt);
+                    if ($parsed === null || str_starts_with($parsed, '-')) {
+                        $errors['general'] = 'Revisa los montos: todos deben ser números válidos mayores o iguales a cero.';
+                        break;
+                    }
+                    if (Dinero::aCentavos($parsed) > 0) {
+                        $montosValidos[(int) $catIdRaw] = $parsed;
+                    }
+                }
+
+                if ($errors === [] && $montosValidos === []) {
+                    $errors['general'] = 'Asigna un límite mayor que cero a al menos una categoría para guardar.';
+                }
+
+                if ($errors === []) {
+                    $n = $this->container->clonadorPresupuestos()->guardarLote($user['id'], $mes, $anio, $montosValidos, $espacioId);
+                    Flash::set('ok', "Se aplicó la regla 50/30/20 y se guardaron $n " . ($n === 1 ? 'presupuesto' : 'presupuestos') . ' para ' . Mes::etiqueta($mes, $anio) . '.');
+                    Response::redirect(self::listUrl($mes, $anio));
+                }
+            }
+        } catch (RuntimeException $error) {
+            self::fail($error);
+        }
+
+        View::page('app/presupuesto-asistente', [
+            'mes' => $mes,
+            'anio' => $anio,
+            'ingresoCampo' => Dinero::paraCampo($ingresoBase),
+            'distribucion' => $distribucion,
+            'errors' => $errors,
+        ], 'Asistente 50/30/20', $user, 'app', 'presupuestos');
+    }
+
+    /** POST de acciones desde el listado (`eliminar` o `clonar_anterior`). */
+    private function procesarAccion(int $userId, int $mes, int $anio, ?int $espacioId): never
     {
         reject_foreign_origin();
         require_csrf();
 
+        $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+
+        if ($accion === 'clonar_anterior') {
+            $res = $this->container->clonadorPresupuestos()->clonarDelMesAnterior($userId, $mes, $anio, $espacioId);
+            if ($res['copiados'] === 0) {
+                Flash::set('info', 'No había presupuestos nuevos por copiar desde el mes anterior.');
+            } else {
+                $n = $res['copiados'];
+                Flash::set('ok', 'Se ' . ($n === 1 ? 'copió 1 presupuesto' : "copiaron $n presupuestos") . ' del mes anterior a ' . Mes::etiqueta($mes, $anio) . '.');
+            }
+            Response::redirect(self::listUrl($mes, $anio));
+        }
+
         $id = is_string($_POST['id'] ?? null) && ctype_digit($_POST['id']) ? (int) $_POST['id'] : 0;
 
-        if ($id < 1 || ($_POST['accion'] ?? '') !== 'eliminar') {
+        if ($id < 1 || $accion !== 'eliminar') {
             Response::plain(400, "Solicitud no válida.\n");
         }
 

@@ -773,4 +773,20 @@ same('Avalancha paga menos o igual intereses totales que Bola de Nieve y que sol
     && D::aCentavos($comp['bolaNieve']['intereses']) < D::aCentavos($comp['minimos']['intereses'])
 );
 
+section('Asistente503020: distribución entera 50/30/20 (Fase 12)');
+use App\Presupuestos\Asistente503020 as A50;
+use App\Domain\Categoria as Cat;
+$cats50 = [
+    new Cat(1, null, 'Alimentación', 'gasto', '#E4572E'),
+    new Cat(2, null, 'Vivienda', 'gasto', '#7A5195'),
+    new Cat(3, null, 'Entretenimiento', 'gasto', '#EF8354'),
+];
+$dist = A50::distribuir('3000000.00', $cats50);
+same('50 % necesidades, 30 % estilo de vida, 20 % ahorro/deudas de 3.000.000', ['1500000.00', '900000.00', '600000.00'], [
+    $dist['necesidades'],
+    $dist['estiloVida'],
+    $dist['ahorroDeudas'],
+]);
+same('la suma de las sugerencias por categoría cuadra al centavo con 50 % + 30 %', '2400000.00', D::sumar(array_column($dist['sugerencias'], 'monto')));
+
 finish();

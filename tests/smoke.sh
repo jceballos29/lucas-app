@@ -1388,5 +1388,21 @@ post_form "$JTR" /deuda-pago.php "/deuda-pago.php?id=$DEUDAID" "id=$DEUDAID" "id
 check "registrar pago de cuota redirige al listado de deudas" "302 /deudas.php" "$CODE $LOC"
 check "desglosó 10.000 a intereses y 100.000 a capital" "100000.00|10000.00" "$(sql "SELECT CONCAT(abono_capital,'|',pago_interes) FROM pagos_deuda WHERE id_deuda=$DEUDAID")"
 
+echo; echo "== Clonación de presupuestos y asistente 50/30/20 (Fase 12)"
+request "$J7" GET /presupuesto-asistente.php; check "sin sesión, asistente 50/30/20 exige login" "302 /login.php" "$CODE $LOC"
+request "$JTR" GET "/presupuesto-asistente.php?mes=10&anio=2026&ingreso=4.000.000"
+check "el asistente 50/30/20 responde 200" "200" "$CODE"
+contains "calcula el 50 % de 4.000.000 (2.000.000)" '$2.000.000' "$TMP/body"
+contains "calcula el 30 % de 4.000.000 (1.200.000)" '$1.200.000' "$TMP/body"
+contains "calcula el 20 % de 4.000.000 (800.000)" '$800.000' "$TMP/body"
+
+post_form "$JTR" /presupuesto-asistente.php "/presupuesto-asistente.php?mes=10&anio=2026" "mes=10" "anio=2026" "limites[$KG]=600.000"
+check "aplicar presupuestos desde el asistente redirige al mes" "302 /presupuestos.php?mes=10&anio=2026" "$CODE $LOC"
+check "se guardó el presupuesto de octubre" "600000.00" "$(sql "SELECT monto_limite FROM presupuestos WHERE id_usuario=$UTRID AND mes=10 AND anio=2026 AND id_categoria=$KG")"
+
+post_form "$JTR" "/presupuestos.php?mes=11&anio=2026" "/presupuestos.php?mes=11&anio=2026" "accion=clonar_anterior"
+check "clonar del mes anterior redirige a noviembre" "302 /presupuestos.php?mes=11&anio=2026" "$CODE $LOC"
+check "copió el límite de 600.000 a noviembre" "600000.00" "$(sql "SELECT monto_limite FROM presupuestos WHERE id_usuario=$UTRID AND mes=11 AND anio=2026 AND id_categoria=$KG")"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

@@ -1172,4 +1172,16 @@ same('liquidar los 800.000 restantes con abono a capital marca la deuda como pag
     $dRepo->findOwned($dUser, $deudaId)?->estado,
 ]);
 
+section('ClonadorPresupuestos: clonar del mes anterior y guardar lote 50/30/20 (Fase 12)');
+$clonador = $container->clonadorPresupuestos();
+$pUser = (int) $usuarios->create('Paula Presupuestos', 'paula.pres@correo.com', 'x');
+$guardadosLote = $clonador->guardarLote($pUser, 10, 2026, [
+    $catA => '450000.00',
+    $catB => '250000.00',
+]);
+same('guardarLote guarda los 2 presupuestos de octubre 2026', 2, $guardadosLote);
+$resClon = $clonador->clonarDelMesAnterior($pUser, 11, 2026);
+same('clonarDelMesAnterior copia los 2 presupuestos de octubre a noviembre', ['copiados' => 2, 'omitidos' => 0], $resClon);
+same('volver a clonar omite los que ya existen en noviembre', ['copiados' => 0, 'omitidos' => 2], $clonador->clonarDelMesAnterior($pUser, 11, 2026));
+
 finish();

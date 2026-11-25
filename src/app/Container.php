@@ -21,6 +21,7 @@ use App\Mail\Mailer;
 use App\Mail\SmtpMailer;
 use App\Metas\GestionMetas;
 use App\Movimientos\GestionMovimientos;
+use App\Presupuestos\ClonadorPresupuestos;
 use App\Recurrentes\GestionRecurrentes;
 use App\Repository\IntentoRepository;
 use App\Repository\MetaRepository;
@@ -153,6 +154,11 @@ final class Container
     public function presupuestos(): PresupuestoRepository
     {
         return new PresupuestoRepository($this->pdo());
+    }
+
+    public function clonadorPresupuestos(): ClonadorPresupuestos
+    {
+        return new ClonadorPresupuestos($this->pdo(), $this->presupuestos(), $this->categorias());
     }
 
     public function metas(): MetaRepository
