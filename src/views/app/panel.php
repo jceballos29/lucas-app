@@ -28,11 +28,12 @@ use App\View\Ui;
  * @var list<Recurrente> $recurrentesVencidos
  */
 $recurrentesVencidos = $recurrentesVencidos ?? [];
+$puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 $balanceCentavos = Dinero::aCentavos($balance);
 $balanceTono = $balanceCentavos < 0 ? 'out' : ($balanceCentavos > 0 ? 'in' : 'plain');
 $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'value' => $i['percent']], $categorias['items']);
 ?>
-<?= Ui::pageHead('Hola, ' . $nombre, 'Resumen de ' . $mesTexto, Ui::button('Nuevo movimiento', ['href' => '/movimiento-form.php', 'icon' => 'plus'])) ?>
+<?= Ui::pageHead('Hola, ' . $nombre, 'Resumen de ' . $mesTexto, $puedeEscribir ? Ui::button('Nuevo movimiento', ['href' => '/movimiento-form.php', 'icon' => 'plus']) : null) ?>
 
 <?php if ($recurrentesVencidos !== []): ?>
     <?= Ui::notice(new Html('Tienes <strong>' . count($recurrentesVencidos) . (count($recurrentesVencidos) === 1 ? ' gasto o ingreso fijo pendiente' : ' gastos o ingresos fijos pendientes') . '</strong> por aplicar. <a href="/recurrentes.php">Revisar en Gastos fijos</a>.'), 'warn') ?>
@@ -70,7 +71,7 @@ $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'val
         <?= Ui::cardOpen(['title' => 'Últimos movimientos', 'action' => Ui::button('Ver todos', ['href' => '/movimientos.php', 'variant' => 'ghost', 'size' => 'sm'])]) ?>
             <?php if ($ultimos === []): ?>
                 <p class="muted">Aún no has registrado movimientos.</p>
-                <p><?= Ui::button($numCuentas === 0 ? 'Crear mi primera cuenta' : 'Registrar un movimiento', ['href' => $numCuentas === 0 ? '/cuenta-form.php' : '/movimiento-form.php', 'icon' => 'plus']) ?></p>
+                <?php if ($puedeEscribir): ?><p><?= Ui::button($numCuentas === 0 ? 'Crear mi primera cuenta' : 'Registrar un movimiento', ['href' => $numCuentas === 0 ? '/cuenta-form.php' : '/movimiento-form.php', 'icon' => 'plus']) ?></p><?php endif; ?>
             <?php endif; ?>
             <?php foreach ($ultimos as $m): ?>
                 <?= Ui::listItem($m->descripcion ?? $m->categoriaNombre, $m->categoriaNombre . ' · ' . Fecha::diaMes($m->fecha), Ui::money($m->monto, $m->esIngreso() ? 'in' : 'out')) ?>
@@ -81,7 +82,7 @@ $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'val
     <?= Ui::cardOpen(['title' => 'Presupuestos del mes', 'action' => Ui::button('Ver presupuestos', ['href' => '/presupuestos.php', 'variant' => 'ghost', 'size' => 'sm'])]) ?>
         <?php if ($presupuestos === []): ?>
             <p class="muted">No tienes presupuestos este mes. Fija un límite por categoría y te avisaremos al acercarte.</p>
-            <p><?= Ui::button('Crear un presupuesto', ['href' => '/presupuesto-form.php', 'icon' => 'plus']) ?></p>
+            <?php if ($puedeEscribir): ?><p><?= Ui::button('Crear un presupuesto', ['href' => '/presupuesto-form.php', 'icon' => 'plus']) ?></p><?php endif; ?>
         <?php endif; ?>
         <?php foreach (array_slice($presupuestos, 0, 4) as $p): ?>
             <?php $pr = $p->progreso(); ?>
@@ -92,4 +93,4 @@ $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'val
         <?php endforeach; ?>
     <?= Ui::cardClose() ?>
 </div>
-<?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?>
+<?php if ($puedeEscribir): ?><?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?><?php endif; ?>

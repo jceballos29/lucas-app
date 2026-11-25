@@ -20,10 +20,10 @@ use App\View\Ui;
  * @var array{tone: string, message: string}|null $flash
  */
 $flash = $flash ?? null;
-
 $enEspacioCompartido = is_array($currentUser ?? null) && ($currentUser['espacio_id'] ?? null) !== null;
+$puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 
-$rows = array_map(static function (Transferencia $t) use ($pagina, $enEspacioCompartido): array {
+$rows = array_map(static function (Transferencia $t) use ($pagina, $enEspacioCompartido, $puedeEscribir): array {
     $etiqueta = $t->cuentaOrigenNombre . ' → ' . $t->cuentaDestinoNombre;
     $autorSub = $enEspacioCompartido && $t->autorNombre !== ''
         ? '<span class="cell-sub">Por ' . escape($t->autorNombre) . '</span>'
@@ -37,7 +37,7 @@ $rows = array_map(static function (Transferencia $t) use ($pagina, $enEspacioCom
             ? new Html('<span class="cell-title">' . escape($t->descripcion) . '</span>' . $autorSub)
             : new Html('<span class="muted-note">Transferencia entre cuentas</span>' . $autorSub),
         'monto' => Ui::money($t->monto),
-        'acciones' => Ui::actions([
+        'acciones' => $puedeEscribir ? Ui::actions([
             Ui::iconButton('edit', 'Editar transferencia ' . $etiqueta, ['href' => '/transferencia-form.php?id=' . $t->id]),
             Ui::postForm('/transferencias.php', ['id' => $t->id, 'accion' => 'eliminar', 'pagina' => $pagina], Ui::iconButton('trash', 'Eliminar transferencia ' . $etiqueta, [
                 'type' => 'submit',
@@ -47,11 +47,11 @@ $rows = array_map(static function (Transferencia $t) use ($pagina, $enEspacioCom
                     'data-confirm-ok' => 'Eliminar',
                 ],
             ])),
-        ]),
+        ]) : new Html('<span class="muted-note">Solo lectura</span>'),
     ];
 }, $rows);
 ?>
-<?= Ui::pageHead('Transferencias', 'Mueve dinero entre tus cuentas o paga tu tarjeta sin alterar tus ingresos ni gastos', Ui::button('Nueva transferencia', ['href' => '/transferencia-form.php', 'icon' => 'plus'])) ?>
+<?= Ui::pageHead('Transferencias', 'Mueve dinero entre tus cuentas o paga tu tarjeta sin alterar tus ingresos ni gastos', $puedeEscribir ? Ui::button('Nueva transferencia', ['href' => '/transferencia-form.php', 'icon' => 'plus']) : null) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
 

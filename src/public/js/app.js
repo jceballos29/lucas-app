@@ -143,4 +143,24 @@
     if (inp.value !== '') formatMoneyInput(inp);
     inp.addEventListener('input', function () { formatMoneyInput(inp); });
   });
+
+  /* 7. En el formulario de transferencias, al elegir la cuenta de origen se deshabilita esa misma cuenta en el selector de
+        destino (y viceversa), evitando que el usuario elija la misma cuenta por error. */
+  var selOrigen = document.getElementById('cuenta_origen');
+  var selDestino = document.getElementById('cuenta_destino');
+  if (selOrigen && selDestino) {
+    var syncTransferAccounts = function () {
+      var vOrigen = selOrigen.value;
+      var vDestino = selDestino.value;
+      Array.prototype.forEach.call(selDestino.options, function (opt) {
+        opt.disabled = opt.value !== '' && opt.value === vOrigen;
+      });
+      Array.prototype.forEach.call(selOrigen.options, function (opt) {
+        opt.disabled = opt.value !== '' && opt.value === vDestino;
+      });
+    };
+    selOrigen.addEventListener('change', syncTransferAccounts);
+    selDestino.addEventListener('change', syncTransferAccounts);
+    syncTransferAccounts();
+  }
 })();

@@ -19,6 +19,7 @@ use App\View\Ui;
  */
 $flash = $flash ?? null;
 $editando = $editing !== null;
+$puedeEscribir = $isAdmin || \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 
 $secciones = [];
 foreach (Categoria::TIPOS as $tipo => $titulo) {
@@ -28,7 +29,7 @@ foreach (Categoria::TIPOS as $tipo => $titulo) {
             continue;
         }
 
-        $editable = $isAdmin || !$c->esPredeterminada();
+        $editable = $puedeEscribir && ($isAdmin || !$c->esPredeterminada());
         $rows[] = [
             'nombre' => new Html('<div class="cell-person"><span class="swatch" data-color="' . escape($c->color) . '" aria-hidden="true"></span><span class="cell-title">' . escape($c->nombre) . '</span></div>'),
             'origen' => $c->esPredeterminada() ? Ui::badge('Predeterminada', 'outline') : Ui::badge('Propia', 'brand'),
@@ -42,7 +43,7 @@ foreach (Categoria::TIPOS as $tipo => $titulo) {
                         'attrs' => ['aria-label' => 'Eliminar ' . $c->nombre, 'data-confirm' => '¿Eliminar la categoría «' . $c->nombre . '»? Solo se puede si no tiene movimientos ni presupuestos.', 'data-confirm-ok' => 'Eliminar'],
                     ])),
                 ])
-                : new Html('<span class="muted-note">Solo la edita un administrador</span>'),
+                : new Html('<span class="muted-note">' . ($c->esPredeterminada() ? 'Solo la edita un administrador' : 'Solo lectura') . '</span>'),
         ];
     }
 
@@ -56,6 +57,7 @@ foreach (Categoria::TIPOS as $tipo => $titulo) {
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
 
+<?php if ($puedeEscribir): ?>
 <?= Ui::cardOpen(['title' => $editando ? 'Editar categoría' : ($isAdmin ? 'Nueva categoría predeterminada' : 'Nueva categoría'), 'class' => 'form-card']) ?>
     <form action="<?= escape($base) ?>" method="post" novalidate>
         <?= csrf_field() ?>
@@ -75,6 +77,7 @@ foreach (Categoria::TIPOS as $tipo => $titulo) {
         </div>
     </form>
 <?= Ui::cardClose() ?>
+<?php endif; ?>
 
 <?php foreach ($secciones as $s): ?>
     <h2 class="section-title"><?= escape($s['titulo']) ?></h2>

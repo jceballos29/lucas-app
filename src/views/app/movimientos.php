@@ -29,8 +29,9 @@ $flash = $flash ?? null;
 $hayFiltros = Filtros::hayAlguno($filtros);
 
 $enEspacioCompartido = is_array($currentUser ?? null) && ($currentUser['espacio_id'] ?? null) !== null;
+$puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 
-$rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompartido): array {
+$rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompartido, $puedeEscribir): array {
     $nombre = $m->descripcion ?? $m->categoriaNombre;
     $autorSub = $enEspacioCompartido && $m->autorNombre !== ''
         ? '<span class="cell-sub">Por ' . escape($m->autorNombre) . '</span>'
@@ -44,14 +45,14 @@ $rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompar
         'categoria' => Ui::badge($m->categoriaNombre),
         'cuenta' => $m->cuentaNombre,
         'monto' => Ui::money($m->monto, $m->esIngreso() ? 'in' : 'out'),
-        'acciones' => Ui::actions([
+        'acciones' => $puedeEscribir ? Ui::actions([
             Ui::iconButton('edit', 'Editar ' . $nombre, ['href' => '/movimiento-form.php?id=' . $m->id]),
             Ui::postForm('/movimiento-eliminar.php', ['id' => $m->id, 'volver' => $volver], Ui::iconButton('trash', 'Eliminar ' . $nombre, [
                 'type' => 'submit',
                 'tone' => 'danger',
                 'attrs' => ['data-confirm' => '¿Eliminar el movimiento «' . $nombre . '» de ' . Dinero::formatear($m->monto) . '? Esta acción no se puede deshacer.', 'data-confirm-ok' => 'Eliminar'],
             ])),
-        ]),
+        ]) : new Html('<span class="muted-note">Solo lectura</span>'),
     ];
 }, $rows);
 
@@ -69,7 +70,7 @@ $base = Filtros::query($filtros);
 $patron = '?' . ($base !== '' ? str_replace('%', '%%', $base) . '&' : '') . 'pagina=%d';
 $balance = Dinero::sumar([$totales['ingresos'], '-' . $totales['gastos']]);
 ?>
-<?= Ui::pageHead('Movimientos', 'Historial de ingresos y gastos', Ui::button('Nuevo movimiento', ['href' => '/movimiento-form.php', 'icon' => 'plus'])) ?>
+<?= Ui::pageHead('Movimientos', 'Historial de ingresos y gastos', $puedeEscribir ? Ui::button('Nuevo movimiento', ['href' => '/movimiento-form.php', 'icon' => 'plus']) : null) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
 

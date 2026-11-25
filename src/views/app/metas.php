@@ -15,15 +15,16 @@ use App\View\Ui;
  * @var array{tone: string, message: string}|null $flash
  */
 $flash = $flash ?? null;
+$puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 ?>
-<?= Ui::pageHead('Metas de ahorro', 'Sigue el avance de lo que quieres lograr', Ui::button('Nueva meta', ['href' => '/meta-form.php', 'icon' => 'plus'])) ?>
+<?= Ui::pageHead('Metas de ahorro', 'Sigue el avance de lo que quieres lograr', $puedeEscribir ? Ui::button('Nueva meta', ['href' => '/meta-form.php', 'icon' => 'plus']) : null) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
 
 <?php if ($metas === []): ?>
     <?= Ui::cardOpen() ?>
         <p>Aún no tienes metas. Crea una (un viaje, un computador, un fondo de emergencia) y ve apartando dinero de tus cuentas.</p>
-        <p><?= Ui::button('Crear mi primera meta', ['href' => '/meta-form.php', 'icon' => 'plus']) ?></p>
+        <?php if ($puedeEscribir): ?><p><?= Ui::button('Crear mi primera meta', ['href' => '/meta-form.php', 'icon' => 'plus']) ?></p><?php endif; ?>
     <?= Ui::cardClose() ?>
 <?php else: ?>
 <div class="cards-grid">
@@ -48,6 +49,7 @@ $flash = $flash ?? null;
                 <?= Ui::progress($pr['percent'], 'Avance de la meta ' . $m->nombre, 'ok') ?>
                 <div class="goal__foot"><span><?= $pr['lograda'] ? 'Objetivo alcanzado' : 'Faltan ' . escape(Dinero::formatear($pr['faltante'])) ?></span><b><?= $pr['percent'] ?> %</b></div>
             </div>
+            <?php if ($puedeEscribir): ?>
             <div class="account__actions">
                 <?php if ($m->enCurso()): ?>
                     <?= Ui::button('Añadir aporte', ['href' => '/meta-aporte.php?id=' . $m->id, 'icon' => 'plus']) ?>
@@ -68,8 +70,9 @@ $flash = $flash ?? null;
                     ])) ?>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
         <?= Ui::cardClose('article') ?>
     <?php endforeach; ?>
 </div>
 <?php endif; ?>
-<?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?>
+<?php if ($puedeEscribir): ?><?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?><?php endif; ?>

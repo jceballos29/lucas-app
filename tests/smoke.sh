@@ -1327,7 +1327,7 @@ post_form "$JTR" /espacios.php /espacios.php "accion=crear" "nombre=Hogar Famili
 check "crear espacio familiar redirige a espacios" "302 /espacios.php" "$CODE $LOC"
 ESPID="$(sql "SELECT id_espacio FROM espacios WHERE id_creador=$UTRID")"
 request "$JTR" GET /espacios.php
-contains "el espacio familiar recién creado queda activo en la barra lateral" "Espacio · Hogar Familia Smoke" "$TMP/body"
+contains "el espacio familiar recién creado queda activo en la barra lateral" "Hogar Familia Smoke" "$TMP/body"
 request "$JTR" GET /cuentas.php
 contains "en el espacio familiar recién creado aún no aparecen las cuentas personales" "Aún no tienes cuentas" "$TMP/body"
 

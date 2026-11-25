@@ -152,6 +152,8 @@ input[type="date"].input { appearance: none; }
 .notice--ok { background: var(--teal-tint); border-color: color-mix(in srgb, var(--teal) 30%, var(--white)); color: var(--teal-strong); }
 .notice--warn { background: var(--navy); border-color: var(--navy); color: var(--white); }
 .notice--warn .icon { color: var(--sky); }
+.notice--warn a { color: var(--sky); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.notice--warn a:hover { color: var(--white); }
 .notice--error { background: var(--danger-tint); border-color: color-mix(in srgb, var(--danger) 30%, var(--white)); color: var(--danger-text); }
 
 /* ---------- Tarjeta ---------- */
@@ -190,7 +192,7 @@ input[type="date"].input { appearance: none; }
 .table td::before { content: attr(data-label); flex: none; font-size: var(--fs-sm); color: var(--muted); }
 .table td.is-actions { justify-content: flex-end; padding-top: var(--s-3); }
 .table td.is-actions::before { content: none; }
-.table__actions, .row-actions { display: flex; align-items: center; gap: 6px; }
+.table__actions, .row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
 /* ---------- Paginación ---------- */
 .pagination { display: flex; flex-wrap: wrap; gap: 4px; }

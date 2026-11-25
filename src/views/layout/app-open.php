@@ -18,6 +18,4 @@ $items = [
     ['href' => '/espacios.php', 'label' => 'Espacios / Familia', 'key' => 'espacios', 'icon' => 'users'],
     ['href' => '/perfil.php', 'label' => 'Mi perfil', 'key' => 'perfil', 'icon' => 'shield'],
 ];
-$espacioNombre = is_array($currentUser ?? null) ? ($currentUser['espacio_nombre'] ?? null) : null;
-$rotulo = is_string($espacioNombre) && $espacioNombre !== '' ? 'Espacio · ' . $espacioNombre : null;
-View::render('layout/sidebar', ['items' => $items, 'nav' => $nav ?? '', 'currentUser' => $currentUser ?? null, 'home' => '/panel.php', 'badge' => $rotulo]);
+View::render('layout/sidebar', ['items' => $items, 'nav' => $nav ?? '', 'currentUser' => $currentUser ?? null, 'home' => '/panel.php', 'badge' => null]);

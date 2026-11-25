@@ -70,7 +70,7 @@
 .account__name { flex: 1; min-width: 0; font-weight: 650; font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account__balance small { display: block; font-size: var(--fs-sm); color: var(--muted); }
 .account__balance strong { font-size: var(--fs-2xl); font-weight: 650; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
-.account__actions { display: flex; justify-content: flex-end; }
+.account__actions { display: flex; justify-content: flex-end; margin-top: auto; }
 
 /* ---------- Filtros (plegados en móvil, siempre visibles desde 768 px) ---------- */
 .filters { margin-bottom: var(--s-4); }
@@ -141,6 +141,23 @@ input[type="color"].input { width: 96px; height: 44px; padding: 4px; cursor: poi
 .summary { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); margin: 0 0 var(--s-3); color: var(--muted); font-size: var(--fs-sm); }
 .summary .money { font-weight: 650; }
 
-/* Perfil */
+/* Perfil y Espacios */
 .danger-zone { border-color: var(--danger); }
 .form-card + .form-card { margin-top: var(--s-4); }
+.card > p + p, .card > p + .btn, .card > .table-wrap + .grid-2, .card > .donut + .table-wrap { margin-top: var(--s-5); }
+.space-block { padding-top: var(--s-5); border-top: 1px solid var(--line); }
+.space-block__title { font-size: var(--fs-md); font-weight: 650; margin-bottom: var(--s-3); color: var(--navy); }
+.space-block__sub { font-size: var(--fs-sm); font-weight: 600; margin: var(--s-5) 0 var(--s-2); color: var(--muted); }
+.space-danger { margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px dashed var(--line); }
+.space-danger__note { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--s-3); }
+.sidebar__space {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-2);
+  margin: calc(var(--s-4) * -1) var(--s-2) var(--s-5); padding: 8px 10px;
+  border: 1px solid rgba(181, 226, 250, .18); border-radius: 10px;
+  background: rgba(15, 163, 177, .12); color: var(--white); font-size: var(--fs-xs);
+}
+.sidebar__space-info { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sidebar__space-label { font-size: .6875rem; color: rgba(181, 226, 250, .75); text-transform: uppercase; letter-spacing: .04em; }
+.sidebar__space-name { font-weight: 650; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar__space-link { flex: none; padding: 4px 8px; border-radius: 6px; background: rgba(181, 226, 250, .14); color: var(--sky); font-weight: 600; transition: background-color var(--t), color var(--t); }
+.sidebar__space-link:hover { background: rgba(181, 226, 250, .25); color: var(--white); }

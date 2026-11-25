@@ -20,8 +20,9 @@ use App\View\Ui;
  * @var array{tone: string, message: string}|null $flash
  */
 $flash = $flash ?? null;
+$puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 
-$filas = array_map(static function (Recurrente $r) use ($hoy): array {
+$filas = array_map(static function (Recurrente $r) use ($hoy, $puedeEscribir): array {
     $nombre = $r->nombreVisible();
     $esVencido = $r->vencido($hoy);
 
@@ -33,39 +34,41 @@ $filas = array_map(static function (Recurrente $r) use ($hoy): array {
 
     $botones = [];
 
-    if ($r->activo) {
-        $botones[] = Ui::postForm('/recurrentes.php', ['id' => $r->id, 'accion' => 'aplicar'], Ui::button('Registrar ahora', [
-            'type' => 'submit',
-            'variant' => $esVencido ? 'primary' : 'secondary',
-            'size' => 'sm',
-            'icon' => 'check',
-            'attrs' => ['aria-label' => 'Registrar ahora ' . $nombre],
-        ]));
-        if ($esVencido) {
-            $botones[] = Ui::postForm('/recurrentes.php', ['id' => $r->id, 'accion' => 'saltar'], Ui::button('Saltar', [
+    if ($puedeEscribir) {
+        if ($r->activo) {
+            $botones[] = Ui::postForm('/recurrentes.php', ['id' => $r->id, 'accion' => 'aplicar'], Ui::button('Registrar ahora', [
                 'type' => 'submit',
-                'variant' => 'ghost',
+                'variant' => $esVencido ? 'primary' : 'secondary',
                 'size' => 'sm',
-                'attrs' => ['aria-label' => 'Saltar este periodo de ' . $nombre],
+                'icon' => 'check',
+                'attrs' => ['aria-label' => 'Registrar ahora ' . $nombre],
             ]));
+            if ($esVencido) {
+                $botones[] = Ui::postForm('/recurrentes.php', ['id' => $r->id, 'accion' => 'saltar'], Ui::button('Saltar', [
+                    'type' => 'submit',
+                    'variant' => 'ghost',
+                    'size' => 'sm',
+                    'attrs' => ['aria-label' => 'Saltar este periodo de ' . $nombre],
+                ]));
+            }
         }
-    }
 
-    $botones[] = Ui::iconButton('edit', 'Editar ' . $nombre, ['href' => '/recurrente-form.php?id=' . $r->id]);
-    $botones[] = Ui::postForm('/recurrentes.php', ['id' => $r->id, 'accion' => $r->activo ? 'pausar' : 'activar'], Ui::button($r->activo ? 'Pausar' : 'Activar', [
-        'type' => 'submit',
-        'variant' => 'ghost',
-        'size' => 'sm',
-        'attrs' => ['aria-label' => ($r->activo ? 'Pausar ' : 'Activar ') . $nombre],
-    ]));
-    $botones[] = Ui::postForm('/recurrentes.php', ['id' => $r->id, 'accion' => 'eliminar'], Ui::iconButton('trash', 'Eliminar ' . $nombre, [
-        'type' => 'submit',
-        'tone' => 'danger',
-        'attrs' => [
-            'data-confirm' => '¿Eliminar la programación de «' . $nombre . '»? Los movimientos que ya se hayan registrado en el historial no se borrarán.',
-            'data-confirm-ok' => 'Eliminar',
-        ],
-    ]));
+        $botones[] = Ui::iconButton('edit', 'Editar ' . $nombre, ['href' => '/recurrente-form.php?id=' . $r->id]);
+        $botones[] = Ui::postForm('/recurrentes.php', ['id' => $r->id, 'accion' => $r->activo ? 'pausar' : 'activar'], Ui::button($r->activo ? 'Pausar' : 'Activar', [
+            'type' => 'submit',
+            'variant' => 'ghost',
+            'size' => 'sm',
+            'attrs' => ['aria-label' => ($r->activo ? 'Pausar ' : 'Activar ') . $nombre],
+        ]));
+        $botones[] = Ui::postForm('/recurrentes.php', ['id' => $r->id, 'accion' => 'eliminar'], Ui::iconButton('trash', 'Eliminar ' . $nombre, [
+            'type' => 'submit',
+            'tone' => 'danger',
+            'attrs' => [
+                'data-confirm' => '¿Eliminar la programación de «' . $nombre . '»? Los movimientos que ya se hayan registrado en el historial no se borrarán.',
+                'data-confirm-ok' => 'Eliminar',
+            ],
+        ]));
+    }
 
     return [
         'concepto' => new Html('<span class="cell-title">' . escape($nombre) . '</span><span class="cell-sub">' . escape($r->categoriaNombre) . '</span>'),
@@ -74,11 +77,11 @@ $filas = array_map(static function (Recurrente $r) use ($hoy): array {
         'proxima' => Fecha::simple($r->proximaFecha),
         'modo' => $estadoBadge,
         'monto' => Ui::money($r->monto, $r->esIngreso() ? 'in' : 'out'),
-        'acciones' => Ui::actions($botones),
+        'acciones' => $puedeEscribir ? Ui::actions($botones) : new Html('<span class="muted-note">Solo lectura</span>'),
     ];
 }, $recurrentes);
 ?>
-<?= Ui::pageHead('Gastos fijos y recurrentes', 'Automatiza tu arriendo, servicios, suscripciones o salario para no olvidarlos cada mes', Ui::button('Nuevo recurrente', ['href' => '/recurrente-form.php', 'icon' => 'plus'])) ?>
+<?= Ui::pageHead('Gastos fijos y recurrentes', 'Automatiza tu arriendo, servicios, suscripciones o salario para no olvidarlos cada mes', $puedeEscribir ? Ui::button('Nuevo recurrente', ['href' => '/recurrente-form.php', 'icon' => 'plus']) : null) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
 

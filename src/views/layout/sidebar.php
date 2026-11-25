@@ -15,6 +15,8 @@ use App\View\Ui;
  */
 $name = $currentUser['name'] ?? 'Invitado';
 $email = $currentUser['email'] ?? '';
+$espacioNombre = is_array($currentUser) ? ($currentUser['espacio_nombre'] ?? null) : null;
+$espacioRol = is_array($currentUser) ? ($currentUser['espacio_rol'] ?? null) : null;
 ?>
 <header class="app-header">
     <?= Ui::logo($home, 'dark') ?>
@@ -23,6 +25,15 @@ $email = $currentUser['email'] ?? '';
 <div class="overlay"></div>
 <aside class="sidebar" id="sidebar" aria-label="Menú principal">
     <div class="sidebar__brand"><?= Ui::logo($home, 'dark') ?></div>
+    <?php if (is_string($espacioNombre) && $espacioNombre !== ''): ?>
+        <div class="sidebar__space" role="status" aria-label="Espacio compartido activo">
+            <div class="sidebar__space-info">
+                <span class="sidebar__space-label">Espacio compartido<?= $espacioRol === 'lector' ? ' · Solo lectura' : '' ?></span>
+                <strong class="sidebar__space-name"><?= escape($espacioNombre) ?></strong>
+            </div>
+            <a class="sidebar__space-link" href="/espacios.php">Cambiar</a>
+        </div>
+    <?php endif; ?>
     <p class="sidebar__group"><?= escape($badge ?? 'Menú') ?></p>
     <nav class="nav">
         <?php foreach ($items as $item): ?>

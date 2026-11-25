@@ -22,6 +22,7 @@ use App\View\Ui;
  * @var array{tone: string, message: string}|null $flash
  */
 $flash = $flash ?? null;
+$puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 $enlace = static fn (array $m): string => '/presupuestos.php?' . http_build_query($m);
 $etiqueta = [
     'ok' => ['En orden', 'neutral', null],
@@ -37,7 +38,7 @@ $monthNav = new Html('<div class="month-nav">'
     . '</div>');
 $nuevo = '/presupuesto-form.php?' . http_build_query(['mes' => $mes, 'anio' => $anio]);
 ?>
-<?= Ui::pageHead('Presupuestos', 'Límites de gasto por categoría', Html::join([$monthNav, Ui::button('Nuevo presupuesto', ['href' => $nuevo, 'icon' => 'plus'])])) ?>
+<?= Ui::pageHead('Presupuestos', 'Límites de gasto por categoría', Html::join($puedeEscribir ? [$monthNav, Ui::button('Nuevo presupuesto', ['href' => $nuevo, 'icon' => 'plus'])] : [$monthNav])) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
 
@@ -48,7 +49,7 @@ $nuevo = '/presupuesto-form.php?' . http_build_query(['mes' => $mes, 'anio' => $
 <?php if ($presupuestos === []): ?>
     <?= Ui::cardOpen() ?>
         <p>No tienes presupuestos para <?= escape(Mes::etiqueta($mes, $anio)) ?>. Fija un límite para una categoría de gastos y te avisaremos cuando te acerques.</p>
-        <p><?= Ui::button('Crear un presupuesto', ['href' => $nuevo, 'icon' => 'plus']) ?></p>
+        <?php if ($puedeEscribir): ?><p><?= Ui::button('Crear un presupuesto', ['href' => $nuevo, 'icon' => 'plus']) ?></p><?php endif; ?>
     <?= Ui::cardClose() ?>
 <?php else: ?>
     <p class="summary">
@@ -65,6 +66,7 @@ $nuevo = '/presupuesto-form.php?' . http_build_query(['mes' => $mes, 'anio' => $
                 <div class="budget__head"><span class="budget__name"><?= escape($p->categoriaNombre) ?></span><?= Ui::badge($texto, $tonoInsignia, $icono) ?></div>
                 <?= Ui::progress($pr['percent'], 'Presupuesto de ' . $p->categoriaNombre, $pr['tone']) ?>
                 <div class="budget__foot"><span><?= escape(Dinero::formatear($p->gastado)) ?> de <?= escape(Dinero::formatear($p->montoLimite)) ?></span><b class="<?= $pr['tone'] === 'over' ? 'is-over' : '' ?>"><?= $pr['percent'] ?> %</b></div>
+                <?php if ($puedeEscribir): ?>
                 <div class="account__actions">
                     <?= Ui::button('Editar', ['href' => '/presupuesto-form.php?id=' . $p->id, 'variant' => 'secondary', 'size' => 'sm', 'icon' => 'edit', 'attrs' => ['aria-label' => 'Editar el presupuesto de ' . $p->categoriaNombre]]) ?>
                     <?= Ui::postForm($enlace(['mes' => $mes, 'anio' => $anio]), ['id' => $p->id, 'accion' => 'eliminar'], Ui::button('Eliminar', [
@@ -74,8 +76,9 @@ $nuevo = '/presupuesto-form.php?' . http_build_query(['mes' => $mes, 'anio' => $
                         'attrs' => ['aria-label' => 'Eliminar el presupuesto de ' . $p->categoriaNombre, 'data-confirm' => '¿Eliminar el presupuesto de «' . $p->categoriaNombre . '» de ' . Mes::etiqueta($mes, $anio) . '? Tus movimientos no se tocan.', 'data-confirm-ok' => 'Eliminar'],
                     ])) ?>
                 </div>
+                <?php endif; ?>
             <?= Ui::cardClose('article') ?>
         <?php endforeach; ?>
     </div>
 <?php endif; ?>
-<?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?>
+<?php if ($puedeEscribir): ?><?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?><?php endif; ?>
