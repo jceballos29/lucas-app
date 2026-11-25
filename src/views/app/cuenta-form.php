@@ -21,9 +21,8 @@ $editando = $cuenta !== null;
         <?= csrf_field() ?>
         <?php if ($editando): ?><input type="hidden" name="id" value="<?= (int) $cuenta->id ?>"><?php endif; ?>
         <?= Ui::field(['id' => 'nombre', 'label' => 'Nombre', 'value' => $old['nombre'], 'placeholder' => 'Ej.: Bancolombia ahorros', 'required' => true, 'error' => $errors['nombre'] ?? null, 'attrs' => ['maxlength' => '60']]) ?>
-        <?= Ui::select(['id' => 'tipo', 'label' => 'Tipo', 'options' => Cuenta::TIPOS, 'selected' => $old['tipo']]) ?>
-        <?php if (isset($errors['tipo'])): ?><?= Ui::notice($errors['tipo'], 'error') ?><?php endif; ?>
-        <?= Ui::field(['id' => 'saldo_inicial', 'label' => 'Saldo inicial', 'size' => 'lg', 'value' => $old['saldo_inicial'], 'placeholder' => '$ 0', 'hint' => 'Lo que tienes hoy en esta cuenta. Opcional. Una tarjeta de crédito puede empezar en negativo (lo que debes).', 'error' => $errors['saldo_inicial'] ?? null, 'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off']]) ?>
+        <?= Ui::select(['id' => 'tipo', 'label' => 'Tipo', 'options' => Cuenta::TIPOS, 'selected' => $old['tipo'], 'error' => $errors['tipo'] ?? null]) ?>
+        <?= Ui::field(['id' => 'saldo_inicial', 'label' => 'Saldo inicial', 'size' => 'lg', 'value' => $old['saldo_inicial'], 'placeholder' => '$ 0', 'hint' => 'Lo que tienes hoy en esta cuenta. Opcional. Una tarjeta de crédito puede empezar en negativo (lo que debes).', 'error' => $errors['saldo_inicial'] ?? null, 'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off', 'data-money' => 'signed']]) ?>
         <div class="form-actions">
             <?= Ui::button($editando ? 'Guardar cambios' : 'Crear cuenta', ['type' => 'submit']) ?>
             <?= Ui::button('Cancelar', ['href' => '/cuentas.php', 'variant' => 'secondary']) ?>

@@ -47,4 +47,4 @@ $flash = $flash ?? null;
     <?php endforeach; ?>
 </div>
 <?php endif; ?>
-<?= Ui::fab('movimiento-form.php', 'Nuevo movimiento') ?>
+<?= Ui::fab('/movimiento-form.php', 'Nuevo movimiento') ?>

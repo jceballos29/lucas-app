@@ -126,16 +126,21 @@
   document.querySelectorAll('[data-color]').forEach(function (el) { if (/^#[0-9a-fA-F]{6}$/.test(el.dataset.color)) el.style.setProperty('--swatch', el.dataset.color); });
   document.querySelectorAll('[data-h]').forEach(function (el) { el.style.setProperty('--h', el.dataset.h); });
 
-  /* 6. Formato de miles en campos de monto (visual): «1.250.000,50». Acepta una coma decimal con hasta 2 decimales; el
-        servidor (Support\Dinero) entiende ese mismo formato. */
+  /* 6. Formato de miles en campos de monto (visual): «1.250.000,50». Acepta una coma decimal con hasta 2 decimales (y un
+        signo menos inicial en los campos que lo permiten, como el saldo inicial de una tarjeta de crédito); el servidor
+        (Support\Dinero) entiende ese mismo formato. */
+  function formatMoneyInput(inp) {
+    var permiteNegativo = inp.getAttribute('data-money') === 'signed';
+    var negativo = permiteNegativo && /^\s*[-−]/.test(inp.value);
+    var limpio = inp.value.replace(/[^\d,]/g, '');
+    var partes = limpio.split(',');
+    var entero = partes[0].replace(/^0+(?=\d)/, '').slice(0, 10);   // DECIMAL(12,2): 10 dígitos enteros
+    var texto = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    if (partes.length > 1) texto += ',' + partes.slice(1).join('').slice(0, 2);
+    inp.value = (negativo && (texto !== '' || inp.value.trim() !== '') ? '-' : '') + texto;
+  }
   document.querySelectorAll('input[data-money]').forEach(function (inp) {
-    inp.addEventListener('input', function () {
-      var limpio = inp.value.replace(/[^\d,]/g, '');
-      var partes = limpio.split(',');
-      var entero = partes[0].replace(/^0+(?=\d)/, '').slice(0, 10);   // DECIMAL(12,2): 10 dígitos enteros
-      var texto = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-      if (partes.length > 1) texto += ',' + partes.slice(1).join('').slice(0, 2);
-      inp.value = texto;
-    });
+    if (inp.value !== '') formatMoneyInput(inp);
+    inp.addEventListener('input', function () { formatMoneyInput(inp); });
   });
 })();

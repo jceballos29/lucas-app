@@ -24,7 +24,8 @@ use App\View\Ui;
  * @var list<Movimiento> $ultimos
  * @var list<Presupuesto> $presupuestos Los del mes, los más gastados primero.
  */
-$balanceNegativo = str_starts_with($balance, '-');
+$balanceCentavos = Dinero::aCentavos($balance);
+$balanceTono = $balanceCentavos < 0 ? 'out' : ($balanceCentavos > 0 ? 'in' : 'plain');
 $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'value' => $i['percent']], $categorias['items']);
 ?>
 <?= Ui::pageHead('Hola, ' . $nombre, 'Resumen de ' . $mesTexto, Ui::button('Nuevo movimiento', ['href' => '/movimiento-form.php', 'icon' => 'plus'])) ?>
@@ -44,7 +45,7 @@ $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'val
             <dl class="balance__stats">
                 <div class="balance__stat"><dt><i class="balance__dot balance__dot--in"></i>Ingresos</dt><dd><?= escape(Dinero::formatear($ingresos)) ?></dd></div>
                 <div class="balance__stat"><dt><i class="balance__dot balance__dot--out"></i>Gastos</dt><dd><?= escape(Dinero::formatear($gastos)) ?></dd></div>
-                <div class="balance__stat"><dt>Balance del mes</dt><dd><?= Ui::money($balance, $balanceNegativo ? 'out' : 'in') ?></dd></div>
+                <div class="balance__stat"><dt>Balance del mes</dt><dd><?= Ui::money($balance, $balanceTono) ?></dd></div>
             </dl>
         </div>
     </section>
@@ -77,7 +78,7 @@ $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'val
         <?php foreach (array_slice($presupuestos, 0, 4) as $p): ?>
             <?php $pr = $p->progreso(); ?>
             <div class="budget-line">
-                <div class="budget-line__head"><span><?= escape($p->categoriaNombre) ?></span><?= Ui::badge($pr['percent'] . ' %', $pr['estado'] === 'ok' ? 'neutral' : 'warn') ?></div>
+                <div class="budget-line__head"><span><?= escape($p->categoriaNombre) ?></span><?= Ui::badge($pr['percent'] . ' %', $pr['tone'] === 'over' ? 'danger' : ($pr['tone'] === 'warn' ? 'warn' : 'neutral')) ?></div>
                 <?= Ui::progress($pr['percent'], 'Presupuesto de ' . $p->categoriaNombre, $pr['tone']) ?>
             </div>
         <?php endforeach; ?>

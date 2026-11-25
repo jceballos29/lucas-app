@@ -41,7 +41,7 @@ for ($m = 1; $m <= 12; $m++) {
             <?= Ui::select(['id' => 'categoria', 'name' => 'id_categoria', 'label' => 'Categoría de gastos', 'blank' => 'Elige una categoría', 'options' => $opcionesCategoria, 'selected' => $old['id_categoria'], 'error' => $errors['id_categoria'] ?? null]) ?>
             <div class="form-grid">
                 <?= Ui::select(['id' => 'mes', 'name' => 'mes', 'label' => 'Mes', 'options' => $opcionesMes, 'selected' => $old['mes'], 'error' => $errors['mes'] ?? null]) ?>
-                <?= Ui::field(['id' => 'anio', 'label' => 'Año', 'type' => 'number', 'value' => $old['anio'], 'required' => true, 'attrs' => ['min' => (string) Mes::ANIO_MIN, 'max' => (string) Mes::ANIO_MAX, 'inputmode' => 'numeric']]) ?>
+                <?= Ui::field(['id' => 'anio', 'label' => 'Año', 'type' => 'number', 'value' => $old['anio'], 'required' => true, 'attrs' => ['min' => (string) Mes::ANIO_MIN, 'max' => (string) Mes::ANIO_MAX, 'inputmode' => 'numeric', 'aria-invalid' => isset($errors['mes']) ? 'true' : null]]) ?>
             </div>
         <?php endif; ?>
         <?= Ui::field(['id' => 'monto_limite', 'label' => 'Límite de gasto', 'size' => 'lg', 'value' => $old['monto_limite'], 'placeholder' => '$ 0', 'required' => true, 'error' => $errors['monto_limite'] ?? null, 'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off', 'data-money' => true]]) ?>

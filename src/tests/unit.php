@@ -251,8 +251,9 @@ same('formato en pesos', '$1.950.000', D::formatear('1950000.00'));
 same('formato negativo', '−$80.000', D::formatear('-80000.00'));
 same('formato con decimales solo si hay', '$1.250,50', D::formatear('1250.50'));
 same('formato de cero', '$0', D::formatear('0.00'));
-same('para un campo de texto', '1950000,50', D::paraCampo('1950000.50'));
+same('para un campo de texto', '1.950.000,50', D::paraCampo('1950000.50'));
 same('para un campo de texto sin decimales', '-300', D::paraCampo('-300.00'));
+same('para un campo de texto negativo con miles', '-1.500.000', D::paraCampo('-1500000.00'));
 same('parse(paraCampo(x)) devuelve x', '1950000.50', D::parse(D::paraCampo('1950000.50')));
 
 section('CuentaValidator');

@@ -106,13 +106,13 @@ final class Dinero
         return ($centavos < 0 ? '−' : '') . $texto;
     }
 
-    /** Para poner en un campo de texto: «1950000» o «1950000,50» (sin separador de miles). */
+    /** Para poner en un campo de texto: «1.950.000» o «1.950.000,50» (igual que lo deja el formateador de data-money). */
     public static function paraCampo(string $monto): string
     {
         $centavos = self::aCentavos($monto);
         $abs = abs($centavos);
 
-        return ($centavos < 0 ? '-' : '') . intdiv($abs, 100) . ($abs % 100 !== 0 ? ',' . str_pad((string) ($abs % 100), 2, '0', STR_PAD_LEFT) : '');
+        return ($centavos < 0 ? '-' : '') . number_format(intdiv($abs, 100), 0, ',', '.') . ($abs % 100 !== 0 ? ',' . str_pad((string) ($abs % 100), 2, '0', STR_PAD_LEFT) : '');
     }
 
     /**
