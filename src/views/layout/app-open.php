@@ -8,6 +8,7 @@ use App\View\View;
 $items = [
     ['href' => '/panel.php', 'label' => 'Panel', 'key' => 'panel', 'icon' => 'dashboard'],
     ['href' => '/movimientos.php', 'label' => 'Movimientos', 'key' => 'movimientos', 'icon' => 'transfer'],
+    ['href' => '/recurrentes.php', 'label' => 'Gastos fijos', 'key' => 'recurrentes', 'icon' => 'book'],
     ['href' => '/transferencias.php', 'label' => 'Transferencias', 'key' => 'transferencias', 'icon' => 'bank'],
     ['href' => '/cuentas.php', 'label' => 'Cuentas', 'key' => 'cuentas', 'icon' => 'wallet'],
     ['href' => '/categorias.php', 'label' => 'Categorías', 'key' => 'categorias', 'icon' => 'target'],

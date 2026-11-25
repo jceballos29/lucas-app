@@ -693,4 +693,25 @@ same('misma cuenta en ReglasTransferencia', RT::MISMA_CUENTA, RT::evaluar($cActi
 same('cuenta origen inactiva', RT::ORIGEN_INACTIVA, RT::evaluar($cInactiva, $cActiva, 1, 2, '100.00', '10.00'));
 same('cuenta destino inactiva', RT::DESTINO_INACTIVA, RT::evaluar($cActiva, $cInactiva, 1, 2, '100.00', '10.00'));
 
+section('Frecuencia y RecurrenteValidator (Fase 9)');
+use App\Support\Frecuencia as FQ;
+same('semanal suma 7 días', '2026-11-10', FQ::siguiente('2026-11-03', 'semanal'));
+same('quincenal suma 15 días', '2026-11-18', FQ::siguiente('2026-11-03', 'quincenal'));
+same('mensual normal mantiene el día', '2026-12-15', FQ::siguiente('2026-11-15', 'mensual'));
+same('mensual en fin de mes (31 de enero -> 28 de febrero en año no bisiesto)', '2026-02-28', FQ::siguiente('2026-01-31', 'mensual'));
+same('mensual en fin de mes (31 de enero -> 29 de febrero en año bisiesto)', '2028-02-29', FQ::siguiente('2028-01-31', 'mensual'));
+same('anual normal mantiene día y mes', '2027-11-25', FQ::siguiente('2026-11-25', 'anual'));
+same('anual desde 29 de febrero bisiesto pasa al 28 de febrero', '2029-02-28', FQ::siguiente('2028-02-29', 'anual'));
+same('equivalente mensual de gasto mensual', '120000.00', FQ::equivalenteMensual('120000.00', 'mensual'));
+same('equivalente mensual de gasto quincenal (×2)', '240000.00', FQ::equivalenteMensual('120000.00', 'quincenal'));
+same('equivalente mensual de gasto anual (÷12)', '10000.00', FQ::equivalenteMensual('120000.00', 'anual'));
+$rv = new App\Validation\RecurrenteValidator();
+$rb = ['tipo' => 'gasto', 'monto' => '85.000', 'frecuencia' => 'mensual', 'proxima_fecha' => '2026-12-01', 'id_cuenta' => '1', 'id_categoria' => '2', 'descripcion' => '  Internet   hogar ', 'auto_aplicar' => '1'];
+$rr = $rv->validate($rb);
+same('un recurrente válido no da errores', [], $rr['errors']);
+same('datos normalizados en RecurrenteValidator', ['85000.00', 'mensual', 'Internet hogar', true], [$rr['data']['monto'], $rr['data']['frecuencia'], $rr['data']['descripcion'], $rr['data']['auto_aplicar']]);
+same('auto_aplicar=0 queda en false', false, $rv->validate(['auto_aplicar' => '0'] + $rb)['data']['auto_aplicar']);
+same('frecuencia inválida se rechaza', true, isset($rv->validate(['frecuencia' => 'trimestral'] + $rb)['errors']['frecuencia']));
+same('proxima_fecha inválida se rechaza', true, isset($rv->validate(['proxima_fecha' => '2026-02-30'] + $rb)['errors']['proxima_fecha']));
+
 finish();

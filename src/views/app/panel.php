@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 use App\Domain\Movimiento;
 use App\Domain\Presupuesto;
+use App\Domain\Recurrente;
 use App\Support\Dinero;
 use App\View\Avisos;
 use App\View\Fecha;
+use App\View\Html;
 use App\View\Ui;
 
 /**
@@ -23,12 +25,18 @@ use App\View\Ui;
  * @var array{items: list<array{label: string, total: string, percent: float}>, total: string} $categorias
  * @var list<Movimiento> $ultimos
  * @var list<Presupuesto> $presupuestos Los del mes, los más gastados primero.
+ * @var list<Recurrente> $recurrentesVencidos
  */
+$recurrentesVencidos = $recurrentesVencidos ?? [];
 $balanceCentavos = Dinero::aCentavos($balance);
 $balanceTono = $balanceCentavos < 0 ? 'out' : ($balanceCentavos > 0 ? 'in' : 'plain');
 $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'value' => $i['percent']], $categorias['items']);
 ?>
 <?= Ui::pageHead('Hola, ' . $nombre, 'Resumen de ' . $mesTexto, Ui::button('Nuevo movimiento', ['href' => '/movimiento-form.php', 'icon' => 'plus'])) ?>
+
+<?php if ($recurrentesVencidos !== []): ?>
+    <?= Ui::notice(new Html('Tienes <strong>' . count($recurrentesVencidos) . (count($recurrentesVencidos) === 1 ? ' gasto o ingreso fijo pendiente' : ' gastos o ingresos fijos pendientes') . '</strong> por aplicar. <a href="/recurrentes.php">Revisar en Gastos fijos</a>.'), 'warn') ?>
+<?php endif; ?>
 
 <?php foreach ($presupuestos as $p): ?><?= Avisos::presupuesto($p) ?><?php endforeach; ?>
 

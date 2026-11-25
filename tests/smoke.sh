@@ -27,6 +27,7 @@ cleanup() {
     # Orden explícito: transacciones y aportes referencian cuentas sin cascada (ver D5 en docs/PLAN.md).
     sql "DELETE r FROM restablecimientos r JOIN usuarios u ON u.id_usuario = r.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE a FROM aportes_meta a JOIN metas_ahorro m ON m.id_meta = a.id_meta JOIN usuarios u ON u.id_usuario = m.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
+    sql "DELETE mr FROM movimientos_recurrentes mr JOIN usuarios u ON u.id_usuario = mr.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE tr FROM transferencias tr JOIN usuarios u ON u.id_usuario = tr.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE p FROM presupuestos p JOIN usuarios u ON u.id_usuario = p.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE t FROM transacciones t JOIN usuarios u ON u.id_usuario = t.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
@@ -1285,6 +1286,32 @@ check "Visa quedó en 0.00 y Banco en 700.000" "700000.00|0.00" "$(sql "SELECT C
 post_form "$JTR" /transferencias.php /transferencias.php "id=$TRID" "accion=eliminar"
 check "eliminar transferencia redirige al listado" "302 /transferencias.php" "$CODE $LOC"
 check "la transferencia se borró de la BD" "0" "$(sql "SELECT COUNT(*) FROM transferencias WHERE id_transferencia=$TRID")"
+
+echo; echo "== Movimientos recurrentes y gastos fijos (Fase 9)"
+request "$J7" GET /recurrentes.php;      check "sin sesión, recurrentes exige login" "302 /login.php" "$CODE $LOC"
+request "$J7" GET /recurrente-form.php;  check "y el formulario también" "302 /login.php" "$CODE $LOC"
+request "$JTR" GET /recurrentes.php;     check "el listado de recurrentes responde 200" "200" "$CODE"
+contains "sin programaciones invita a crear la primera" "Programar mi primer gasto fijo" "$TMP/body"
+
+post_form "$JTR" /recurrente-form.php /recurrente-form.php "tipo=gasto" "monto=80.000" "frecuencia=mensual" "proxima_fecha=$HOY_APP" "id_cuenta=$CBANCO" "id_categoria=$KG" "auto_aplicar=0" "descripcion=Gimnasio mensual"
+check "crear gasto fijo manual redirige al listado" "302 /recurrentes.php" "$CODE $LOC"
+RECID="$(sql "SELECT id_recurrente FROM movimientos_recurrentes WHERE id_usuario=$UTRID")"
+request "$JTR" GET /recurrentes.php
+contains "muestra el gasto fijo programado" "Gimnasio mensual" "$TMP/body"
+contains "avisa que está pendiente de confirmar hoy" "Pendiente hoy" "$TMP/body"
+request "$JTR" GET /panel.php
+contains "el panel principal avisa del gasto fijo pendiente" "gasto o ingreso fijo pendiente" "$TMP/body"
+
+post_form "$JTR" /recurrentes.php /recurrentes.php "id=$RECID" "accion=aplicar"
+check "aplicar ahora redirige a recurrentes" "302 /recurrentes.php" "$CODE $LOC"
+check "creó la transacción en el historial y descontó de Banco (1.000.000 - 80.000 = 920.000)" "1|920000.00" "$(sql "SELECT CONCAT((SELECT COUNT(*) FROM transacciones WHERE id_usuario=$UTRID AND descripcion='Gimnasio mensual'),'|',(SELECT c.saldo_inicial - COALESCE((SELECT SUM(monto) FROM transacciones WHERE id_cuenta=c.id_cuenta),0) FROM cuentas c WHERE c.id_cuenta=$CBANCO))")"
+
+post_form "$JTR" /recurrentes.php /recurrentes.php "id=$RECID" "accion=pausar"
+check "pausar deja activo=0" "0" "$(sql "SELECT activo FROM movimientos_recurrentes WHERE id_recurrente=$RECID")"
+post_form "$JTR" /recurrentes.php /recurrentes.php "id=$RECID" "accion=activar"
+check "activar deja activo=1" "1" "$(sql "SELECT activo FROM movimientos_recurrentes WHERE id_recurrente=$RECID")"
+post_form "$JTR" /recurrentes.php /recurrentes.php "id=$RECID" "accion=eliminar"
+check "eliminar borra la programación pero conserva la transacción ya aplicada" "0|1" "$(sql "SELECT CONCAT((SELECT COUNT(*) FROM movimientos_recurrentes WHERE id_recurrente=$RECID),'|',(SELECT COUNT(*) FROM transacciones WHERE id_usuario=$UTRID AND descripcion='Gimnasio mensual'))")"
 
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

@@ -17,10 +17,12 @@ use App\Mail\Mailer;
 use App\Mail\SmtpMailer;
 use App\Metas\GestionMetas;
 use App\Movimientos\GestionMovimientos;
+use App\Recurrentes\GestionRecurrentes;
 use App\Repository\IntentoRepository;
 use App\Repository\MetaRepository;
 use App\Repository\MovimientoRepository;
 use App\Repository\PresupuestoRepository;
+use App\Repository\RecurrenteRepository;
 use App\Repository\ReporteRepository;
 use App\Repository\RestablecimientoRepository;
 use App\Repository\TransferenciaRepository;
@@ -122,6 +124,16 @@ final class Container
     public function gestionTransferencias(): GestionTransferencias
     {
         return new GestionTransferencias($this->pdo(), $this->transferencias(), $this->cuentas());
+    }
+
+    public function recurrentes(): RecurrenteRepository
+    {
+        return new RecurrenteRepository($this->pdo());
+    }
+
+    public function gestionRecurrentes(): GestionRecurrentes
+    {
+        return new GestionRecurrentes($this->pdo(), $this->recurrentes(), $this->movimientos(), $this->cuentas(), $this->categorias());
     }
 
     public function presupuestos(): PresupuestoRepository

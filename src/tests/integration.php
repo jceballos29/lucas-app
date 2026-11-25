@@ -1037,4 +1037,46 @@ same('saldos tras eliminar: Ahorros 850.000, Efectivo 50.000', ['850000.00', '50
     (string) $cuentas->findOwned($tUser, $tEfectivo)?->saldo,
 ]);
 
+section('GestionRecurrentes: movimientos recurrentes y gastos fijos (Fase 9)');
+$gr = $container->gestionRecurrentes();
+$recRepo = $container->recurrentes();
+$rUser = (int) $usuarios->create('Rosa', 'rosa@correo.com', 'x');
+$rBanco = $cuentas->create($rUser, 'Banco Rosa', 'bancaria', '500000.00');
+$rCatGasto = (int) $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'gasto' LIMIT 1")->fetchColumn();
+$rCatIngreso = (int) $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'ingreso' LIMIT 1")->fetchColumn();
+
+$resR1 = $gr->guardar($rUser, null, [
+    'tipo' => 'gasto',
+    'monto' => '120000.00',
+    'frecuencia' => 'mensual',
+    'proxima_fecha' => '2026-10-05',
+    'id_cuenta' => $rBanco,
+    'id_categoria' => $rCatGasto,
+    'descripcion' => 'Internet Fibra',
+    'auto_aplicar' => true,
+]);
+same('crear programación recurrente automática', 'ok', $resR1['codigo']);
+$r1Id = (int) $resR1['id'];
+same('procesarVencidos al 2026-11-10 aplica octubre y noviembre y avanza a diciembre', ['aplicados' => 2, 'retenidosPorSaldo' => 0], $gr->procesarVencidos($rUser, '2026-11-10'));
+same('la próxima fecha quedó en 2026-12-05', '2026-12-05', $recRepo->findOwned($rUser, $r1Id)?->proximaFecha);
+same('el saldo de Banco Rosa bajó 240.000 (de 500.000 a 260.000)', '260000.00', (string) $cuentas->findOwned($rUser, $rBanco)?->saldo);
+
+$resR2 = $gr->guardar($rUser, null, [
+    'tipo' => 'gasto',
+    'monto' => '300000.00',
+    'frecuencia' => 'mensual',
+    'proxima_fecha' => '2026-11-10',
+    'id_cuenta' => $rBanco,
+    'id_categoria' => $rCatGasto,
+    'descripcion' => 'Arriendo',
+    'auto_aplicar' => true,
+]);
+$r2Id = (int) $resR2['id'];
+same('si el gasto recurrente automático supera el saldo disponible (260.000), se retiene sin dejar la cuenta en negativo', ['aplicados' => 0, 'retenidosPorSaldo' => 1], $gr->procesarVencidos($rUser, '2026-11-10'));
+same('y el saldo sigue en 260.000', '260000.00', (string) $cuentas->findOwned($rUser, $rBanco)?->saldo);
+same('saltarPeriodo avanza la próxima fecha sin tocar el saldo', ['2026-12-10', '260000.00'], [
+    $gr->saltarPeriodo($rUser, $r2Id),
+    (string) $cuentas->findOwned($rUser, $rBanco)?->saldo,
+]);
+
 finish();

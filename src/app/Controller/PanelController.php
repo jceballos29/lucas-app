@@ -31,6 +31,8 @@ final class PanelController
         ['mes' => $mes, 'anio' => $anio] = Mes::desde([], $hoy);
 
         try {
+            $this->container->gestionRecurrentes()->procesarVencidos($user['id'], $hoy->format('Y-m-d'));
+            $recurrentesVencidos = $this->container->recurrentes()->listDueByUser($user['id'], $hoy->format('Y-m-d'));
             $cuentas = array_values(array_filter($this->container->cuentas()->listByUser($user['id']), static fn (Cuenta $c): bool => $c->activa));
             $totales = $this->container->reportes()->totalesMes($user['id'], $mes, $anio);
             $categorias = Categorias::agrupar($this->container->reportes()->gastosPorCategoria($user['id'], $mes, $anio));
@@ -56,6 +58,7 @@ final class PanelController
             'categorias' => $categorias,
             'ultimos' => $ultimos,
             'presupuestos' => $presupuestos,
+            'recurrentesVencidos' => $recurrentesVencidos,
         ], 'Panel', $user, 'app', 'panel');
     }
 }
