@@ -81,14 +81,14 @@ final class CuentaRepository
      * Lee la cuenta del usuario BLOQUEANDO su fila hasta el final de la transacción (`FOR UPDATE`): mientras se guarda un
      * movimiento nadie puede desactivarla (D8). Solo dentro de una transacción.
      *
-     * @return array{nombre: string, activa: bool}|null null si no existe o no es del usuario
+     * @return array{nombre: string, tipo: string, activa: bool}|null null si no existe o no es del usuario
      */
     public function lockForWrite(int $userId, int $id): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT nombre, activa FROM cuentas WHERE id_cuenta = :id AND id_usuario = :u FOR UPDATE');
+        $stmt = $this->pdo->prepare('SELECT nombre, tipo, activa FROM cuentas WHERE id_cuenta = :id AND id_usuario = :u FOR UPDATE');
         $stmt->execute(['id' => $id, 'u' => $userId]);
         $row = $stmt->fetch();
 
-        return $row === false ? null : ['nombre' => (string) $row['nombre'], 'activa' => (bool) $row['activa']];
+        return $row === false ? null : ['nombre' => (string) $row['nombre'], 'tipo' => (string) $row['tipo'], 'activa' => (bool) $row['activa']];
     }
 }

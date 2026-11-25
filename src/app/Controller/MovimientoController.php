@@ -124,6 +124,11 @@ final class MovimientoController
                             $errors['id_cuenta'] = "La cuenta «{$saved['cuenta']}» está inactiva. Actívala en Cuentas o elige otra.";
                             break;
 
+                        case ReglasMovimiento::SALDO_INSUFICIENTE:
+                            $disponible = Dinero::formatear((string) ($saved['saldo'] ?? '0.00'));
+                            $errors['monto'] = "La cuenta «{$saved['cuenta']}» tiene $disponible disponibles: no alcanza para registrar este movimiento sin dejarla en negativo.";
+                            break;
+
                         // Un movimiento, una cuenta o una categoría que no son tuyos: como si no existieran (RNF-04).
                         default:
                             Response::plain(404, "No encontrado.\n");

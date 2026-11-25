@@ -357,7 +357,8 @@ $movs = $container->movimientos();
 $elena = (int) $usuarios->create('Elena', 'elena@correo.com', 'x');
 $fabio = (int) $usuarios->create('Fabio', 'fabio@correo.com', 'x');
 $efectivo = $cuentas->create($elena, 'Efectivo', 'efectivo', '100000.00');
-$banco = $cuentas->create($elena, 'Banco', 'bancaria', '0');
+$banco = $cuentas->create($elena, 'Banco', 'bancaria', '50000.00');
+$tarjetaElena = $cuentas->create($elena, 'Tarjeta Elena', 'tarjeta_credito', '0.00');
 $ajena = $cuentas->create($fabio, 'Cuenta de Fabio', 'efectivo', '500.00');
 $catGasto = (int) $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'gasto' ORDER BY id_categoria LIMIT 1")->fetchColumn();
 $catIngreso = (int) $pdo->query("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo = 'ingreso' ORDER BY id_categoria LIMIT 1")->fetchColumn();
@@ -388,9 +389,15 @@ same('una categoría que no existe', 'categoria_ajena', $gestion2->guardar($elen
 $cuentas->setActiva($elena, $banco, false);
 $inactiva = $gestion2->guardar($elena, null, $dato(['id_cuenta' => $banco]));
 same('una cuenta inactiva no acepta movimientos', ['cuenta_inactiva', 'Banco'], [$inactiva['codigo'], $inactiva['cuenta']]);
+same('un gasto mayor que el saldo disponible en una cuenta normal se rechaza', 'saldo_insuficiente', $gestion2->guardar($elena, null, $dato(['id_cuenta' => $efectivo, 'monto' => '999999.00']))['codigo']);
 same('nada de lo rechazado se guardó', $antes, $cuenta($elena));
 $cuentas->setActiva($elena, $banco, true);
 same('al reactivarla sí', 'ok', $gestion2->guardar($elena, null, $dato(['id_cuenta' => $banco, 'monto' => '2500']))['codigo']);
+same('una tarjeta de crédito sí acepta gastos que la dejan en negativo', ['ok', '-80000.00'], [
+    $gestion2->guardar($elena, null, $dato(['id_cuenta' => $tarjetaElena, 'monto' => '80000.00']))['codigo'],
+    $saldo($elena, $tarjetaElena),
+]);
+$pdo->exec("DELETE FROM transacciones WHERE id_cuenta = $tarjetaElena");
 
 section('GestionMovimientos: edición y borrado');
 $saldoAntesEditar = $saldo($elena, $efectivo);

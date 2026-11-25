@@ -457,7 +457,7 @@ request "$JM" GET /movimiento-form.php;   check "el formulario responde 200" "20
 HOY_APP="$(php_eval "echo date('Y-m-d');")"
 contains "la fecha por defecto es hoy" "value=\"$HOY_APP\"" "$TMP/body"
 contains "las categorías llevan su tipo para el filtro del JS" 'data-tipo="gasto"' "$TMP/body"
-contains "y la cuenta del usuario está en la lista" ">Efectivo</option>" "$TMP/body"
+contains "y la cuenta del usuario está en la lista" ">Efectivo · " "$TMP/body"
 absent "pero no la de otro usuario" "Cuenta de N" "$TMP/body"
 absent "ni sus categorías propias" "Solo de N" "$TMP/body"
 
@@ -492,6 +492,7 @@ m "id_categoria=";            contains "sin categoría se rechaza" "Elige la cat
 m "id_categoria=$KI";         contains "un gasto con categoría de ingreso se rechaza (D8)" "no es de gastos" "$TMP/body"
 check "y el formulario conserva lo escrito" "200" "$CODE"
 contains "con el monto que se escribió" 'value="1000"' "$TMP/body"
+m "monto=500.000";            contains "un gasto que supera el saldo de una cuenta normal se rechaza" "no alcanza para registrar este movimiento" "$TMP/body"
 m "tipo=ingreso";             contains "un ingreso con categoría de gasto se rechaza (D8)" "no es de ingresos" "$TMP/body"
 m "descripcion=$(printf 'a%.0s' $(seq 1 151))"; contains "una descripción de 151 caracteres se rechaza" "hasta 150 caracteres" "$TMP/body"
 check "nada de lo rechazado se guardó" "$NMOV" "$(sql "SELECT COUNT(*) FROM transacciones WHERE id_usuario=$UMID")"
@@ -562,7 +563,7 @@ check "un POST directo a una cuenta inactiva se rechaza" "200" "$CODE"
 contains "con un aviso claro" "está inactiva" "$TMP/body"
 check "y no se guardó" "$NMOV" "$(sql "SELECT COUNT(*) FROM transacciones WHERE id_usuario=$UMID")"
 post_form "$JM" /cuentas.php /cuentas.php "id=$CM" "accion=activar"
-request "$JM" GET /movimiento-form.php;  contains "reactivada, vuelve a estar disponible" ">Efectivo</option>" "$TMP/body"
+request "$JM" GET /movimiento-form.php;  contains "reactivada, vuelve a estar disponible" ">Efectivo · " "$TMP/body"
 
 echo; echo "== Movimientos: filtros y paginación (RF-11, RF-12, RNF-09)"
 sql "INSERT INTO transacciones (id_usuario, id_cuenta, id_categoria, tipo, monto, fecha, descripcion) WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < 45) SELECT $UMID, $CM, $KG, 'gasto', 10.00, DATE_ADD('2026-09-01', INTERVAL i DAY), CONCAT('Masivo ', i) FROM n" >/dev/null

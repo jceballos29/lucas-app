@@ -20,7 +20,7 @@ $editando = $movimiento !== null;
 
 $opcionesCuenta = [];
 foreach ($cuentas as $c) {
-    $opcionesCuenta[(string) $c->id] = $c->nombre . ($c->activa ? '' : ' (inactiva)');
+    $opcionesCuenta[(string) $c->id] = $c->nombre . ($c->activa ? '' : ' (inactiva)') . ' · ' . \App\Support\Dinero::formatear($c->saldo);
 }
 $opcionesCategoria = [];
 $atributosCategoria = [];

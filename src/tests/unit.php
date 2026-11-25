@@ -315,8 +315,12 @@ same('descripción de 150 caracteres', [], $mv->validate(['descripcion' => str_r
 section('ReglasMovimiento (D8)');
 use App\Movimientos\ReglasMovimiento as RM;
 $cat = static fn (?int $dueño, string $tipo): App\Domain\Categoria => new App\Domain\Categoria(1, $dueño, 'X', $tipo, '#000000');
-$activa = ['activa' => true];
-same('un gasto en una cuenta activa con una categoría de gasto propia', RM::OK, RM::evaluar($activa, $cat(5, 'gasto'), 5, 'gasto'));
+$activa = ['activa' => true, 'tipo' => 'efectivo'];
+$tarjetaActiva = ['activa' => true, 'tipo' => 'tarjeta_credito'];
+same('un gasto en una cuenta activa con una categoría de gasto propia', RM::OK, RM::evaluar($activa, $cat(5, 'gasto'), 5, 'gasto', '50000.00', '18000.00'));
+same('un gasto igual al saldo disponible deja la cuenta en cero (es válido)', RM::OK, RM::evaluar($activa, $cat(5, 'gasto'), 5, 'gasto', '18000.00', '18000.00'));
+same('un gasto mayor que el saldo disponible en una cuenta normal se rechaza', RM::SALDO_INSUFICIENTE, RM::evaluar($activa, $cat(5, 'gasto'), 5, 'gasto', '18000.00', '18000.01'));
+same('un gasto en una tarjeta de crédito sí puede dejar el saldo en negativo', RM::OK, RM::evaluar($tarjetaActiva, $cat(5, 'gasto'), 5, 'gasto', '0.00', '500000.00'));
 same('con una categoría predeterminada', RM::OK, RM::evaluar($activa, $cat(null, 'ingreso'), 5, 'ingreso'));
 same('una cuenta que no es del usuario', RM::CUENTA_AJENA, RM::evaluar(null, $cat(null, 'gasto'), 5, 'gasto'));
 same('una categoría que no existe', RM::CATEGORIA_AJENA, RM::evaluar($activa, null, 5, 'gasto'));
