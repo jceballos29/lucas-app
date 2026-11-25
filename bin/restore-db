@@ -13,6 +13,7 @@
 #   docker compose exec db bash /docker-entrypoint-initdb.d/03-users.sh    # vuelve a dar los permisos a los usuarios
 
 set -eu
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 
 FILE="${1:-}"
@@ -20,7 +21,7 @@ TARGET="${2:-lucas_test_restore}"
 [ -f "$FILE" ] || { echo "Uso: bin/restore-db <archivo.sql.gz> [base_destino]" >&2; exit 2; }
 case "$TARGET" in '' | *[!A-Za-z0-9_]*) echo "Nombre de base no válido: $TARGET" >&2; exit 2 ;; esac
 
-value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2-; }
+value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | tr -d '\r'; }
 USER_NAME="$(value DB_MIGRATION_USERNAME)"; USER_NAME="${USER_NAME:-lucas_migrator}"
 PASSWORD="$(value DB_MIGRATION_PASSWORD)"
 [ -n "$PASSWORD" ] || { echo "Falta DB_MIGRATION_PASSWORD en .env." >&2; exit 2; }

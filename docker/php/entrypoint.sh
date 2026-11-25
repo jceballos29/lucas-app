@@ -6,7 +6,12 @@ set -e
 
 if [ -f /var/www/html/composer.json ] && [ ! -f /var/www/html/vendor/autoload.php ]; then
     echo "entrypoint: falta vendor/, ejecutando composer install..."
-    (cd /var/www/html && composer install --no-interaction --no-progress --quiet) || echo "entrypoint: composer install falló; la aplicación no arrancará hasta que se ejecute a mano" >&2
+    (
+        cd /var/www/html
+        COMPOSER_HOME=/tmp/composer COMPOSER_CACHE_DIR=/tmp/composer/cache \
+            composer install --no-interaction --no-progress --no-scripts --no-plugins --quiet
+    ) || echo "entrypoint: composer install falló; ejecuta: docker compose exec php composer install" >&2
 fi
 
 exec docker-php-entrypoint "$@"
+

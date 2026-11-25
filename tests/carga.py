@@ -15,6 +15,7 @@ No forma parte de tests/run-all.sh (es lenta y pesada). Úsala contra un entorno
 
 import argparse
 import asyncio
+from pathlib import Path
 import random
 import re
 import statistics
@@ -24,7 +25,7 @@ import time
 
 CONTRASENA = 'Carga#2026x'
 PAGINAS = ['/panel.php', '/movimientos.php', '/cuentas.php', '/presupuestos.php', '/reportes.php', '/metas.php', '/categorias.php']
-DIR = __file__.rsplit('/tests/', 1)[0]
+DIR = str(Path(__file__).resolve().parent.parent)
 
 
 def mysql(sql: str) -> str:

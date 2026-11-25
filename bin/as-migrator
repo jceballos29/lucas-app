@@ -11,13 +11,14 @@
 # en la línea de comandos): el contenedor php en marcha y la aplicación web siguen sin conocerlas.
 
 set -eu
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 
 [ $# -gt 0 ] || { echo "Uso: bin/as-migrator <comando>   (p. ej. php scripts/create-admin.php correo@ejemplo.com)" >&2; exit 2; }
 [ -f .env ] || { echo "No existe .env (cópialo de .env.example)." >&2; exit 2; }
 
-# Se lee .env sin ejecutarlo (no es un script de shell).
-value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2-; }
+# Se lee .env sin ejecutarlo (no es un script de shell) y se quita \r por si se editó en Windows.
+value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | tr -d '\r'; }
 DB_USERNAME="$(value DB_MIGRATION_USERNAME)"; DB_USERNAME="${DB_USERNAME:-lucas_migrator}"
 DB_PASSWORD="$(value DB_MIGRATION_PASSWORD)"
 [ -n "$DB_PASSWORD" ] || { echo "Falta DB_MIGRATION_PASSWORD en .env (ver .env.example)." >&2; exit 2; }

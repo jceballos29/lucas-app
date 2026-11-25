@@ -4,6 +4,7 @@
 # Se detiene en la primera suite que falle.
 
 set -eu
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 
 echo "################ Unitarias"

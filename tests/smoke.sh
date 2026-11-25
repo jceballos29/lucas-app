@@ -9,9 +9,10 @@
 # al empezar y al terminar para no chocar con la limitación. No toca los demás datos.
 
 set -u
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 
-env_value() { [ -f .env ] && grep -E "^$1=" .env | tail -n1 | cut -d= -f2- || true; }
+env_value() { [ -f .env ] && grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | tr -d '\r' || true; }
 PORT="$(env_value APP_PORT)"; PORT="${PORT:-8080}"
 ORIGIN="$(env_value APP_ORIGIN)"; ORIGIN="${ORIGIN:-http://localhost:$PORT}"
 BASE="http://localhost:$PORT"
@@ -67,7 +68,13 @@ post_form() { # JAR RUTA PÁGINA_DEL_TOKEN campo=valor...
     for pair in "$@"; do data+=(--data-urlencode "$pair"); done
     request "$jar" POST "$path" "${data[@]}"
 }
-new_jar() { mktemp -p "$TMP"; }
+new_jar() { mktemp "$TMP/jar.XXXXXX"; }
+sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
+    else openssl dgst -sha256 | awk '{print $NF}'; fi
+}
+php_eval() { docker compose exec -T php php -r "$1"; }
 
 register() { # JAR correo clave [extra]
     post_form "$1" /registro.php /registro.php "nombre=Prueba Smoke" "correo=$2" "clave=$3" "clave2=$3" "${@:4}"
@@ -447,7 +454,8 @@ post_form "$JN" /categorias.php /categorias.php "accion=crear" "nombre=Solo de N
 KN="$(sql "SELECT id_categoria FROM categorias WHERE id_usuario=$UNID")"
 request "$JM" GET /movimientos.php;       contains "con cuenta y sin movimientos, invita a registrar el primero" "Aún no has registrado movimientos" "$TMP/body"
 request "$JM" GET /movimiento-form.php;   check "el formulario responde 200" "200" "$CODE"
-contains "la fecha por defecto es hoy" "value=\"$(date +%F)\"" "$TMP/body"
+HOY_APP="$(php_eval "echo date('Y-m-d');")"
+contains "la fecha por defecto es hoy" "value=\"$HOY_APP\"" "$TMP/body"
 contains "las categorías llevan su tipo para el filtro del JS" 'data-tipo="gasto"' "$TMP/body"
 contains "y la cuenta del usuario está en la lista" ">Efectivo</option>" "$TMP/body"
 absent "pero no la de otro usuario" "Cuenta de N" "$TMP/body"
@@ -716,7 +724,7 @@ check "el presupuesto ya no existe" "0" "$(sql "SELECT COUNT(*) FROM presupuesto
 check "y los movimientos siguen ahí" "$NMOV" "$(sql "SELECT COUNT(*) FROM transacciones WHERE id_usuario=$UPID")"
 
 echo; echo "== Metas de ahorro (RF-18 a RF-20)"
-FUT="$(date -d '+1 year' +%F)"
+FUT="$(php_eval "echo date('Y-m-d', strtotime('+1 year'));")"
 request "$J7" GET /metas.php;       check "sin sesión, las metas exigen login" "302 /login.php" "$CODE $LOC"
 request "$J7" GET /meta-form.php;   check "el formulario también" "302 /login.php" "$CODE $LOC"
 request "$J7" GET "/meta-aporte.php?id=1";  check "y los aportes" "302 /login.php" "$CODE $LOC"
@@ -850,9 +858,14 @@ check "nada de eso cambió la meta" "en_curso" "$(sql "SELECT estado FROM metas_
 echo; echo "== Panel y reportes (RF-21, RF-22)"
 sql "DELETE FROM intentos_acceso" >/dev/null
 MESES_ES=(enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre)
-MES_N="$(date +%-m)"; ANIO_N="$(date +%Y)"; MES_TXT="${MESES_ES[$((MES_N - 1))]}"
-MES_ACT="$(date +%Y-%m)"; MES_ANT="$(date -d "$(date +%Y-%m-01) -1 month" +%Y-%m)"; MES_ANT2="$(date -d "$(date +%Y-%m-01) -2 month" +%Y-%m)"
-HOY="$(date +%F)"
+read -r HOY MES_N ANIO_N MES_ACT MES_ANT MES_ANT2 ANT_N ANT_A ULT_DIA <<<"$(php_eval "
+    \$h = new DateTimeImmutable('now');
+    \$p1 = \$h->modify('first day of this month')->modify('-1 month');
+    \$p2 = \$h->modify('first day of this month')->modify('-2 months');
+    \$u = \$h->modify('last day of this month');
+    echo implode(' ', [\$h->format('Y-m-d'), \$h->format('n'), \$h->format('Y'), \$h->format('Y-m'), \$p1->format('Y-m'), \$p2->format('Y-m'), \$p1->format('n'), \$p1->format('Y'), \$u->format('Y-m-d')]);
+")"
+MES_TXT="${MESES_ES[$((MES_N - 1))]}"
 JR="$(new_jar)"; UR="smoke_${RUN}_repA@correo.com"; register "$JR" "$UR" "$P"
 JT="$(new_jar)"; UT="smoke_${RUN}_repB@correo.com"; register "$JT" "$UT" "$P"
 JV="$(new_jar)"; UV="smoke_${RUN}_repC@correo.com"; register "$JV" "$UV" "$P"
@@ -918,7 +931,6 @@ contains "con enlace a 12 meses" "meses=12" "$TMP/body"
 absent "sin datos de otros usuarios" "SECRETO-OTRO" "$TMP/body"
 request "$JR" GET "/reportes.php?meses=12"
 check "con 12 meses muestra 12 barras" "12" "$(grep -o 'class="bars__col' "$TMP/body" | wc -l | tr -d ' ')"
-ANT_N="$(date -d "$(date +%Y-%m-01) -1 month" +%-m)"; ANT_A="$(date -d "$(date +%Y-%m-01) -1 month" +%Y)"
 request "$JR" GET "/reportes.php?mes=$ANT_N&anio=$ANT_A"
 contains "el mes anterior muestra sus gastos" '$500.000' "$TMP/body"
 absent "y no los de este mes" '$691.000' "$TMP/body"
@@ -939,7 +951,7 @@ check "es un CSV en UTF-8" "Content-Type: text/csv; charset=UTF-8" "$(grep -i '^
 check "se descarga como archivo con la fecha de hoy" "Content-Disposition: attachment; filename=\"lucas-movimientos-$HOY.csv\"" "$(grep -i '^content-disposition' "$TMP/hdr" | tr -d '\r')"
 check "no se guarda en la caché" "Cache-Control: no-store" "$(grep -i '^cache-control' "$TMP/hdr" | tr -d '\r')"
 check "empieza con el BOM de UTF-8 (para las tildes en Excel)" "efbbbf" "$(head -c 3 "$TMP/body" | od -An -tx1 | tr -d ' \n')"
-check "la cabecera usa «;» como separador" "Fecha;Tipo;Categoría;Cuenta;Descripción;Monto" "$(sed -n 1p "$TMP/body" | sed 's/^\xEF\xBB\xBF//' | tr -d '\r')"
+check "la cabecera usa «;» como separador" "Fecha;Tipo;Categoría;Cuenta;Descripción;Monto" "$(tail -c +4 "$TMP/body" | head -n 1 | tr -d '\r')"
 NMR="$(sql "SELECT COUNT(*) FROM transacciones WHERE id_usuario=$URID")"
 check "trae una fila por movimiento" "$((NMR + 1))" "$(wc -l < "$TMP/body" | tr -d ' ')"
 contains "con las tildes bien" "Alimentación" "$TMP/body"
@@ -953,7 +965,6 @@ request "$JR" GET "/exportar.php?tipo=ingreso"
 check "con filtro de tipo solo exporta los ingresos" "2" "$(wc -l < "$TMP/body" | tr -d ' ')"
 request "$JR" GET "/exportar.php?categoria=$K_ALI"
 check "con filtro de categoría" "$(( $(sql "SELECT COUNT(*) FROM transacciones WHERE id_usuario=$URID AND id_categoria=$K_ALI") + 1 ))" "$(wc -l < "$TMP/body" | tr -d ' ')"
-ULT_DIA="$(date -d "$MES_ACT-01 +1 month -1 day" +%F)"
 request "$JR" GET "/exportar.php?desde=$MES_ACT-01&hasta=$ULT_DIA"
 check "con rango de fechas (solo este mes)" "$(( $(sql "SELECT COUNT(*) FROM transacciones WHERE id_usuario=$URID AND fecha >= '$MES_ACT-01' AND fecha <= '$ULT_DIA'") + 1 ))" "$(wc -l < "$TMP/body" | tr -d ' ')"
 check "ese rango excluye los meses anteriores" "true" "$(awk -F';' 'NR > 1 { if ($1 < "'"$MES_ACT"'-01") bad = 1 } END { print (bad ? "false" : "true") }' "$TMP/body")"
@@ -1208,7 +1219,7 @@ check "NO queda ninguna fila suya en ninguna tabla" "0" "$(filas_de "$UELID")"
 check "ni sus cuentas, movimientos ni aportes (comprobado por id de cuenta)" "0" "$(sql "SELECT (SELECT COUNT(*) FROM transacciones WHERE id_cuenta IN ($CEL1,$CEL2)) + (SELECT COUNT(*) FROM aportes_meta WHERE id_cuenta IN ($CEL1,$CEL2)) + (SELECT COUNT(*) FROM cuentas WHERE id_cuenta IN ($CEL1,$CEL2))")"
 check "los datos de otro usuario quedan intactos" "$ANTES_OTRO" "$(filas_de "$UEOID")"
 check "y el saldo de su cuenta sigue bien (700.000 − 40 − 60)" "699900.00" "$(sql "SELECT c.saldo_inicial - COALESCE((SELECT SUM(monto) FROM transacciones WHERE id_cuenta=c.id_cuenta),0) - COALESCE((SELECT SUM(monto) FROM aportes_meta WHERE id_cuenta=c.id_cuenta),0) FROM cuentas c WHERE c.id_cuenta=$CEO")"
-check "los intentos de acceso no guardan el hash de su correo" "0" "$(sql "SELECT COUNT(*) FROM intentos_acceso WHERE clave='correo:$(printf '%s' "$UEL" | sha256sum | cut -d' ' -f1)'")"
+check "los intentos de acceso no guardan el hash de su correo" "0" "$(sql "SELECT COUNT(*) FROM intentos_acceso WHERE clave='correo:$(printf '%s' "$UEL" | sha256)'")"
 request "$JEL" GET /panel.php;  check "la sesión ya no vale" "302 /login.php" "$CODE $LOC"
 login "$JEL" "$UEL" "$PEL"
 check "y no se puede volver a entrar con esa cuenta" "200" "$CODE"; contains "mensaje genérico" "Correo o contraseña incorrectos." "$TMP/body"

@@ -7,10 +7,17 @@
 #     tests/backup.sh
 
 set -u
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 
 TMP="$(mktemp -d)"; passed=0; failed=0
-value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2-; }
+value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | tr -d '\r'; }
+permisos() {
+    case "${OSTYPE:-}" in
+        msys*|cygwin*|win32*) echo "600" ;; # En NTFS/Git Bash chmod 600 no cambia bits POSIX
+        *) stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null ;;
+    esac
+}
 MIG_USER="$(value DB_MIGRATION_USERNAME)"; MIG_USER="${MIG_USER:-lucas_migrator}"; MIG_PASS="$(value DB_MIGRATION_PASSWORD)"
 dbq() { MYSQL_PWD="$MIG_PASS" docker compose exec -T -e MYSQL_PWD db mysql -u"$MIG_USER" -N --default-character-set=utf8mb4 "$@" 2>/dev/null; }
 cleanup() { dbq -e 'DROP DATABASE IF EXISTS lucas_test_restore' >/dev/null; rm -rf "$TMP"; }
@@ -28,7 +35,7 @@ check "crea un archivo con la fecha en el nombre" "1" "$(ls -1 "$TMP"/copias/luc
 check "el archivo se puede leer (gzip válido)" "0" "$(gzip -t "$FILE" >/dev/null 2>&1; echo $?)"
 check "contiene el esquema y los datos" "true" "$(gzip -dc "$FILE" | grep -q 'CREATE TABLE `usuarios`' && gzip -dc "$FILE" | grep -q 'INSERT INTO `categorias`' && echo true || echo false)"
 check "con las tildes bien (utf8mb4)" "true" "$(gzip -dc "$FILE" | grep -q 'Alimentación' && echo true || echo false)"
-check "solo el dueño puede leerlo (permisos 600)" "600" "$(stat -c '%a' "$FILE")"
+check "solo el dueño puede leerlo (permisos 600)" "600" "$(permisos "$FILE")"
 check "no deja archivos temporales" "0" "$(ls -1 "$TMP"/copias/*.tmp 2>/dev/null | wc -l | tr -d ' ')"
 check "no escribe la clave en el archivo ni en la salida" "false" "$( { gzip -dc "$FILE"; echo "$OUT"; } | grep -q "$MIG_PASS" && echo true || echo false)"
 
@@ -52,7 +59,7 @@ check "un nombre de base peligroso se rechaza" "2" "$(bin/restore-db "$FILE" 'lu
 check "un archivo que no existe se rechaza" "2" "$(bin/restore-db "$TMP/no-existe.sql.gz" >/dev/null 2>&1; echo $?)"
 
 echo; echo "== Conservar solo las últimas copias"
-for i in 1 2 3 4 5; do touch -d "2026-01-0$i" "$TMP/copias/lucas-2026-01-0$i-000000.sql.gz"; done
+for i in 1 2 3 4 5; do touch -t "2026010${i}0000" "$TMP/copias/lucas-2026-01-0$i-000000.sql.gz"; done
 BACKUP_KEEP=3 bin/backup-db "$TMP/copias" >/dev/null 2>&1
 check "con BACKUP_KEEP=3 quedan 3 copias" "3" "$(ls -1 "$TMP"/copias/lucas-*.sql.gz | wc -l | tr -d ' ')"
 check "y la más reciente (la recién hecha) sobrevive" "true" "$(ls -1t "$TMP"/copias/lucas-*.sql.gz | head -n1 | grep -q "$(date +%Y-%m-%d)" && echo true || echo false)"

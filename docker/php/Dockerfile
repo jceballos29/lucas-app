@@ -14,7 +14,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && install-php-extensions pdo_mysql intl zip opcache xdebug
 
-RUN usermod -u ${HOST_UID} www-data && groupmod -g ${HOST_GID} www-data
+# -o (--non-unique): en macOS el grupo primario (id -g) suele ser 20 (staff), que ya existe en Debian (dialout).
+RUN usermod -u ${HOST_UID} -o www-data && groupmod -g ${HOST_GID} -o www-data
 
 # Tamaño del pool de PHP-FPM (zz-pool.conf). Estos son los valores por defecto; se cambian con variables de entorno.
 ENV PHP_FPM_MAX_CHILDREN=40 \
@@ -29,11 +30,13 @@ COPY php.local.ini /usr/local/etc/php/env/local/99-dev.ini
 COPY xdebug.ini /usr/local/etc/php/env/local/99-xdebug.ini
 
 COPY entrypoint.sh /usr/local/bin/app-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/app-entrypoint.sh && chmod 755 /usr/local/bin/app-entrypoint.sh
 
 WORKDIR /var/www/html
 
 USER www-data
 
-# Genera vendor/ (autoload de Composer) si falta, y sigue con el arranque normal de la imagen (php-fpm).
-ENTRYPOINT ["app-entrypoint.sh"]
+# Se invoca con /bin/sh explícito: así el contenedor arranca en Windows incluso si el archivo perdió el bit de
+# ejecución o tenía finales de línea CRLF antes de reconstruir.
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/app-entrypoint.sh"]
 CMD ["php-fpm"]

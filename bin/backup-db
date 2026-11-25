@@ -13,13 +13,14 @@
 # Una copia que vive en el mismo servidor no protege de perder el servidor: copia la carpeta a otro sitio (ver docs/DESPLIEGUE.md).
 
 set -eu
+export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 
 DEST="${1:-backups}"
 KEEP="${BACKUP_KEEP:-8}"
 
 [ -f .env ] || { echo "No existe .env (cópialo de .env.example)." >&2; exit 2; }
-value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2-; }
+value() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | tr -d '\r'; }
 USER_NAME="$(value DB_MIGRATION_USERNAME)"; USER_NAME="${USER_NAME:-lucas_migrator}"
 PASSWORD="$(value DB_MIGRATION_PASSWORD)"
 DATABASE="$(value DB_DATABASE)"; DATABASE="${DATABASE:-lucas}"
