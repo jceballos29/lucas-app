@@ -193,6 +193,123 @@ final class MovimientoController
         Response::redirect('/movimientos.php' . ($query !== '' ? '?' . $query : ''));
     }
 
+    /** Importación asistida de movimientos desde archivo o texto CSV (Fase 13). */
+    public function importar(): void
+    {
+        $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
+        $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+
+        try {
+            $cuentas = array_values(array_filter(
+                $this->container->cuentas()->listByUser($user['id'], $espacioId),
+                static fn (Cuenta $c): bool => $c->activa
+            ));
+            $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
+
+            $catGastoDef = 0;
+            $catIngresoDef = 0;
+            foreach ($categorias as $k) {
+                if ($k->tipo === 'gasto' && ($catGastoDef === 0 || mb_strtolower($k->nombre) === 'otros gastos')) {
+                    $catGastoDef = $k->id;
+                }
+                if ($k->tipo === 'ingreso' && ($catIngresoDef === 0 || mb_strtolower($k->nombre) === 'otros ingresos')) {
+                    $catIngresoDef = $k->id;
+                }
+            }
+
+            $errors = [];
+            $old = [
+                'id_cuenta' => isset($cuentas[0]) ? (string) $cuentas[0]->id : '',
+                'id_categoria_gasto' => (string) $catGastoDef,
+                'id_categoria_ingreso' => (string) $catIngresoDef,
+                'csv_texto' => '',
+            ];
+
+            if ($isPost) {
+                reject_foreign_origin();
+                require_csrf();
+
+                $cuentaId = is_string($_POST['id_cuenta'] ?? null) && ctype_digit($_POST['id_cuenta']) ? (int) $_POST['id_cuenta'] : 0;
+                $catGastoId = is_string($_POST['id_categoria_gasto'] ?? null) && ctype_digit($_POST['id_categoria_gasto']) ? (int) $_POST['id_categoria_gasto'] : 0;
+                $catIngresoId = is_string($_POST['id_categoria_ingreso'] ?? null) && ctype_digit($_POST['id_categoria_ingreso']) ? (int) $_POST['id_categoria_ingreso'] : 0;
+                $csvTexto = is_string($_POST['csv_texto'] ?? null) ? trim($_POST['csv_texto']) : '';
+
+                // Si subió un archivo .csv, usar su contenido si es válido.
+                if (isset($_FILES['csv_archivo']) && is_array($_FILES['csv_archivo']) && ($_FILES['csv_archivo']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                    $tmpName = (string) ($_FILES['csv_archivo']['tmp_name'] ?? '');
+                    $size = (int) ($_FILES['csv_archivo']['size'] ?? 0);
+                    if ($size > 0 && $size <= 512_000 && is_uploaded_file($tmpName)) {
+                        $csvTexto = trim((string) file_get_contents($tmpName));
+                    }
+                }
+
+                $old = [
+                    'id_cuenta' => (string) ($cuentaId ?: ''),
+                    'id_categoria_gasto' => (string) ($catGastoId ?: ''),
+                    'id_categoria_ingreso' => (string) ($catIngresoId ?: ''),
+                    'csv_texto' => $csvTexto,
+                ];
+
+                if ($cuentaId < 1) {
+                    $errors['id_cuenta'] = 'Elige la cuenta donde se importarán los movimientos.';
+                }
+                if ($catGastoId < 1) {
+                    $errors['id_categoria_gasto'] = 'Elige la categoría por defecto para los gastos.';
+                }
+                if ($catIngresoId < 1) {
+                    $errors['id_categoria_ingreso'] = 'Elige la categoría por defecto para los ingresos.';
+                }
+                if ($csvTexto === '') {
+                    $errors['csv_texto'] = 'Pega las líneas CSV o selecciona un archivo .csv.';
+                }
+
+                if ($errors === []) {
+                    $parsed = \App\Movimientos\ImportadorCsv::parsearTexto($csvTexto);
+                    if ($parsed['errores'] !== []) {
+                        $errors['csv_texto'] = implode(' ', array_slice($parsed['errores'], 0, 3));
+                    } elseif ($parsed['filas'] === []) {
+                        $errors['csv_texto'] = 'No se encontraron filas de movimientos válidas en el CSV.';
+                    } else {
+                        $res = $this->container->importadorCsv()->importar(
+                            $user['id'],
+                            $cuentaId,
+                            $catGastoId,
+                            $catIngresoId,
+                            $parsed['filas'],
+                            $espacioId,
+                        );
+
+                        switch ($res['codigo']) {
+                            case ReglasMovimiento::OK:
+                                $n = $res['importados'];
+                                Flash::set('ok', 'Se ' . ($n === 1 ? 'importó 1 movimiento' : "importaron $n movimientos") . " en «{$res['cuenta']}».");
+                                Response::redirect('/movimientos.php');
+
+                            case ReglasMovimiento::SALDO_INSUFICIENTE:
+                                $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));
+                                $errors['csv_texto'] = "La cuenta «{$res['cuenta']}» tiene $disp disponibles y al aplicar estos movimientos quedaría en saldo negativo.";
+                                break;
+
+                            default:
+                                Response::plain(404, "No encontrado.\n");
+                        }
+                    }
+                }
+            }
+        } catch (RuntimeException $error) {
+            self::fail($error);
+        }
+
+        View::page('app/movimientos-importar', [
+            'cuentas' => $cuentas,
+            'categorias' => $categorias,
+            'old' => $old,
+            'errors' => $errors,
+        ], 'Importar movimientos CSV', $user, 'app', 'movimientos');
+    }
+
     /**
      * El aviso de RF-17 para un gasto de esa categoría y fecha, o null si no hay presupuesto o está en orden (menos del
      * 80 %). Se calcula al momento, no se guarda.

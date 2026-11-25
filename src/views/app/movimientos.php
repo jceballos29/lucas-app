@@ -70,7 +70,10 @@ $base = Filtros::query($filtros);
 $patron = '?' . ($base !== '' ? str_replace('%', '%%', $base) . '&' : '') . 'pagina=%d';
 $balance = Dinero::sumar([$totales['ingresos'], '-' . $totales['gastos']]);
 ?>
-<?= Ui::pageHead('Movimientos', 'Historial de ingresos y gastos', $puedeEscribir ? Ui::button('Nuevo movimiento', ['href' => '/movimiento-form.php', 'icon' => 'plus']) : null) ?>
+<?= Ui::pageHead('Movimientos', 'Historial de ingresos y gastos', $puedeEscribir ? Html::join([
+    Ui::button('Importar CSV', ['href' => '/movimientos-importar.php', 'variant' => 'secondary', 'icon' => 'plus']),
+    Ui::button('Nuevo movimiento', ['href' => '/movimiento-form.php', 'icon' => 'plus']),
+]) : null) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
 

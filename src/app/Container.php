@@ -8,6 +8,7 @@ use App\Admin\GestionUsuarios;
 use App\Auth\Autenticador;
 use App\Auth\LimitadorIntentos;
 use App\Auth\RecuperacionClave;
+use App\Cuentas\ConciliacionCuenta;
 use App\Database\Connection;
 use App\Deudas\GestionDeudas;
 use App\Espacios\GestionEspacios;
@@ -21,6 +22,7 @@ use App\Mail\Mailer;
 use App\Mail\SmtpMailer;
 use App\Metas\GestionMetas;
 use App\Movimientos\GestionMovimientos;
+use App\Movimientos\ImportadorCsv;
 use App\Presupuestos\ClonadorPresupuestos;
 use App\Recurrentes\GestionRecurrentes;
 use App\Repository\IntentoRepository;
@@ -106,6 +108,11 @@ final class Container
         return new CuentaRepository($this->pdo());
     }
 
+    public function conciliacionCuenta(): ConciliacionCuenta
+    {
+        return new ConciliacionCuenta($this->pdo(), $this->cuentas(), $this->movimientos(), $this->categorias());
+    }
+
     public function categorias(): CategoriaRepository
     {
         return new CategoriaRepository($this->pdo());
@@ -119,6 +126,11 @@ final class Container
     public function gestionMovimientos(): GestionMovimientos
     {
         return new GestionMovimientos($this->pdo(), $this->movimientos(), $this->cuentas(), $this->categorias());
+    }
+
+    public function importadorCsv(): ImportadorCsv
+    {
+        return new ImportadorCsv($this->pdo(), $this->movimientos(), $this->cuentas(), $this->categorias());
     }
 
     public function transferencias(): TransferenciaRepository

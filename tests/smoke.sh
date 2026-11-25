@@ -1404,5 +1404,24 @@ post_form "$JTR" "/presupuestos.php?mes=11&anio=2026" "/presupuestos.php?mes=11&
 check "clonar del mes anterior redirige a noviembre" "302 /presupuestos.php?mes=11&anio=2026" "$CODE $LOC"
 check "copió el límite de 600.000 a noviembre" "600000.00" "$(sql "SELECT monto_limite FROM presupuestos WHERE id_usuario=$UTRID AND mes=11 AND anio=2026 AND id_categoria=$KG")"
 
+echo; echo "== Conciliación rápida de saldos e importación CSV (Fase 13)"
+request "$J7" GET "/cuenta-conciliar.php?id=$CBANCO"; check "sin sesión, conciliar cuenta exige login" "302 /login.php" "$CODE $LOC"
+request "$J7" GET /movimientos-importar.php;          check "sin sesión, importar CSV exige login" "302 /login.php" "$CODE $LOC"
+request "$JTR" GET "/cuenta-conciliar.php?id=$CBANCO"
+check "la pantalla de conciliación responde 200" "200" "$CODE"
+contains "muestra el nombre de la cuenta a conciliar" "Conciliar saldo de «Banco»" "$TMP/body"
+
+post_form "$JTR" /cuenta-conciliar.php "/cuenta-conciliar.php?id=$CBANCO" "id=$CBANCO" "saldo_real=850.000" "id_categoria_gasto=$KG" "id_categoria_ingreso=$KI" "fecha=$HOY_APP" "descripcion=Ajuste conciliacion"
+check "conciliar saldo redirige a cuentas" "302 /cuentas.php" "$CODE $LOC"
+request "$JTR" GET /cuentas.php
+contains "el saldo de Banco quedó exactamente en 850.000" '$850.000' "$TMP/body"
+
+request "$JTR" GET /movimientos-importar.php
+check "la pantalla de importar CSV responde 200" "200" "$CODE"
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "id_cuenta=$CBANCO" "id_categoria_gasto=$KG" "id_categoria_ingreso=$KI" "csv_texto=$HOY_APP;Reembolso CSV;+50000"
+check "importar CSV redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
+request "$JTR" GET /movimientos.php
+contains "muestra el movimiento importado desde CSV" "Reembolso CSV" "$TMP/body"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

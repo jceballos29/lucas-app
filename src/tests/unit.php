@@ -789,4 +789,23 @@ same('50 % necesidades, 30 % estilo de vida, 20 % ahorro/deudas de 3.000.000', [
 ]);
 same('la suma de las sugerencias por categoría cuadra al centavo con 50 % + 30 %', '2400000.00', D::sumar(array_column($dist['sugerencias'], 'monto')));
 
+section('ImportadorCsv: parseo de texto CSV bancario (Fase 13)');
+use App\Movimientos\ImportadorCsv as IC;
+$csvSample = "Fecha;Descripción;Monto\n2026-11-20;Supermercado Éxito;-185.000,50\n25/11/2026;Nómina quincenal;+2.500.000";
+$resCsv = IC::parsearTexto($csvSample);
+same('parsearTexto con cabecera y 2 líneas válidas no da errores', [], $resCsv['errores']);
+same('reconoce gasto con signo menos y fecha ISO', ['2026-11-20', 'gasto', '185000.50', 'Supermercado Éxito'], [
+    $resCsv['filas'][0]['fecha'],
+    $resCsv['filas'][0]['tipo'],
+    $resCsv['filas'][0]['monto'],
+    $resCsv['filas'][0]['descripcion'],
+]);
+same('reconoce ingreso con signo + y fecha DD/MM/AAAA', ['2026-11-25', 'ingreso', '2500000.00', 'Nómina quincenal'], [
+    $resCsv['filas'][1]['fecha'],
+    $resCsv['filas'][1]['tipo'],
+    $resCsv['filas'][1]['monto'],
+    $resCsv['filas'][1]['descripcion'],
+]);
+same('una fecha inválida en CSV reporta la línea con error', 1, count(IC::parsearTexto("2026-02-31;Raro;-100")['errores']));
+
 finish();

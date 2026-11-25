@@ -1184,4 +1184,26 @@ $resClon = $clonador->clonarDelMesAnterior($pUser, 11, 2026);
 same('clonarDelMesAnterior copia los 2 presupuestos de octubre a noviembre', ['copiados' => 2, 'omitidos' => 0], $resClon);
 same('volver a clonar omite los que ya existen en noviembre', ['copiados' => 0, 'omitidos' => 2], $clonador->clonarDelMesAnterior($pUser, 11, 2026));
 
+section('ConciliacionCuenta e ImportadorCsv (Fase 13)');
+$conciliador = $container->conciliacionCuenta();
+$importador = $container->importadorCsv();
+$cUser = (int) $usuarios->create('Carlos Concilia', 'carlos.concilia@correo.com', 'x');
+$cCuenta = $cuentas->create($cUser, 'Billetera Carlos', 'efectivo', '200000.00');
+$resConc1 = $conciliador->conciliar($cUser, $cCuenta, '175000.00', $rCatIngreso, $rCatGasto, '2026-11-25');
+same('conciliar de 200.000 a 175.000 crea un gasto de ajuste de 25.000', ['ok', 'gasto', '25000.00', '175000.00'], [
+    $resConc1['codigo'],
+    $resConc1['tipo_ajuste'],
+    $resConc1['diferencia'],
+    (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo,
+]);
+same('conciliar al mismo saldo actual devuelve sin_diferencia', 'sin_diferencia', $conciliador->conciliar($cUser, $cCuenta, '175000.00', $rCatIngreso, $rCatGasto, '2026-11-25')['codigo']);
+
+$parsedLote = App\Movimientos\ImportadorCsv::parsearTexto("2026-11-25; Bono; +50000\n2026-11-25; Taxi; -20000")['filas'];
+$resImp = $importador->importar($cUser, $cCuenta, $rCatGasto, $rCatIngreso, $parsedLote);
+same('importar lote CSV de +50.000 y -20.000 deja el saldo en 205.000', ['ok', 2, '205000.00'], [
+    $resImp['codigo'],
+    $resImp['importados'],
+    (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo,
+]);
+
 finish();

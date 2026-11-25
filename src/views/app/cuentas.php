@@ -45,6 +45,9 @@ $acciones = $puedeEscribir ? Html::join([
                 <?php if ($c->activa && $c->tipo === 'tarjeta_credito' && Dinero::aCentavos($c->saldo) < 0): ?>
                     <?= Ui::button('Abonar', ['href' => '/transferencia-form.php?destino=' . $c->id, 'variant' => 'primary', 'size' => 'sm', 'icon' => 'transfer', 'attrs' => ['aria-label' => 'Abonar a ' . $c->nombre]]) ?>
                 <?php endif; ?>
+                <?php if ($c->activa): ?>
+                    <?= Ui::button('Conciliar', ['href' => '/cuenta-conciliar.php?id=' . $c->id, 'variant' => 'secondary', 'size' => 'sm', 'icon' => 'check', 'attrs' => ['aria-label' => 'Conciliar saldo de ' . $c->nombre]]) ?>
+                <?php endif; ?>
                 <?= Ui::button('Editar', ['href' => '/cuenta-form.php?id=' . $c->id, 'variant' => 'secondary', 'size' => 'sm', 'icon' => 'edit', 'attrs' => ['aria-label' => 'Editar ' . $c->nombre]]) ?>
                 <?= Ui::postForm('/cuentas.php', ['id' => $c->id, 'accion' => $c->activa ? 'desactivar' : 'activar'], Ui::button($c->activa ? 'Desactivar' : 'Activar', [
                     'type' => 'submit',
