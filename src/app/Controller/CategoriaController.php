@@ -36,11 +36,12 @@ final class CategoriaController
         $this->handle($user, true);
     }
 
-    /** @param array{id: int, name: string, email: string, role: string} $user */
+    /** @param array{id: int, name: string, email: string, role: string, espacio_id?: int|null, espacio_rol?: string|null} $user */
     private function handle(array $user, bool $isAdmin): void
     {
         $base = $isAdmin ? '/admin/categorias.php' : '/categorias.php';
         $owner = $isAdmin ? null : $user['id'];
+        $espacioId = $isAdmin ? null : ($user['espacio_id'] ?? null);
         $errors = [];
         $old = ['nombre' => '', 'tipo' => 'gasto', 'color' => CategoriaValidator::COLOR_POR_DEFECTO];
         $editing = null;
@@ -49,6 +50,9 @@ final class CategoriaController
             $repo = $this->container->categorias();
 
             if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+                if (!$isAdmin) {
+                    require_espacio_write($user);
+                }
                 reject_foreign_origin();
                 require_csrf();
 
@@ -61,37 +65,37 @@ final class CategoriaController
                         $errors = $result['errors'];
                         $old = $result['data'];
 
-                        if (!isset($errors['nombre']) && !isset($errors['tipo']) && $repo->nameTaken($owner, $old['nombre'], $old['tipo'])) {
+                        if (!isset($errors['nombre']) && !isset($errors['tipo']) && $repo->nameTaken($owner, $old['nombre'], $old['tipo'], null, $espacioId)) {
                             $errors['nombre'] = 'Ya existe una categoría con ese nombre en ' . Categoria::TIPOS[$old['tipo']] . '.';
                         }
 
                         if ($errors === []) {
-                            $repo->create($owner, $old['nombre'], $old['tipo'], $old['color']);
+                            $repo->create($owner, $old['nombre'], $old['tipo'], $old['color'], $espacioId);
                             Flash::set('ok', "Se creó la categoría «{$old['nombre']}».");
                             Response::redirect($base);
                         }
                         break;
 
                     case 'guardar':
-                        $editing = $this->target($repo, $user['id'], $isAdmin, $id);
+                        $editing = $this->target($repo, $user['id'], $isAdmin, $id, $espacioId);
                         $result = (new CategoriaValidator())->validate($_POST, false);
                         $errors = $result['errors'];
                         $old = ['nombre' => $result['data']['nombre'], 'tipo' => $editing->tipo, 'color' => $result['data']['color']];
 
-                        if (!isset($errors['nombre']) && $repo->nameTaken($owner, $old['nombre'], $editing->tipo, $editing->id)) {
+                        if (!isset($errors['nombre']) && $repo->nameTaken($owner, $old['nombre'], $editing->tipo, $editing->id, $espacioId)) {
                             $errors['nombre'] = 'Ya existe una categoría con ese nombre en ' . Categoria::TIPOS[$editing->tipo] . '.';
                         }
 
                         if ($errors === []) {
-                            $repo->update($owner, $editing->id, $old['nombre'], $old['color']);
+                            $repo->update($owner, $editing->id, $old['nombre'], $old['color'], $espacioId);
                             Flash::set('ok', "Se guardaron los cambios de «{$old['nombre']}».");
                             Response::redirect($base);
                         }
                         break;
 
                     case 'eliminar':
-                        $categoria = $this->target($repo, $user['id'], $isAdmin, $id);
-                        [$tone, $message] = match ($repo->delete($owner, $categoria->id)) {
+                        $categoria = $this->target($repo, $user['id'], $isAdmin, $id, $espacioId);
+                        [$tone, $message] = match ($repo->delete($owner, $categoria->id, $espacioId)) {
                             'ok' => ['ok', "Se eliminó la categoría «{$categoria->nombre}»."],
                             'en_uso' => ['error', "No se puede eliminar «{$categoria->nombre}» porque tiene movimientos o presupuestos. Puedes cambiarle el nombre en su lugar."],
                             default => ['error', 'Esa categoría ya no existe.'],
@@ -103,12 +107,15 @@ final class CategoriaController
                         Response::plain(400, "Solicitud no válida.\n");
                 }
             } elseif (isset($_GET['editar'])) {
+                if (!$isAdmin) {
+                    require_espacio_write($user);
+                }
                 $raw = $_GET['editar'];
-                $editing = $this->target($repo, $user['id'], $isAdmin, is_string($raw) && ctype_digit($raw) ? (int) $raw : 0);
+                $editing = $this->target($repo, $user['id'], $isAdmin, is_string($raw) && ctype_digit($raw) ? (int) $raw : 0, $espacioId);
                 $old = ['nombre' => $editing->nombre, 'tipo' => $editing->tipo, 'color' => $editing->color];
             }
 
-            $items = $isAdmin ? $repo->listDefaults() : $repo->listVisible($user['id']);
+            $items = $isAdmin ? $repo->listDefaults() : $repo->listVisible($user['id'], $espacioId);
         } catch (RuntimeException $error) {
             [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
             Response::plain($status, $message . "\n");
@@ -129,7 +136,7 @@ final class CategoriaController
      * La categoría sobre la que se puede actuar, o corta con un error: 404 si no existe o es de otra persona (no se
      * revela que existe, RNF-04); 403 si un usuario intenta tocar una predeterminada.
      */
-    private function target(\App\Repository\CategoriaRepository $repo, int $userId, bool $isAdmin, int $id): Categoria
+    private function target(\App\Repository\CategoriaRepository $repo, int $userId, bool $isAdmin, int $id, ?int $espacioId = null): Categoria
     {
         $categoria = $id > 0 ? $repo->findById($id) : null;
 
@@ -145,6 +152,10 @@ final class CategoriaController
             Response::plain(403, "Las categorías predeterminadas solo las gestiona un administrador.\n");
         }
 
-        return $categoria->idUsuario === $userId ? $categoria : Response::plain(404, "No encontrado.\n");
+        if ($espacioId !== null) {
+            return $categoria->idEspacio === $espacioId ? $categoria : Response::plain(404, "No encontrado.\n");
+        }
+
+        return ($categoria->idEspacio === null && $categoria->idUsuario === $userId) ? $categoria : Response::plain(404, "No encontrado.\n");
     }
 }

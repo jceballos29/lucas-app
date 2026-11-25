@@ -24,13 +24,14 @@ final class ReporteController
     public function index(): void
     {
         $user = require_login();
+        $espacioId = $user['espacio_id'] ?? null;
         ['mes' => $mes, 'anio' => $anio] = Mes::desde($_GET, new DateTimeImmutable('now'));
         $meses = ($_GET['meses'] ?? '') === '12' ? 12 : 6;
 
         try {
             $reportes = $this->container->reportes();
-            $categorias = Categorias::agrupar($reportes->gastosPorCategoria($user['id'], $mes, $anio));
-            $evolucion = $reportes->evolucion($user['id'], $mes, $anio, $meses);
+            $categorias = Categorias::agrupar($reportes->gastosPorCategoria($user['id'], $mes, $anio, $espacioId));
+            $evolucion = $reportes->evolucion($user['id'], $mes, $anio, $meses, $espacioId);
         } catch (RuntimeException $error) {
             [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
             Response::plain($status, $message . "\n");

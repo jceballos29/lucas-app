@@ -714,4 +714,22 @@ same('auto_aplicar=0 queda en false', false, $rv->validate(['auto_aplicar' => '0
 same('frecuencia inválida se rechaza', true, isset($rv->validate(['frecuencia' => 'trimestral'] + $rb)['errors']['frecuencia']));
 same('proxima_fecha inválida se rechaza', true, isset($rv->validate(['proxima_fecha' => '2026-02-30'] + $rb)['errors']['proxima_fecha']));
 
+section('ReglasEspacio y EspacioValidator (Fase 10)');
+use App\Espacios\ReglasEspacio as RE;
+same('en el espacio personal (null) siempre se puede escribir', true, RE::puedeEscribir(null));
+same('propietario y editor pueden escribir', [true, true], [RE::puedeEscribir('propietario'), RE::puedeEscribir('editor')]);
+same('lector NO puede escribir', false, RE::puedeEscribir('lector'));
+same('cambiar rol sin ser propietario se rechaza', RE::SIN_PERMISO, RE::evaluarCambioRol('editor', 2, 'lector', 'editor', [1]));
+same('el único propietario no puede quitarse el rol de propietario', RE::ULTIMO_PROPIETARIO, RE::evaluarCambioRol('propietario', 1, 'propietario', 'editor', [1]));
+same('habiendo dos propietarios sí se puede degradar a uno', RE::OK, RE::evaluarCambioRol('propietario', 1, 'propietario', 'editor', [1, 2]));
+same('el único propietario no puede abandonar el espacio', RE::ULTIMO_PROPIETARIO, RE::evaluarSalidaMiembro(1, 'propietario', 1, 'propietario', [1]));
+same('un editor puede abandonar el espacio por sí mismo', RE::OK, RE::evaluarSalidaMiembro(2, 'editor', 2, 'editor', [1]));
+same('un editor no puede retirar a otro miembro', RE::SIN_PERMISO, RE::evaluarSalidaMiembro(2, 'editor', 3, 'lector', [1]));
+same('un propietario puede retirar a un editor', RE::OK, RE::evaluarSalidaMiembro(1, 'propietario', 2, 'editor', [1]));
+$ev = new App\Validation\EspacioValidator();
+same('espacio válido', [], $ev->validateEspacio(['nombre' => ' Hogar Familia ', 'moneda' => 'COP'])['errors']);
+same('nombre corto en espacio', true, isset($ev->validateEspacio(['nombre' => 'A', 'moneda' => 'COP'])['errors']['nombre']));
+same('invitación válida', [], $ev->validateInvitacion(['correo' => 'Pareja@Correo.com ', 'rol' => 'editor'])['errors']);
+same('invitación con rol propietario no se permite directamente', true, isset($ev->validateInvitacion(['correo' => 'a@b.com', 'rol' => 'propietario'])['errors']['rol']));
+
 finish();

@@ -49,6 +49,7 @@ Thumbs.db
 Desktop.ini
 
 # ── Herramientas de asistencia local (IA, automatización de navegador) ──────
+.agent
 .claude
 CLAUDE.md
 CLAUDE.local.md

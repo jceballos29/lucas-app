@@ -34,15 +34,19 @@ final class RecurrenteController
     public function index(): void
     {
         $user = require_login();
+        $espacioId = $user['espacio_id'] ?? null;
         $hoy = date('Y-m-d');
 
         if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-            $this->procesarAccion($user['id']);
+            require_espacio_write($user);
+            $this->procesarAccion($user['id'], $espacioId);
         }
 
         try {
-            $auto = $this->container->gestionRecurrentes()->procesarVencidos($user['id'], $hoy);
-            $recurrentes = $this->container->recurrentes()->listByUser($user['id']);
+            $auto = \App\Espacios\ReglasEspacio::puedeEscribir($user['espacio_rol'] ?? null)
+                ? $this->container->gestionRecurrentes()->procesarVencidos($user['id'], $hoy, $espacioId)
+                : ['aplicados' => 0, 'retenidosPorSaldo' => 0];
+            $recurrentes = $this->container->recurrentes()->listByUser($user['id'], $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -92,6 +96,8 @@ final class RecurrenteController
     public function form(): void
     {
         $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
         $raw = $isPost ? ($_POST['id'] ?? '') : ($_GET['id'] ?? '');
         $id = is_string($raw) && ctype_digit($raw) ? (int) $raw : 0;
@@ -101,7 +107,7 @@ final class RecurrenteController
         }
 
         try {
-            $recurrente = $id > 0 ? $this->container->recurrentes()->findOwned($user['id'], $id) : null;
+            $recurrente = $id > 0 ? $this->container->recurrentes()->findOwned($user['id'], $id, $espacioId) : null;
 
             if ($id > 0 && $recurrente === null) {
                 Response::plain(404, "No encontrado.\n");
@@ -148,7 +154,7 @@ final class RecurrenteController
                 ];
 
                 if ($errors === []) {
-                    $saved = $this->container->gestionRecurrentes()->guardar($user['id'], $recurrente?->id, $result['data']);
+                    $saved = $this->container->gestionRecurrentes()->guardar($user['id'], $recurrente?->id, $result['data'], $espacioId);
 
                     switch ($saved['codigo']) {
                         case ReglasMovimiento::OK:
@@ -175,10 +181,10 @@ final class RecurrenteController
             }
 
             $cuentas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id']),
+                $this->container->cuentas()->listByUser($user['id'], $espacioId),
                 static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta']
             ));
-            $categorias = $this->container->categorias()->listVisible($user['id']);
+            $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -192,7 +198,7 @@ final class RecurrenteController
         ], $recurrente === null ? 'Nuevo movimiento recurrente' : 'Editar movimiento recurrente', $user, 'app', 'recurrentes');
     }
 
-    private function procesarAccion(int $userId): never
+    private function procesarAccion(int $userId, ?int $espacioId): never
     {
         reject_foreign_origin();
         require_csrf();
@@ -206,7 +212,7 @@ final class RecurrenteController
 
         try {
             $repo = $this->container->recurrentes();
-            $rec = $repo->findOwned($userId, $id);
+            $rec = $repo->findOwned($userId, $id, $espacioId);
 
             if ($rec === null) {
                 Response::plain(404, "No encontrado.\n");
@@ -216,11 +222,11 @@ final class RecurrenteController
 
             switch ($accion) {
                 case 'aplicar':
-                    $res = $this->container->gestionRecurrentes()->aplicarAhora($userId, $id);
+                    $res = $this->container->gestionRecurrentes()->aplicarAhora($userId, $id, $espacioId);
                     if ($res['codigo'] === ReglasMovimiento::OK) {
                         $prox = Fecha::simple((string) $res['proximaFecha']);
                         $mensaje = "Se registró «{$nombre}» (" . Dinero::formatear($rec->monto) . ") en «{$res['cuenta']}». Próxima fecha: $prox.";
-                        $aviso = !$rec->esIngreso() ? $this->avisoPresupuesto($userId, $rec->idCategoria, $rec->proximaFecha) : null;
+                        $aviso = !$rec->esIngreso() ? $this->avisoPresupuesto($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId) : null;
                         Flash::set($aviso === null ? 'ok' : 'warn', $aviso === null ? $mensaje : "$mensaje $aviso");
                     } elseif ($res['codigo'] === ReglasMovimiento::SALDO_INSUFICIENTE) {
                         $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));
@@ -233,7 +239,7 @@ final class RecurrenteController
                     break;
 
                 case 'saltar':
-                    $siguiente = $this->container->gestionRecurrentes()->saltarPeriodo($userId, $id);
+                    $siguiente = $this->container->gestionRecurrentes()->saltarPeriodo($userId, $id, $espacioId);
                     if ($siguiente === null) {
                         Response::plain(404, "No encontrado.\n");
                     }
@@ -241,17 +247,17 @@ final class RecurrenteController
                     break;
 
                 case 'pausar':
-                    $repo->setActivo($userId, $id, false);
+                    $repo->setActivo($userId, $id, false, $espacioId);
                     Flash::set('info', "Se pausó «{$nombre}». No se ejecutará hasta que lo vuelvas a activar.");
                     break;
 
                 case 'activar':
-                    $repo->setActivo($userId, $id, true);
+                    $repo->setActivo($userId, $id, true, $espacioId);
                     Flash::set('ok', "Se reactivó «{$nombre}».");
                     break;
 
                 case 'eliminar':
-                    $repo->delete($userId, $id);
+                    $repo->delete($userId, $id, $espacioId);
                     Flash::set('ok', "Se eliminó la programación de «{$nombre}». Los movimientos ya registrados se conservan.");
                     break;
             }
@@ -262,10 +268,10 @@ final class RecurrenteController
         Response::redirect('/recurrentes.php');
     }
 
-    private function avisoPresupuesto(int $userId, int $categoriaId, string $fecha): ?string
+    private function avisoPresupuesto(int $userId, int $categoriaId, string $fecha, ?int $espacioId = null): ?string
     {
         $mes = Mes::deFecha($fecha);
-        $presupuesto = $mes === null ? null : $this->container->presupuestos()->findForCategory($userId, $categoriaId, $mes['mes'], $mes['anio']);
+        $presupuesto = $mes === null ? null : $this->container->presupuestos()->findForCategory($userId, $categoriaId, $mes['mes'], $mes['anio'], $espacioId);
 
         if ($presupuesto === null) {
             return null;

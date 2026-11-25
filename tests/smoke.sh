@@ -31,6 +31,8 @@ cleanup() {
     sql "DELETE tr FROM transferencias tr JOIN usuarios u ON u.id_usuario = tr.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE p FROM presupuestos p JOIN usuarios u ON u.id_usuario = p.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE t FROM transacciones t JOIN usuarios u ON u.id_usuario = t.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
+    sql "DELETE c FROM cuentas c JOIN usuarios u ON u.id_usuario = c.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
+    sql "DELETE e FROM espacios e JOIN usuarios u ON u.id_usuario = e.id_creador WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE FROM categorias WHERE id_usuario IS NULL AND nombre LIKE 'Smoke-Cat%'" >/dev/null 2>&1
     sql "DELETE FROM usuarios WHERE correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     rm -rf "$TMP"
@@ -1312,6 +1314,59 @@ post_form "$JTR" /recurrentes.php /recurrentes.php "id=$RECID" "accion=activar"
 check "activar deja activo=1" "1" "$(sql "SELECT activo FROM movimientos_recurrentes WHERE id_recurrente=$RECID")"
 post_form "$JTR" /recurrentes.php /recurrentes.php "id=$RECID" "accion=eliminar"
 check "eliminar borra la programación pero conserva la transacción ya aplicada" "0|1" "$(sql "SELECT CONCAT((SELECT COUNT(*) FROM movimientos_recurrentes WHERE id_recurrente=$RECID),'|',(SELECT COUNT(*) FROM transacciones WHERE id_usuario=$UTRID AND descripcion='Gimnasio mensual'))")"
+
+echo; echo "== Espacios compartidos y Cuenta Familiar (Fase 10)"
+request "$J7" GET /espacios.php;         check "sin sesión, espacios exige login" "302 /login.php" "$CODE $LOC"
+request "$JTR" GET /espacios.php;        check "la página de espacios responde 200" "200" "$CODE"
+contains "muestra Mi espacio personal activo" "Mi espacio personal" "$TMP/body"
+
+JF2="$(new_jar)"; UF2="smoke_${RUN}_fam2@correo.com"; register "$JF2" "$UF2" "$P"
+UF2ID="$(uid "$UF2")"
+
+post_form "$JTR" /espacios.php /espacios.php "accion=crear" "nombre=Hogar Familia Smoke" "moneda=COP"
+check "crear espacio familiar redirige a espacios" "302 /espacios.php" "$CODE $LOC"
+ESPID="$(sql "SELECT id_espacio FROM espacios WHERE id_creador=$UTRID")"
+request "$JTR" GET /espacios.php
+contains "el espacio familiar recién creado queda activo en la barra lateral" "Espacio · Hogar Familia Smoke" "$TMP/body"
+request "$JTR" GET /cuentas.php
+contains "en el espacio familiar recién creado aún no aparecen las cuentas personales" "Aún no tienes cuentas" "$TMP/body"
+
+post_form "$JTR" /cuenta-form.php /cuenta-form.php "nombre=Cuenta Hogar" "tipo=bancaria" "saldo_inicial=2.000.000"
+CHOGAR="$(sql "SELECT id_cuenta FROM cuentas WHERE id_espacio=$ESPID")"
+check "la cuenta creada lleva el id_espacio del hogar" "$ESPID" "$(sql "SELECT id_espacio FROM cuentas WHERE id_cuenta=$CHOGAR")"
+
+post_form "$JTR" /espacios.php /espacios.php "accion=invitar" "id_espacio=$ESPID" "correo=$UF2" "rol=editor"
+check "invitar al segundo miembro redirige a espacios" "302 /espacios.php" "$CODE $LOC"
+INVID="$(sql "SELECT id_invitacion FROM espacio_invitaciones WHERE id_espacio=$ESPID AND correo='$UF2'")"
+
+request "$JF2" GET /espacios.php
+contains "el segundo usuario ve la invitación pendiente" "Hogar Familia Smoke" "$TMP/body"
+post_form "$JF2" /espacios.php /espacios.php "accion=aceptar_invitacion" "id_invitacion=$INVID"
+check "aceptar la invitación redirige y activa el espacio familiar" "302 /espacios.php" "$CODE $LOC"
+request "$JF2" GET /cuentas.php
+contains "el segundo usuario ahora ve la Cuenta Hogar y su saldo de 2.000.000" "Cuenta Hogar" "$TMP/body"
+contains "con los 2.000.000 del hogar" '$2.000.000' "$TMP/body"
+
+post_form "$JF2" /movimiento-form.php /movimiento-form.php "tipo=gasto" "monto=150.000" "fecha=$HOY_APP" "id_cuenta=$CHOGAR" "id_categoria=$KG" "descripcion=Mercado familiar"
+check "el segundo miembro registra un gasto en la cuenta familiar" "302 /movimientos.php" "$CODE $LOC"
+request "$JTR" GET /movimientos.php
+contains "el creador del espacio ve el gasto registrado por el otro miembro" "Mercado familiar" "$TMP/body"
+contains "con la autoría del miembro" "Por Prueba Smoke" "$TMP/body"
+request "$JTR" GET /cuentas.php
+contains "el saldo de Cuenta Hogar bajó a 1.850.000 para todos" '$1.850.000' "$TMP/body"
+
+post_form "$JTR" /espacios.php /espacios.php "accion=cambiar_rol" "id_espacio=$ESPID" "id_usuario=$UF2ID" "rol=lector"
+check "cambiar rol a lector redirige a espacios" "302 /espacios.php" "$CODE $LOC"
+request "$JF2" GET /movimiento-form.php
+check "un miembro con rol lector recibe 403 al intentar crear movimientos" "403" "$CODE"
+request "$JF2" GET /movimientos.php
+check "pero sí puede consultar el listado de movimientos del hogar (200)" "200" "$CODE"
+
+post_form "$JTR" /espacios.php /espacios.php "accion=cambiar" "id_espacio=0"
+check "volver al espacio personal redirige al panel" "302 /panel.php" "$CODE $LOC"
+request "$JTR" GET /cuentas.php
+contains "en el espacio personal vuelven a verse las cuentas personales (Banco y Visa)" "Banco" "$TMP/body"
+absent "y no se mezcla la Cuenta Hogar en el espacio personal" "Cuenta Hogar" "$TMP/body"
 
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

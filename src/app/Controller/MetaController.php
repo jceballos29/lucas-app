@@ -27,13 +27,15 @@ final class MetaController
     public function index(): void
     {
         $user = require_login();
+        $espacioId = $user['espacio_id'] ?? null;
 
         try {
             if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-                $this->accion($user['id']);
+                require_espacio_write($user);
+                $this->accion($user['id'], $espacioId);
             }
 
-            $metas = $this->container->metas()->listByUser($user['id']);
+            $metas = $this->container->metas()->listByUser($user['id'], $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -45,6 +47,8 @@ final class MetaController
     public function form(): void
     {
         $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
         $raw = $isPost ? ($_POST['id'] ?? '') : ($_GET['id'] ?? '');
         $id = self::id($raw);
@@ -54,7 +58,7 @@ final class MetaController
         }
 
         try {
-            $meta = $id > 0 ? $this->container->metas()->findOwned($user['id'], $id) : null;
+            $meta = $id > 0 ? $this->container->metas()->findOwned($user['id'], $id, $espacioId) : null;
 
             if ($id > 0 && $meta === null) {
                 Response::plain(404, "No encontrado.\n");
@@ -86,12 +90,12 @@ final class MetaController
 
                 if ($errors === []) {
                     if ($meta === null) {
-                        $this->container->metas()->create($user['id'], $data['nombre'], $data['monto_objetivo'], $data['fecha_limite']);
+                        $this->container->metas()->create($user['id'], $data['nombre'], $data['monto_objetivo'], $data['fecha_limite'], $espacioId);
                         Flash::set('ok', "Se creó la meta «{$data['nombre']}». ¡Ahora añade tu primer aporte!");
                         Response::redirect('/metas.php');
                     }
 
-                    $saved = $this->container->gestionMetas()->editar($user['id'], $meta->id, $data);
+                    $saved = $this->container->gestionMetas()->editar($user['id'], $meta->id, $data, $espacioId);
 
                     if ($saved['codigo'] === GestionMetas::OK) {
                         Flash::set('ok', "Se guardaron los cambios de «{$data['nombre']}»." . ($saved['lograda'] ? ' Con el nuevo objetivo, ¡la meta ya está lograda!' : ''));
@@ -113,11 +117,13 @@ final class MetaController
     public function aporte(): void
     {
         $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
         $metaId = self::id($isPost ? ($_POST['id'] ?? '') : ($_GET['id'] ?? ''));
 
         try {
-            $meta = $metaId > 0 ? $this->container->metas()->findOwned($user['id'], $metaId) : null;
+            $meta = $metaId > 0 ? $this->container->metas()->findOwned($user['id'], $metaId, $espacioId) : null;
 
             if ($meta === null) {
                 Response::plain(404, "No encontrado.\n");
@@ -145,7 +151,7 @@ final class MetaController
                 ];
 
                 if ($errors === []) {
-                    $saved = $this->container->gestionMetas()->aportar($user['id'], $meta->id, $data);
+                    $saved = $this->container->gestionMetas()->aportar($user['id'], $meta->id, $data, $espacioId);
 
                     switch ($saved['codigo']) {
                         case ReglasAporte::OK:
@@ -173,10 +179,10 @@ final class MetaController
 
             // Cuentas activas; si el formulario trae una que ya no lo es, también esa (marcada), para que el error se vea en el campo.
             $cuentas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id']),
+                $this->container->cuentas()->listByUser($user['id'], $espacioId),
                 static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta']
             ));
-            $historial = $this->container->aportes()->listByMeta($user['id'], $meta->id);
+            $historial = $this->container->aportes()->listByMeta($user['id'], $meta->id, 20, $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -185,7 +191,7 @@ final class MetaController
     }
 
     /** POST de cancelar o eliminar desde el listado. */
-    private function accion(int $userId): never
+    private function accion(int $userId, ?int $espacioId): never
     {
         reject_foreign_origin();
         require_csrf();
@@ -197,7 +203,7 @@ final class MetaController
             Response::plain(400, "Solicitud no válida.\n");
         }
 
-        $meta = $this->container->metas()->findOwned($userId, $id);
+        $meta = $this->container->metas()->findOwned($userId, $id, $espacioId);
 
         if ($meta === null) {
             Response::plain(404, "No encontrado.\n");
@@ -206,14 +212,14 @@ final class MetaController
         $gestion = $this->container->gestionMetas();
 
         if ($accion === 'cancelar') {
-            $r = $gestion->cancelar($userId, $id);
+            $r = $gestion->cancelar($userId, $id, $espacioId);
             [$tone, $message] = match ($r['codigo']) {
                 GestionMetas::OK => ['ok', "Se canceló la meta «{$meta->nombre}»." . (Dinero::aCentavos($r['devuelto']) > 0 ? ' Los ' . Dinero::formatear($r['devuelto']) . ' aportados volvieron a sus cuentas.' : '')],
                 GestionMetas::CERRADA => ['error', 'Esa meta ya no se puede cancelar.'],
                 default => ['error', 'Esa meta ya no existe.'],
             };
         } else {
-            [$tone, $message] = match ($gestion->eliminar($userId, $id)) {
+            [$tone, $message] = match ($gestion->eliminar($userId, $id, $espacioId)) {
                 GestionMetas::OK => ['ok', "Se eliminó la meta «{$meta->nombre}»."],
                 GestionMetas::TIENE_APORTES => ['error', "«{$meta->nombre}» tiene aportes: cancélala primero para devolver el dinero a tus cuentas."],
                 default => ['error', 'Esa meta ya no existe.'],

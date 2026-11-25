@@ -28,12 +28,19 @@ use App\View\Ui;
 $flash = $flash ?? null;
 $hayFiltros = Filtros::hayAlguno($filtros);
 
-$rows = array_map(static function (Movimiento $m) use ($volver): array {
+$enEspacioCompartido = is_array($currentUser ?? null) && ($currentUser['espacio_id'] ?? null) !== null;
+
+$rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompartido): array {
     $nombre = $m->descripcion ?? $m->categoriaNombre;
+    $autorSub = $enEspacioCompartido && $m->autorNombre !== ''
+        ? '<span class="cell-sub">Por ' . escape($m->autorNombre) . '</span>'
+        : '';
 
     return [
         'fecha' => Fecha::simple($m->fecha),
-        'descripcion' => $m->descripcion !== null ? new Html('<span class="cell-title">' . escape($m->descripcion) . '</span>') : new Html('<span class="muted-note">Sin descripción</span>'),
+        'descripcion' => $m->descripcion !== null
+            ? new Html('<span class="cell-title">' . escape($m->descripcion) . '</span>' . $autorSub)
+            : new Html('<span class="muted-note">Sin descripción</span>' . $autorSub),
         'categoria' => Ui::badge($m->categoriaNombre),
         'cuenta' => $m->cuentaNombre,
         'monto' => Ui::money($m->monto, $m->esIngreso() ? 'in' : 'out'),

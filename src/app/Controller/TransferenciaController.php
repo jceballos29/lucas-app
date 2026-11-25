@@ -31,20 +31,22 @@ final class TransferenciaController
     public function index(): void
     {
         $user = require_login();
+        $espacioId = $user['espacio_id'] ?? null;
 
         try {
             if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-                $this->eliminar($user['id']);
+                require_espacio_write($user);
+                $this->eliminar($user['id'], $espacioId);
             }
 
             $repo = $this->container->transferencias();
-            $total = $repo->countByUser($user['id']);
+            $total = $repo->countByUser($user['id'], $espacioId);
             $paginas = max(1, (int) ceil($total / self::POR_PAGINA));
             $pagina = min($paginas, self::page($_GET['pagina'] ?? 1));
-            $filas = $repo->listByUser($user['id'], self::POR_PAGINA, ($pagina - 1) * self::POR_PAGINA);
-            $montoTotal = $repo->totalByUser($user['id']);
+            $filas = $repo->listByUser($user['id'], self::POR_PAGINA, ($pagina - 1) * self::POR_PAGINA, $espacioId);
+            $montoTotal = $repo->totalByUser($user['id'], $espacioId);
             $cuentasActivas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id']),
+                $this->container->cuentas()->listByUser($user['id'], $espacioId),
                 static fn (Cuenta $c): bool => $c->activa
             ));
         } catch (RuntimeException $error) {
@@ -66,6 +68,8 @@ final class TransferenciaController
     public function form(): void
     {
         $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
         $raw = $isPost ? ($_POST['id'] ?? '') : ($_GET['id'] ?? '');
         $id = self::id($raw);
@@ -75,7 +79,7 @@ final class TransferenciaController
         }
 
         try {
-            $transferencia = $id > 0 ? $this->container->transferencias()->findOwned($user['id'], $id) : null;
+            $transferencia = $id > 0 ? $this->container->transferencias()->findOwned($user['id'], $id, $espacioId) : null;
 
             if ($id > 0 && $transferencia === null) {
                 Response::plain(404, "No encontrado.\n");
@@ -114,7 +118,7 @@ final class TransferenciaController
                 ];
 
                 if ($errors === []) {
-                    $saved = $this->container->gestionTransferencias()->guardar($user['id'], $transferencia?->id, $data);
+                    $saved = $this->container->gestionTransferencias()->guardar($user['id'], $transferencia?->id, $data, $espacioId);
 
                     switch ($saved['codigo']) {
                         case ReglasTransferencia::OK:
@@ -148,7 +152,7 @@ final class TransferenciaController
             }
 
             $cuentas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id']),
+                $this->container->cuentas()->listByUser($user['id'], $espacioId),
                 static fn (Cuenta $c): bool => $c->activa
                     || (string) $c->id === $old['id_cuenta_origen']
                     || (string) $c->id === $old['id_cuenta_destino']
@@ -166,7 +170,7 @@ final class TransferenciaController
     }
 
     /** POST de eliminación desde el listado. */
-    private function eliminar(int $userId): never
+    private function eliminar(int $userId, ?int $espacioId): never
     {
         reject_foreign_origin();
         require_csrf();
@@ -178,7 +182,7 @@ final class TransferenciaController
             Response::plain(400, "Solicitud no válida.\n");
         }
 
-        $res = $this->container->gestionTransferencias()->eliminar($userId, $id);
+        $res = $this->container->gestionTransferencias()->eliminar($userId, $id, $espacioId);
 
         if ($res['codigo'] === GestionTransferencias::NO_EXISTE) {
             Response::plain(404, "No encontrado.\n");

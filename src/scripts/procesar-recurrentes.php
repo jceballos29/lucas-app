@@ -33,4 +33,10 @@ foreach ($usuarios as $userId) {
     $totalRetenidos += $res['retenidosPorSaldo'];
 }
 
+foreach ($container->recurrentes()->espaciosWithDueAuto($hoy) as $item) {
+    $res = $container->gestionRecurrentes()->procesarVencidos($item['id_usuario'], $hoy, $item['id_espacio']);
+    $totalAplicados += $res['aplicados'];
+    $totalRetenidos += $res['retenidosPorSaldo'];
+}
+
 fwrite(STDOUT, "Recurrentes procesados ($hoy): $totalAplicados aplicados, $totalRetenidos retenidos por saldo/cuenta.\n");

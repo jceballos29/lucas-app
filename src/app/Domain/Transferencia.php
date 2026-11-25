@@ -17,6 +17,7 @@ final class Transferencia
         public readonly ?string $descripcion,
         public readonly string $cuentaOrigenNombre = '',
         public readonly string $cuentaDestinoNombre = '',
+        public readonly string $autorNombre = '',
     ) {
     }
 
@@ -33,6 +34,7 @@ final class Transferencia
             $row['descripcion'] === null ? null : (string) $row['descripcion'],
             (string) ($row['cuenta_origen_nombre'] ?? ''),
             (string) ($row['cuenta_destino_nombre'] ?? ''),
+            (string) ($row['autor_nombre'] ?? ''),
         );
     }
 }

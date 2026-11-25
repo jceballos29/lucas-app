@@ -67,7 +67,7 @@ final class View
 
         self::render('layout/head', ['pageTitle' => $title]);
         self::render("layout/$layout-open", ['currentUser' => $user, 'nav' => $nav]);
-        self::render($name, $data);
+        self::render($name, $data + ['currentUser' => $user]);
         self::render("layout/$layout-close");
     }
 }

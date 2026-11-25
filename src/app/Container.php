@@ -9,10 +9,12 @@ use App\Auth\Autenticador;
 use App\Auth\LimitadorIntentos;
 use App\Auth\RecuperacionClave;
 use App\Database\Connection;
+use App\Espacios\GestionEspacios;
 use App\Repository\AdminStatsRepository;
 use App\Repository\AporteRepository;
 use App\Repository\CategoriaRepository;
 use App\Repository\CuentaRepository;
+use App\Repository\EspacioRepository;
 use App\Mail\Mailer;
 use App\Mail\SmtpMailer;
 use App\Metas\GestionMetas;
@@ -134,6 +136,16 @@ final class Container
     public function gestionRecurrentes(): GestionRecurrentes
     {
         return new GestionRecurrentes($this->pdo(), $this->recurrentes(), $this->movimientos(), $this->cuentas(), $this->categorias());
+    }
+
+    public function espacios(): EspacioRepository
+    {
+        return new EspacioRepository($this->pdo());
+    }
+
+    public function gestionEspacios(): GestionEspacios
+    {
+        return new GestionEspacios($this->pdo(), $this->espacios(), $this->mailer(), \App\Config\Environment::get('APP_ORIGIN'));
     }
 
     public function presupuestos(): PresupuestoRepository

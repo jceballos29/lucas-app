@@ -21,16 +21,21 @@ use App\View\Ui;
  */
 $flash = $flash ?? null;
 
-$rows = array_map(static function (Transferencia $t) use ($pagina): array {
+$enEspacioCompartido = is_array($currentUser ?? null) && ($currentUser['espacio_id'] ?? null) !== null;
+
+$rows = array_map(static function (Transferencia $t) use ($pagina, $enEspacioCompartido): array {
     $etiqueta = $t->cuentaOrigenNombre . ' → ' . $t->cuentaDestinoNombre;
+    $autorSub = $enEspacioCompartido && $t->autorNombre !== ''
+        ? '<span class="cell-sub">Por ' . escape($t->autorNombre) . '</span>'
+        : '';
 
     return [
         'fecha' => Fecha::simple($t->fecha),
         'origen' => $t->cuentaOrigenNombre,
         'destino' => $t->cuentaDestinoNombre,
         'descripcion' => $t->descripcion !== null
-            ? new Html('<span class="cell-title">' . escape($t->descripcion) . '</span>')
-            : new Html('<span class="muted-note">Transferencia entre cuentas</span>'),
+            ? new Html('<span class="cell-title">' . escape($t->descripcion) . '</span>' . $autorSub)
+            : new Html('<span class="muted-note">Transferencia entre cuentas</span>' . $autorSub),
         'monto' => Ui::money($t->monto),
         'acciones' => Ui::actions([
             Ui::iconButton('edit', 'Editar transferencia ' . $etiqueta, ['href' => '/transferencia-form.php?id=' . $t->id]),

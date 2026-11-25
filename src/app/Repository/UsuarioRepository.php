@@ -77,19 +77,77 @@ final class UsuarioRepository implements CredentialSource
      */
     public function deleteWithAllData(int $id): void
     {
+        $stmt = $this->pdo->prepare("SELECT id_espacio FROM espacio_miembros WHERE id_usuario = :id AND rol = 'propietario'");
+        $stmt->execute(['id' => $id]);
+        $espaciosComoOwner = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+        foreach ($espaciosComoOwner as $espacioId) {
+            $stmtOtros = $this->pdo->prepare("SELECT COUNT(*) FROM espacio_miembros WHERE id_espacio = :e AND rol = 'propietario' AND id_usuario <> :id");
+            $stmtOtros->execute(['e' => $espacioId, 'id' => $id]);
+            if ((int) $stmtOtros->fetchColumn() > 0) {
+                $this->pdo->prepare('UPDATE espacios SET id_creador = (SELECT id_usuario FROM espacio_miembros WHERE id_espacio = :e2 AND id_usuario <> :id LIMIT 1) WHERE id_espacio = :e AND id_creador = :id2')
+                    ->execute(['e2' => $espacioId, 'id' => $id, 'e' => $espacioId, 'id2' => $id]);
+                continue;
+            }
+
+            $stmtCandidato = $this->pdo->prepare("SELECT id_usuario FROM espacio_miembros WHERE id_espacio = :e AND id_usuario <> :id ORDER BY FIELD(rol, 'editor', 'lector'), unido_en ASC LIMIT 1");
+            $stmtCandidato->execute(['e' => $espacioId, 'id' => $id]);
+            $candidato = $stmtCandidato->fetchColumn();
+
+            if ($candidato !== false) {
+                $nuevoOwner = (int) $candidato;
+                $this->pdo->prepare("UPDATE espacio_miembros SET rol = 'propietario' WHERE id_espacio = :e AND id_usuario = :u")
+                    ->execute(['e' => $espacioId, 'u' => $nuevoOwner]);
+                $this->pdo->prepare('UPDATE espacios SET id_creador = :u WHERE id_espacio = :e AND id_creador = :id')
+                    ->execute(['u' => $nuevoOwner, 'e' => $espacioId, 'id' => $id]);
+            } else {
+                foreach ([
+                    'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
+                    'DELETE FROM movimientos_recurrentes WHERE id_espacio = :e',
+                    'DELETE FROM transferencias WHERE id_espacio = :e',
+                    'DELETE FROM transacciones WHERE id_espacio = :e',
+                    'DELETE FROM presupuestos WHERE id_espacio = :e',
+                    'DELETE FROM metas_ahorro WHERE id_espacio = :e',
+                    'DELETE FROM cuentas WHERE id_espacio = :e',
+                    'DELETE FROM categorias WHERE id_espacio = :e',
+                    'DELETE FROM espacio_invitaciones WHERE id_espacio = :e',
+                    'DELETE FROM espacio_miembros WHERE id_espacio = :e',
+                    'DELETE FROM espacios WHERE id_espacio = :e',
+                ] as $sqlEsp) {
+                    $paramsEsp = str_contains($sqlEsp, ':e2') ? ['e' => $espacioId, 'e2' => $espacioId] : ['e' => $espacioId];
+                    $this->pdo->prepare($sqlEsp)->execute($paramsEsp);
+                }
+            }
+        }
+
+        // Si el usuario creó un espacio pero luego ya no era propietario, reasignar id_creador a un propietario actual.
+        $this->pdo->prepare("UPDATE espacios e SET e.id_creador = (SELECT em.id_usuario FROM espacio_miembros em WHERE em.id_espacio = e.id_espacio AND em.id_usuario <> :id ORDER BY em.rol = 'propietario' DESC LIMIT 1) WHERE e.id_creador = :id2")
+            ->execute(['id' => $id, 'id2' => $id]);
+
+        // Reasignar registros financieros en espacios compartidos que aún continúan con otros miembros al propietario del espacio.
+        foreach (['cuentas', 'categorias', 'transacciones', 'transferencias', 'presupuestos', 'metas_ahorro', 'movimientos_recurrentes'] as $tabla) {
+            $this->pdo->prepare(
+                "UPDATE $tabla t JOIN espacios e ON e.id_espacio = t.id_espacio
+                 SET t.id_usuario = e.id_creador
+                 WHERE t.id_usuario = :id AND t.id_espacio IS NOT NULL"
+            )->execute(['id' => $id]);
+        }
+
         foreach ([
-            'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario = :id)',
-            'DELETE FROM movimientos_recurrentes WHERE id_usuario = :id',
-            'DELETE FROM transferencias WHERE id_usuario = :id',
-            'DELETE FROM transacciones WHERE id_usuario = :id',
-            'DELETE FROM presupuestos WHERE id_usuario = :id',
-            'DELETE FROM metas_ahorro WHERE id_usuario = :id',
-            'DELETE FROM cuentas WHERE id_usuario = :id',
-            'DELETE FROM categorias WHERE id_usuario = :id',
+            'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario = :id AND id_espacio IS NULL) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_usuario = :id2 AND id_espacio IS NULL)',
+            'DELETE FROM movimientos_recurrentes WHERE id_usuario = :id AND id_espacio IS NULL',
+            'DELETE FROM transferencias WHERE id_usuario = :id AND id_espacio IS NULL',
+            'DELETE FROM transacciones WHERE id_usuario = :id AND id_espacio IS NULL',
+            'DELETE FROM presupuestos WHERE id_usuario = :id AND id_espacio IS NULL',
+            'DELETE FROM metas_ahorro WHERE id_usuario = :id AND id_espacio IS NULL',
+            'DELETE FROM cuentas WHERE id_usuario = :id AND id_espacio IS NULL',
+            'DELETE FROM categorias WHERE id_usuario = :id AND id_espacio IS NULL',
+            'DELETE FROM espacio_miembros WHERE id_usuario = :id',
             'DELETE FROM restablecimientos WHERE id_usuario = :id',
             'DELETE FROM usuarios WHERE id_usuario = :id',
         ] as $sql) {
-            $this->pdo->prepare($sql)->execute(['id' => $id]);
+            $params = str_contains($sql, ':id2') ? ['id' => $id, 'id2' => $id] : ['id' => $id];
+            $this->pdo->prepare($sql)->execute($params);
         }
     }
 

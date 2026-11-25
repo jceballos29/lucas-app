@@ -1079,4 +1079,53 @@ same('saltarPeriodo avanza la próxima fecha sin tocar el saldo', ['2026-12-10',
     (string) $cuentas->findOwned($rUser, $rBanco)?->saldo,
 ]);
 
+section('GestionEspacios: espacios compartidos y cuenta familiar (Fase 10)');
+$ge = $container->gestionEspacios();
+$espRepo = $container->espacios();
+$f1 = (int) $usuarios->create('Ana Familia', 'ana.fam@correo.com', 'x');
+$f2 = (int) $usuarios->create('Luis Familia', 'luis.fam@correo.com', 'x');
+$f3 = (int) $usuarios->create('Intruso', 'intruso.fam@correo.com', 'x');
+
+$espId = $ge->crear($f1, 'Hogar Ana y Luis', 'COP');
+same('el creador nace como propietario del espacio', 'propietario', $espRepo->findForMember($f1, $espId)?->rolUsuario);
+same('otro usuario aún no es miembro', null, $espRepo->findForMember($f2, $espId));
+
+$inv = $ge->invitar($f1, 'Ana Familia', $espId, 'luis.fam@correo.com', 'editor');
+same('invitar a Luis devuelve ok y token', ['ok', true], [$inv['codigo'], is_string($inv['token']) && strlen($inv['token']) === 64]);
+same('Luis ve la invitación pendiente para su correo', 1, count($espRepo->listInvitationsForEmail('luis.fam@correo.com')));
+$acepta = $ge->aceptarInvitacion($f2, 'luis.fam@correo.com', null, $inv['token']);
+same('Luis acepta la invitación con el token', ['ok', $espId], [$acepta['codigo'], $acepta['id_espacio']]);
+same('Luis ahora es miembro con rol editor', 'editor', $espRepo->findForMember($f2, $espId)?->rolUsuario);
+
+// Cuenta y movimientos dentro del espacio compartido vs espacio personal
+$cPersAna = $cuentas->create($f1, 'Personal Ana', 'ahorro', '500000.00');
+$cFamiliar = $cuentas->create($f1, 'Fondo Hogar', 'bancaria', '1000000.00', $espId);
+same('en el espacio personal de Ana solo sale su cuenta personal', ['Personal Ana'], array_map(static fn ($c) => $c->nombre, $cuentas->listByUser($f1)));
+same('en el espacio compartido tanto Ana como Luis ven la cuenta familiar', ['Fondo Hogar', 'Fondo Hogar'], [
+    $cuentas->listByUser($f1, $espId)[0]->nombre,
+    $cuentas->listByUser($f2, $espId)[0]->nombre,
+]);
+same('el intruso no es miembro del espacio', null, $espRepo->findForMember($f3, $espId));
+
+$movFam = $gestion2->guardar($f2, null, [
+    'tipo' => 'gasto',
+    'monto' => '150000.00',
+    'fecha' => '2026-11-25',
+    'id_cuenta' => $cFamiliar,
+    'id_categoria' => $rCatGasto,
+    'descripcion' => 'Mercado semanal',
+], $espId);
+same('Luis (editor) registra un gasto en la cuenta familiar', 'ok', $movFam['codigo']);
+same('Ana ve el saldo actualizado de la cuenta familiar (850.000) y quién registró el movimiento', ['850000.00', 'Luis Familia'], [
+    (string) $cuentas->findOwned($f1, $cFamiliar, $espId)?->saldo,
+    $movs->search($f1, $sin, 10, 0, $espId)[0]->autorNombre,
+]);
+same('la cuenta personal de Ana sigue intacta en 500.000', '500000.00', (string) $cuentas->findOwned($f1, $cPersAna)?->saldo);
+same('Ana no puede salir siendo la única propietaria', 'ultimo_propietario', $ge->retirarMiembro($f1, $espId, $f1));
+same('si Ana elimina su cuenta de usuario, Luis es promovido a propietario y el espacio familiar sobrevive', ['ok', 'propietario', '850000.00'], [
+    $borrar->eliminar($f1),
+    $espRepo->findForMember($f2, $espId)?->rolUsuario,
+    (string) $cuentas->findOwned($f2, $cFamiliar, $espId)?->saldo,
+]);
+
 finish();

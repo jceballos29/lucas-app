@@ -12,13 +12,7 @@ use App\Support\Dinero;
 use PDO;
 
 /**
- * Las operaciones de una meta que tocan más de una tabla, cada una en UNA transacción (RNF-16):
- *  - aportar: bloquea la cuenta y la meta, comprueba las reglas con lo leído ahí dentro, inserta el aporte y, si se alcanza el
- *    objetivo, pasa la meta a «lograda» en la misma transacción;
- *  - editar: cambia nombre, objetivo y fecha, y vuelve a evaluar si ya se alcanzó el objetivo;
- *  - cancelar: devuelve el dinero (borra los aportes) y marca la meta como cancelada;
- *  - eliminar: solo una meta sin aportes.
- * El saldo de las cuentas no se guarda, se calcula, así que aportar y cancelar lo actualizan solos.
+ * Operaciones transaccionales de una meta de ahorro, en el espacio personal o en un espacio compartido (`$espacioId`).
  */
 final class GestionMetas
 {
@@ -36,18 +30,15 @@ final class GestionMetas
     }
 
     /**
-     * @param array{id_cuenta: int, monto: string, fecha: string} $datos ya validados
+     * @param array{id_cuenta: int, monto: string, fecha: string} $datos
      * @return array{codigo: string, lograda: bool, cuenta: string|null, saldo: string|null}
-     *         `codigo` es uno de {@see ReglasAporte}; `lograda` indica si ESTE aporte completó la meta.
      */
-    public function aportar(int $userId, int $metaId, array $datos): array
+    public function aportar(int $userId, int $metaId, array $datos, ?int $espacioId = null): array
     {
-        return Transaction::run($this->pdo, function () use ($userId, $metaId, $datos): array {
-            // Primero las lecturas con bloqueo (cuenta y luego meta): la lectura del saldo de abajo ya ve todo lo
-            // confirmado por quien tuviera la cuenta antes que nosotros.
-            $cuenta = $this->cuentas->lockForWrite($userId, $datos['id_cuenta']);
-            $meta = $this->metas->lockOwned($userId, $metaId);
-            $saldo = $cuenta === null ? '0.00' : (string) $this->cuentas->findOwned($userId, $datos['id_cuenta'])?->saldo;
+        return Transaction::run($this->pdo, function () use ($userId, $metaId, $datos, $espacioId): array {
+            $cuenta = $this->cuentas->lockForWrite($userId, $datos['id_cuenta'], $espacioId);
+            $meta = $this->metas->lockOwned($userId, $metaId, $espacioId);
+            $saldo = $cuenta === null ? '0.00' : (string) $this->cuentas->findOwned($userId, $datos['id_cuenta'], $espacioId)?->saldo;
             $codigo = ReglasAporte::evaluar($cuenta, $meta, $saldo, $datos['monto']);
 
             if ($codigo !== ReglasAporte::OK || $meta === null) {
@@ -58,7 +49,7 @@ final class GestionMetas
             $lograda = Dinero::aCentavos($this->aportes->totalByMeta($metaId)) >= Dinero::aCentavos($meta['objetivo']);
 
             if ($lograda) {
-                $this->metas->setEstado($userId, $metaId, 'lograda');
+                $this->metas->setEstado($userId, $metaId, 'lograda', $espacioId);
             }
 
             return ['codigo' => ReglasAporte::OK, 'lograda' => $lograda, 'cuenta' => $cuenta['nombre'] ?? null, 'saldo' => $saldo];
@@ -66,13 +57,13 @@ final class GestionMetas
     }
 
     /**
-     * @param array{nombre: string, monto_objetivo: string, fecha_limite: string|null} $datos ya validados
+     * @param array{nombre: string, monto_objetivo: string, fecha_limite: string|null} $datos
      * @return array{codigo: string, lograda: bool}
      */
-    public function editar(int $userId, int $metaId, array $datos): array
+    public function editar(int $userId, int $metaId, array $datos, ?int $espacioId = null): array
     {
-        return Transaction::run($this->pdo, function () use ($userId, $metaId, $datos): array {
-            $meta = $this->metas->lockOwned($userId, $metaId);
+        return Transaction::run($this->pdo, function () use ($userId, $metaId, $datos, $espacioId): array {
+            $meta = $this->metas->lockOwned($userId, $metaId, $espacioId);
 
             if ($meta === null) {
                 return ['codigo' => self::NO_EXISTE, 'lograda' => false];
@@ -82,23 +73,22 @@ final class GestionMetas
                 return ['codigo' => self::CERRADA, 'lograda' => false];
             }
 
-            $this->metas->update($userId, $metaId, $datos['nombre'], $datos['monto_objetivo'], $datos['fecha_limite']);
-            // Si se bajó el objetivo por debajo de lo ya ahorrado, la meta queda lograda.
+            $this->metas->update($userId, $metaId, $datos['nombre'], $datos['monto_objetivo'], $datos['fecha_limite'], $espacioId);
             $lograda = Dinero::aCentavos($this->aportes->totalByMeta($metaId)) >= Dinero::aCentavos($datos['monto_objetivo']);
 
             if ($lograda) {
-                $this->metas->setEstado($userId, $metaId, 'lograda');
+                $this->metas->setEstado($userId, $metaId, 'lograda', $espacioId);
             }
 
             return ['codigo' => self::OK, 'lograda' => $lograda];
         });
     }
 
-    /** @return array{codigo: string, devuelto: string} `devuelto`: lo que volvió a las cuentas. */
-    public function cancelar(int $userId, int $metaId): array
+    /** @return array{codigo: string, devuelto: string} */
+    public function cancelar(int $userId, int $metaId, ?int $espacioId = null): array
     {
-        return Transaction::run($this->pdo, function () use ($userId, $metaId): array {
-            $meta = $this->metas->lockOwned($userId, $metaId);
+        return Transaction::run($this->pdo, function () use ($userId, $metaId, $espacioId): array {
+            $meta = $this->metas->lockOwned($userId, $metaId, $espacioId);
 
             if ($meta === null) {
                 return ['codigo' => self::NO_EXISTE, 'devuelto' => '0.00'];
@@ -110,17 +100,17 @@ final class GestionMetas
 
             $devuelto = $this->aportes->totalByMeta($metaId);
             $this->aportes->deleteByMeta($metaId);
-            $this->metas->setEstado($userId, $metaId, 'cancelada');
+            $this->metas->setEstado($userId, $metaId, 'cancelada', $espacioId);
 
             return ['codigo' => self::OK, 'devuelto' => $devuelto];
         });
     }
 
     /** @return string {@see OK}, {@see NO_EXISTE} o {@see TIENE_APORTES} */
-    public function eliminar(int $userId, int $metaId): string
+    public function eliminar(int $userId, int $metaId, ?int $espacioId = null): string
     {
-        return Transaction::run($this->pdo, function () use ($userId, $metaId): string {
-            if ($this->metas->lockOwned($userId, $metaId) === null) {
+        return Transaction::run($this->pdo, function () use ($userId, $metaId, $espacioId): string {
+            if ($this->metas->lockOwned($userId, $metaId, $espacioId) === null) {
                 return self::NO_EXISTE;
             }
 
@@ -128,7 +118,7 @@ final class GestionMetas
                 return self::TIENE_APORTES;
             }
 
-            $this->metas->delete($userId, $metaId);
+            $this->metas->delete($userId, $metaId, $espacioId);
 
             return self::OK;
         });

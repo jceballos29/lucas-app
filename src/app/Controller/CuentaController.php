@@ -24,15 +24,17 @@ final class CuentaController
     public function index(): void
     {
         $user = require_login();
+        $espacioId = $user['espacio_id'] ?? null;
 
         try {
             $cuentas = $this->container->cuentas();
 
             if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-                $this->toggle($user['id']);
+                require_espacio_write($user);
+                $this->toggle($user['id'], $espacioId);
             }
 
-            $lista = $cuentas->listByUser($user['id']);
+            $lista = $cuentas->listByUser($user['id'], $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -47,6 +49,8 @@ final class CuentaController
     public function form(): void
     {
         $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
         $raw = $isPost ? ($_POST['id'] ?? '') : ($_GET['id'] ?? '');
         $id = is_string($raw) && ctype_digit($raw) ? (int) $raw : 0;
@@ -57,7 +61,7 @@ final class CuentaController
 
         try {
             $repo = $this->container->cuentas();
-            $cuenta = $id > 0 ? $repo->findOwned($user['id'], $id) : null;
+            $cuenta = $id > 0 ? $repo->findOwned($user['id'], $id, $espacioId) : null;
 
             if ($id > 0 && $cuenta === null) {
                 Response::plain(404, "No encontrado.\n");
@@ -81,16 +85,16 @@ final class CuentaController
                     'saldo_inicial' => is_string($_POST['saldo_inicial'] ?? null) ? trim($_POST['saldo_inicial']) : '',
                 ];
 
-                if (!isset($errors['nombre']) && $repo->nameTaken($user['id'], $data['nombre'], $cuenta?->id)) {
+                if (!isset($errors['nombre']) && $repo->nameTaken($user['id'], $data['nombre'], $cuenta?->id, $espacioId)) {
                     $errors['nombre'] = 'Ya tienes una cuenta con ese nombre.';
                 }
 
                 if ($errors === []) {
                     if ($cuenta === null) {
-                        $repo->create($user['id'], $data['nombre'], $data['tipo'], $data['saldo_inicial']);
+                        $repo->create($user['id'], $data['nombre'], $data['tipo'], $data['saldo_inicial'], $espacioId);
                         Flash::set('ok', "Se creó la cuenta «{$data['nombre']}».");
                     } else {
-                        $repo->update($user['id'], $cuenta->id, $data['nombre'], $data['tipo'], $data['saldo_inicial']);
+                        $repo->update($user['id'], $cuenta->id, $data['nombre'], $data['tipo'], $data['saldo_inicial'], $espacioId);
                         Flash::set('ok', "Se guardaron los cambios de «{$data['nombre']}».");
                     }
 
@@ -105,7 +109,7 @@ final class CuentaController
     }
 
     /** POST de activar/desactivar desde el listado. */
-    private function toggle(int $userId): never
+    private function toggle(int $userId, ?int $espacioId): never
     {
         reject_foreign_origin();
         require_csrf();
@@ -118,9 +122,9 @@ final class CuentaController
         }
 
         $repo = $this->container->cuentas();
-        $cuenta = $repo->findOwned($userId, $id);
+        $cuenta = $repo->findOwned($userId, $id, $espacioId);
 
-        if ($cuenta === null || !$repo->setActiva($userId, $id, $accion === 'activar')) {
+        if ($cuenta === null || !$repo->setActiva($userId, $id, $accion === 'activar', $espacioId)) {
             Response::plain(404, "No encontrado.\n");
         }
 

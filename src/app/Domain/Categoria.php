@@ -15,6 +15,7 @@ final class Categoria
         public readonly string $nombre,
         public readonly string $tipo,
         public readonly string $color,
+        public readonly ?int $idEspacio = null,
     ) {
     }
 
@@ -27,11 +28,12 @@ final class Categoria
             (string) $row['nombre'],
             (string) $row['tipo'],
             (string) $row['color'],
+            ($row['id_espacio'] ?? null) === null ? null : (int) $row['id_espacio'],
         );
     }
 
     public function esPredeterminada(): bool
     {
-        return $this->idUsuario === null;
+        return $this->idUsuario === null && $this->idEspacio === null;
     }
 }

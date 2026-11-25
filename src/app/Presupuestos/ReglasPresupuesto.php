@@ -13,10 +13,14 @@ final class ReglasPresupuesto
     public const CATEGORIA_AJENA = 'categoria_ajena';
     public const NO_ES_GASTO = 'no_es_gasto';
 
-    public static function evaluar(?Categoria $categoria, int $userId): string
+    public static function evaluar(?Categoria $categoria, int $userId, ?int $espacioId = null): string
     {
         // Una categoría ajena se trata como inexistente: no se revela que existe (RNF-04).
-        if ($categoria === null || (!$categoria->esPredeterminada() && $categoria->idUsuario !== $userId)) {
+        $categoriaPropiaValida = $espacioId === null
+            ? ($categoria?->idEspacio === null && $categoria?->idUsuario === $userId)
+            : ($categoria?->idEspacio === $espacioId);
+
+        if ($categoria === null || (!$categoria->esPredeterminada() && !$categoriaPropiaValida)) {
             return self::CATEGORIA_AJENA;
         }
 

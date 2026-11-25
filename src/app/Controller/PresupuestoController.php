@@ -28,16 +28,18 @@ final class PresupuestoController
     public function index(): void
     {
         $user = require_login();
+        $espacioId = $user['espacio_id'] ?? null;
         ['mes' => $mes, 'anio' => $anio] = Mes::desde($_GET, new DateTimeImmutable('now'));
 
         try {
             $repo = $this->container->presupuestos();
 
             if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-                $this->eliminar($user['id']);
+                require_espacio_write($user);
+                $this->eliminar($user['id'], $espacioId);
             }
 
-            $lista = $repo->listByMonth($user['id'], $mes, $anio);
+            $lista = $repo->listByMonth($user['id'], $mes, $anio, $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -61,6 +63,8 @@ final class PresupuestoController
     public function form(): void
     {
         $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
         $raw = $isPost ? ($_POST['id'] ?? '') : ($_GET['id'] ?? '');
         $id = is_string($raw) && ctype_digit($raw) ? (int) $raw : 0;
@@ -70,7 +74,7 @@ final class PresupuestoController
         }
 
         try {
-            $presupuesto = $id > 0 ? $this->container->presupuestos()->findOwned($user['id'], $id) : null;
+            $presupuesto = $id > 0 ? $this->container->presupuestos()->findOwned($user['id'], $id, $espacioId) : null;
 
             if ($id > 0 && $presupuesto === null) {
                 Response::plain(404, "No encontrado.\n");
@@ -107,16 +111,16 @@ final class PresupuestoController
 
                 if ($errors === []) {
                     if ($presupuesto !== null) {
-                        $this->container->presupuestos()->updateLimit($user['id'], $presupuesto->id, $data['monto_limite']);
+                        $this->container->presupuestos()->updateLimit($user['id'], $presupuesto->id, $data['monto_limite'], $espacioId);
                         Flash::set('ok', "Se actualizó el límite de «{$presupuesto->categoriaNombre}».");
                         Response::redirect(self::listUrl($presupuesto->mes, $presupuesto->anio));
                     }
 
                     $categoria = $this->container->categorias()->findById($data['id_categoria']);
 
-                    switch (ReglasPresupuesto::evaluar($categoria, $user['id'])) {
+                    switch (ReglasPresupuesto::evaluar($categoria, $user['id'], $espacioId)) {
                         case ReglasPresupuesto::OK:
-                            if ($this->container->presupuestos()->create($user['id'], $data['id_categoria'], $data['mes'], $data['anio'], $data['monto_limite']) === null) {
+                            if ($this->container->presupuestos()->create($user['id'], $data['id_categoria'], $data['mes'], $data['anio'], $data['monto_limite'], $espacioId) === null) {
                                 $errors['id_categoria'] = "Ya tienes un presupuesto para «{$categoria?->nombre}» en " . Mes::etiqueta($data['mes'], $data['anio']) . '. Edítalo en lugar de crear otro.';
                                 break;
                             }
@@ -136,7 +140,7 @@ final class PresupuestoController
             }
 
             $categorias = array_values(array_filter(
-                $this->container->categorias()->listVisible($user['id']),
+                $this->container->categorias()->listVisible($user['id'], $espacioId),
                 static fn (Categoria $c): bool => $c->tipo === 'gasto'
             ));
         } catch (RuntimeException $error) {
@@ -152,7 +156,7 @@ final class PresupuestoController
     }
 
     /** POST de eliminación desde el listado. */
-    private function eliminar(int $userId): never
+    private function eliminar(int $userId, ?int $espacioId): never
     {
         reject_foreign_origin();
         require_csrf();
@@ -164,9 +168,9 @@ final class PresupuestoController
         }
 
         $repo = $this->container->presupuestos();
-        $presupuesto = $repo->findOwned($userId, $id);
+        $presupuesto = $repo->findOwned($userId, $id, $espacioId);
 
-        if ($presupuesto === null || !$repo->delete($userId, $id)) {
+        if ($presupuesto === null || !$repo->delete($userId, $id, $espacioId)) {
             Response::plain(404, "No encontrado.\n");
         }
 

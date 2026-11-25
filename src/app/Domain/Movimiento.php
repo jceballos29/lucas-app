@@ -19,6 +19,7 @@ final class Movimiento
         public readonly string $cuentaNombre = '',
         public readonly string $categoriaNombre = '',
         public readonly string $categoriaColor = '#8DA0AB',
+        public readonly string $autorNombre = '',
     ) {
     }
 
@@ -37,6 +38,7 @@ final class Movimiento
             (string) ($row['cuenta_nombre'] ?? ''),
             (string) ($row['categoria_nombre'] ?? ''),
             (string) ($row['categoria_color'] ?? '#8DA0AB'),
+            (string) ($row['autor_nombre'] ?? ''),
         );
     }
 

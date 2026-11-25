@@ -9,22 +9,31 @@ use PDO;
 use PDOException;
 
 /**
- * Único sitio con el SQL de `categorias`: las predeterminadas (`id_usuario IS NULL`, de las que se encarga el administrador,
- * RF-34) y las propias de cada usuario (RF-09). Una categoría ajena simplemente «no existe» para quien la pide.
+ * Único sitio con el SQL de `categorias`: las predeterminadas (`id_usuario IS NULL AND id_espacio IS NULL`, RF-34),
+ * las propias del usuario en su espacio personal (`id_espacio IS NULL`) y las propias de un espacio compartido (`id_espacio = :e`).
  */
 final class CategoriaRepository
 {
-    private const COLUMNS = 'id_categoria, id_usuario, nombre, tipo, color';
+    private const COLUMNS = 'id_categoria, id_usuario, id_espacio, nombre, tipo, color';
 
     public function __construct(private readonly PDO $pdo)
     {
     }
 
-    /** Las predeterminadas y las del usuario: gastos primero, por nombre. @return list<Categoria> */
-    public function listVisible(int $userId): array
+    /** Las predeterminadas y las del usuario o su espacio compartido: gastos primero, por nombre. @return list<Categoria> */
+    public function listVisible(int $userId, ?int $espacioId = null): array
     {
-        $stmt = $this->pdo->prepare('SELECT ' . self::COLUMNS . " FROM categorias WHERE id_usuario IS NULL OR id_usuario = :u ORDER BY tipo = 'gasto' DESC, nombre, id_categoria");
-        $stmt->execute(['u' => $userId]);
+        if ($espacioId === null) {
+            $stmt = $this->pdo->prepare(
+                'SELECT ' . self::COLUMNS . " FROM categorias WHERE (id_usuario IS NULL AND id_espacio IS NULL) OR (id_usuario = :u AND id_espacio IS NULL) ORDER BY tipo = 'gasto' DESC, nombre, id_categoria"
+            );
+            $stmt->execute(['u' => $userId]);
+        } else {
+            $stmt = $this->pdo->prepare(
+                'SELECT ' . self::COLUMNS . " FROM categorias WHERE (id_usuario IS NULL AND id_espacio IS NULL) OR id_espacio = :e ORDER BY tipo = 'gasto' DESC, nombre, id_categoria"
+            );
+            $stmt->execute(['e' => $espacioId]);
+        }
 
         return array_map([Categoria::class, 'fromRow'], $stmt->fetchAll());
     }
@@ -32,7 +41,7 @@ final class CategoriaRepository
     /** @return list<Categoria> */
     public function listDefaults(): array
     {
-        $rows = $this->pdo->query('SELECT ' . self::COLUMNS . " FROM categorias WHERE id_usuario IS NULL ORDER BY tipo = 'gasto' DESC, nombre, id_categoria")->fetchAll();
+        $rows = $this->pdo->query('SELECT ' . self::COLUMNS . " FROM categorias WHERE id_usuario IS NULL AND id_espacio IS NULL ORDER BY tipo = 'gasto' DESC, nombre, id_categoria")->fetchAll();
 
         return array_map([Categoria::class, 'fromRow'], $rows);
     }
@@ -48,52 +57,60 @@ final class CategoriaRepository
     }
 
     /**
-     * ¿Ya existe una categoría con ese nombre y tipo en lo que ve ese dueño (sin distinguir mayúsculas ni tildes)?
-     * Con `$ownerId` = null (el administrador) solo se miran las predeterminadas; con un usuario, las suyas y las predeterminadas.
+     * ¿Ya existe una categoría con ese nombre y tipo en lo que ve ese dueño/espacio?
      */
-    public function nameTaken(?int $ownerId, string $nombre, string $tipo, ?int $exceptId = null): bool
+    public function nameTaken(?int $ownerId, string $nombre, string $tipo, ?int $exceptId = null, ?int $espacioId = null): bool
     {
-        $stmt = $this->pdo->prepare(
-            'SELECT COUNT(*) FROM categorias WHERE nombre = :n AND tipo = :t AND (id_usuario IS NULL OR id_usuario <=> :u) AND id_categoria <> :ex'
-        );
-        $stmt->execute(['n' => $nombre, 't' => $tipo, 'u' => $ownerId, 'ex' => $exceptId ?? 0]);
+        if ($espacioId !== null) {
+            $stmt = $this->pdo->prepare(
+                'SELECT COUNT(*) FROM categorias WHERE nombre = :n AND tipo = :t AND ((id_usuario IS NULL AND id_espacio IS NULL) OR id_espacio = :e) AND id_categoria <> :ex'
+            );
+            $stmt->execute(['n' => $nombre, 't' => $tipo, 'e' => $espacioId, 'ex' => $exceptId ?? 0]);
+        } else {
+            $stmt = $this->pdo->prepare(
+                'SELECT COUNT(*) FROM categorias WHERE nombre = :n AND tipo = :t AND id_espacio IS NULL AND (id_usuario IS NULL OR id_usuario <=> :u) AND id_categoria <> :ex'
+            );
+            $stmt->execute(['n' => $nombre, 't' => $tipo, 'u' => $ownerId, 'ex' => $exceptId ?? 0]);
+        }
 
         return (int) $stmt->fetchColumn() > 0;
     }
 
     /** @param int|null $ownerId null = predeterminada */
-    public function create(?int $ownerId, string $nombre, string $tipo, string $color): int
+    public function create(?int $ownerId, string $nombre, string $tipo, string $color, ?int $espacioId = null): int
     {
-        $stmt = $this->pdo->prepare('INSERT INTO categorias (id_usuario, nombre, tipo, color) VALUES (:u, :n, :t, :c)');
-        $stmt->execute(['u' => $ownerId, 'n' => $nombre, 't' => $tipo, 'c' => $color]);
+        $stmt = $this->pdo->prepare('INSERT INTO categorias (id_usuario, id_espacio, nombre, tipo, color) VALUES (:u, :e, :n, :t, :c)');
+        $stmt->execute(['u' => $ownerId, 'e' => $espacioId, 'n' => $nombre, 't' => $tipo, 'c' => $color]);
 
         return (int) $this->pdo->lastInsertId();
     }
 
-    /**
-     * Cambia nombre y color. El TIPO no se cambia nunca: los movimientos ya guardados dependen de él (D8).
-     *
-     * @return bool false si no existe o no es de ese dueño
-     */
-    public function update(?int $ownerId, int $id, string $nombre, string $color): bool
+    public function update(?int $ownerId, int $id, string $nombre, string $color, ?int $espacioId = null): bool
     {
-        $stmt = $this->pdo->prepare('UPDATE categorias SET nombre = :n, color = :c WHERE id_categoria = :id AND id_usuario <=> :u');
-        $stmt->execute(['n' => $nombre, 'c' => $color, 'id' => $id, 'u' => $ownerId]);
+        if ($espacioId !== null) {
+            $stmt = $this->pdo->prepare('UPDATE categorias SET nombre = :n, color = :c WHERE id_categoria = :id AND id_espacio = :e');
+            $stmt->execute(['n' => $nombre, 'c' => $color, 'id' => $id, 'e' => $espacioId]);
+        } else {
+            $stmt = $this->pdo->prepare('UPDATE categorias SET nombre = :n, color = :c WHERE id_categoria = :id AND id_espacio IS NULL AND id_usuario <=> :u');
+            $stmt->execute(['n' => $nombre, 'c' => $color, 'id' => $id, 'u' => $ownerId]);
+        }
 
         return $stmt->rowCount() > 0;
     }
 
     /**
-     * Borra una categoría de ese dueño (D4). Si tiene movimientos o presupuestos la clave foránea lo impide y NO se
-     * borra: es la defensa real (también ante dos peticiones a la vez), no una comprobación previa.
-     *
      * @return string 'ok', 'en_uso' o 'no_existe'
      */
-    public function delete(?int $ownerId, int $id): string
+    public function delete(?int $ownerId, int $id, ?int $espacioId = null): string
     {
         try {
-            $stmt = $this->pdo->prepare('DELETE FROM categorias WHERE id_categoria = :id AND id_usuario <=> :u');
-            $stmt->execute(['id' => $id, 'u' => $ownerId]);
+            if ($espacioId !== null) {
+                $stmt = $this->pdo->prepare('DELETE FROM categorias WHERE id_categoria = :id AND id_espacio = :e');
+                $stmt->execute(['id' => $id, 'e' => $espacioId]);
+            } else {
+                $stmt = $this->pdo->prepare('DELETE FROM categorias WHERE id_categoria = :id AND id_espacio IS NULL AND id_usuario <=> :u');
+                $stmt->execute(['id' => $id, 'u' => $ownerId]);
+            }
         } catch (PDOException $e) {
             if ($e->getCode() === '23000') {
                 return 'en_uso';

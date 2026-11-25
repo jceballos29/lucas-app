@@ -27,17 +27,18 @@ final class MovimientoController
     public function index(): void
     {
         $user = require_login();
+        $espacioId = $user['espacio_id'] ?? null;
         $filtros = Filtros::desde($_GET);
 
         try {
             $repo = $this->container->movimientos();
-            $total = $repo->count($user['id'], $filtros);
+            $total = $repo->count($user['id'], $filtros, $espacioId);
             $paginas = max(1, (int) ceil($total / Filtros::POR_PAGINA));
             $pagina = min($paginas, self::page($_GET['pagina'] ?? 1));
-            $filas = $repo->search($user['id'], $filtros, Filtros::POR_PAGINA, ($pagina - 1) * Filtros::POR_PAGINA);
-            $totales = $repo->totals($user['id'], $filtros);
-            $cuentas = $this->container->cuentas()->listByUser($user['id']);
-            $categorias = $this->container->categorias()->listVisible($user['id']);
+            $filas = $repo->search($user['id'], $filtros, Filtros::POR_PAGINA, ($pagina - 1) * Filtros::POR_PAGINA, $espacioId);
+            $totales = $repo->totals($user['id'], $filtros, $espacioId);
+            $cuentas = $this->container->cuentas()->listByUser($user['id'], $espacioId);
+            $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -60,6 +61,8 @@ final class MovimientoController
     public function form(): void
     {
         $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
         $raw = $isPost ? ($_POST['id'] ?? '') : ($_GET['id'] ?? '');
         $id = is_string($raw) && ctype_digit($raw) ? (int) $raw : 0;
@@ -69,7 +72,7 @@ final class MovimientoController
         }
 
         try {
-            $movimiento = $id > 0 ? $this->container->movimientos()->findOwned($user['id'], $id) : null;
+            $movimiento = $id > 0 ? $this->container->movimientos()->findOwned($user['id'], $id, $espacioId) : null;
 
             if ($id > 0 && $movimiento === null) {
                 Response::plain(404, "No encontrado.\n");
@@ -103,7 +106,7 @@ final class MovimientoController
                 ];
 
                 if ($errors === []) {
-                    $saved = $this->container->gestionMovimientos()->guardar($user['id'], $movimiento?->id, $result['data']);
+                    $saved = $this->container->gestionMovimientos()->guardar($user['id'], $movimiento?->id, $result['data'], $espacioId);
 
                     switch ($saved['codigo']) {
                         case ReglasMovimiento::OK:
@@ -112,7 +115,7 @@ final class MovimientoController
                                 ? 'Se registró ' . ($data['tipo'] === 'ingreso' ? 'el ingreso' : 'el gasto') . ' de ' . Dinero::formatear($data['monto']) . " en «{$saved['cuenta']}»."
                                 : 'Se guardaron los cambios del movimiento.';
                             // RF-17: si el gasto deja la categoría cerca o por encima de su presupuesto del mes, se avisa aquí mismo.
-                            $aviso = $data['tipo'] === 'gasto' ? $this->avisoPresupuesto($user['id'], $data['id_categoria'], $data['fecha']) : null;
+                            $aviso = $data['tipo'] === 'gasto' ? $this->avisoPresupuesto($user['id'], $data['id_categoria'], $data['fecha'], $espacioId) : null;
                             Flash::set($aviso === null ? 'ok' : 'warn', $aviso === null ? $mensaje : "$mensaje $aviso");
                             Response::redirect('/movimientos.php');
 
@@ -138,10 +141,10 @@ final class MovimientoController
 
             // Cuentas activas; si el movimiento está en una que ya no lo es, también esa (marcada), para que el formulario diga la verdad.
             $cuentas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id']),
+                $this->container->cuentas()->listByUser($user['id'], $espacioId),
                 static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta']
             ));
-            $categorias = $this->container->categorias()->listVisible($user['id']);
+            $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -159,6 +162,8 @@ final class MovimientoController
     public function eliminar(): never
     {
         $user = require_login();
+        require_espacio_write($user);
+        $espacioId = $user['espacio_id'] ?? null;
         Response::requirePost();
         reject_foreign_origin();
         require_csrf();
@@ -170,7 +175,7 @@ final class MovimientoController
         }
 
         try {
-            $borrado = $this->container->gestionMovimientos()->eliminar($user['id'], $id);
+            $borrado = $this->container->gestionMovimientos()->eliminar($user['id'], $id, $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -192,10 +197,10 @@ final class MovimientoController
      * El aviso de RF-17 para un gasto de esa categoría y fecha, o null si no hay presupuesto o está en orden (menos del
      * 80 %). Se calcula al momento, no se guarda.
      */
-    private function avisoPresupuesto(int $userId, int $categoriaId, string $fecha): ?string
+    private function avisoPresupuesto(int $userId, int $categoriaId, string $fecha, ?int $espacioId = null): ?string
     {
         $mes = Mes::deFecha($fecha);
-        $presupuesto = $mes === null ? null : $this->container->presupuestos()->findForCategory($userId, $categoriaId, $mes['mes'], $mes['anio']);
+        $presupuesto = $mes === null ? null : $this->container->presupuestos()->findForCategory($userId, $categoriaId, $mes['mes'], $mes['anio'], $espacioId);
 
         if ($presupuesto === null) {
             return null;

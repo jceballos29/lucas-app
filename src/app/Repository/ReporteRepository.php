@@ -8,8 +8,8 @@ use App\Support\Mes;
 use PDO;
 
 /**
- * Agregados de solo lectura para el panel y los reportes (RF-21, RF-22). TODA consulta lleva el id del usuario de la SESIÓN
- * (RNF-04) y los meses se piden como `fecha >= primer día AND fecha < primer día del mes siguiente`, que usa el índice por fecha.
+ * Agregados de solo lectura para el panel y los reportes (RF-21, RF-22). TODA consulta filtra por el usuario o el espacio
+ * compartido de la SESIÓN (RNF-04).
  */
 final class ReporteRepository
 {
@@ -18,47 +18,44 @@ final class ReporteRepository
     }
 
     /** @return array{ingresos: string, gastos: string} */
-    public function totalesMes(int $userId, int $mes, int $anio): array
+    public function totalesMes(int $userId, int $mes, int $anio, ?int $espacioId = null): array
     {
         [$desde, $hasta] = Mes::limites($mes, $anio);
+        [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
             "SELECT COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto END), 0) AS ingresos,
                     COALESCE(SUM(CASE WHEN tipo = 'gasto' THEN monto END), 0) AS gastos
-             FROM transacciones WHERE id_usuario = :u AND fecha >= :desde AND fecha < :hasta"
+             FROM transacciones WHERE $scope AND fecha >= :desde AND fecha < :hasta"
         );
-        $stmt->execute(['u' => $userId, 'desde' => $desde, 'hasta' => $hasta]);
+        $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
         $row = $stmt->fetch();
 
         return ['ingresos' => (string) $row['ingresos'], 'gastos' => (string) $row['gastos']];
     }
 
     /**
-     * Gastos del mes por categoría, de mayor a menor.
-     *
      * @return list<array{nombre: string, color: string, total: string}>
      */
-    public function gastosPorCategoria(int $userId, int $mes, int $anio): array
+    public function gastosPorCategoria(int $userId, int $mes, int $anio, ?int $espacioId = null): array
     {
         [$desde, $hasta] = Mes::limites($mes, $anio);
+        [$scope, $params] = self::scope($userId, $espacioId, 't');
         $stmt = $this->pdo->prepare(
             "SELECT k.nombre, k.color, SUM(t.monto) AS total
              FROM transacciones t JOIN categorias k ON k.id_categoria = t.id_categoria
-             WHERE t.id_usuario = :u AND t.tipo = 'gasto' AND t.fecha >= :desde AND t.fecha < :hasta
+             WHERE $scope AND t.tipo = 'gasto' AND t.fecha >= :desde AND t.fecha < :hasta
              GROUP BY k.id_categoria, k.nombre, k.color
              ORDER BY total DESC, k.nombre"
         );
-        $stmt->execute(['u' => $userId, 'desde' => $desde, 'hasta' => $hasta]);
+        $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 
         return array_map(static fn (array $r): array => ['nombre' => (string) $r['nombre'], 'color' => (string) $r['color'], 'total' => (string) $r['total']], $stmt->fetchAll());
     }
 
     /**
-     * Ingresos y gastos de los últimos `$meses` meses hasta el indicado (incluido), del más antiguo al más reciente y con ceros
-     * en los meses sin movimientos.
-     *
      * @return list<array{mes: int, anio: int, ingresos: string, gastos: string}>
      */
-    public function evolucion(int $userId, int $mes, int $anio, int $meses): array
+    public function evolucion(int $userId, int $mes, int $anio, int $meses, ?int $espacioId = null): array
     {
         $meses = max(1, min(24, $meses));
         $primero = ['mes' => $mes, 'anio' => $anio];
@@ -68,14 +65,15 @@ final class ReporteRepository
 
         [$desde] = Mes::limites($primero['mes'], $primero['anio']);
         [, $hasta] = Mes::limites($mes, $anio);
+        [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
             "SELECT YEAR(fecha) AS y, MONTH(fecha) AS m,
                     COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto END), 0) AS ingresos,
                     COALESCE(SUM(CASE WHEN tipo = 'gasto' THEN monto END), 0) AS gastos
-             FROM transacciones WHERE id_usuario = :u AND fecha >= :desde AND fecha < :hasta
+             FROM transacciones WHERE $scope AND fecha >= :desde AND fecha < :hasta
              GROUP BY y, m"
         );
-        $stmt->execute(['u' => $userId, 'desde' => $desde, 'hasta' => $hasta]);
+        $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 
         $porMes = [];
         foreach ($stmt->fetchAll() as $r) {
@@ -91,5 +89,16 @@ final class ReporteRepository
         }
 
         return $resultado;
+    }
+
+    /** @return array{0: string, 1: array<string, int>} */
+    private static function scope(int $userId, ?int $espacioId, string $alias = ''): array
+    {
+        $p = $alias !== '' ? $alias . '.' : '';
+        if ($espacioId === null) {
+            return ["{$p}id_usuario = :u AND {$p}id_espacio IS NULL", ['u' => $userId]];
+        }
+
+        return ["{$p}id_espacio = :e", ['e' => $espacioId]];
     }
 }

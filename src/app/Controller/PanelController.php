@@ -27,17 +27,18 @@ final class PanelController
     public function index(): void
     {
         $user = require_login();
+        $espacioId = $user['espacio_id'] ?? null;
         $hoy = new DateTimeImmutable('now');
         ['mes' => $mes, 'anio' => $anio] = Mes::desde([], $hoy);
 
         try {
-            $this->container->gestionRecurrentes()->procesarVencidos($user['id'], $hoy->format('Y-m-d'));
-            $recurrentesVencidos = $this->container->recurrentes()->listDueByUser($user['id'], $hoy->format('Y-m-d'));
-            $cuentas = array_values(array_filter($this->container->cuentas()->listByUser($user['id']), static fn (Cuenta $c): bool => $c->activa));
-            $totales = $this->container->reportes()->totalesMes($user['id'], $mes, $anio);
-            $categorias = Categorias::agrupar($this->container->reportes()->gastosPorCategoria($user['id'], $mes, $anio));
-            $ultimos = $this->container->movimientos()->search($user['id'], Filtros::desde([]), 5, 0);
-            $presupuestos = $this->container->presupuestos()->listByMonth($user['id'], $mes, $anio);
+            $this->container->gestionRecurrentes()->procesarVencidos($user['id'], $hoy->format('Y-m-d'), $espacioId);
+            $recurrentesVencidos = $this->container->recurrentes()->listDueByUser($user['id'], $hoy->format('Y-m-d'), $espacioId);
+            $cuentas = array_values(array_filter($this->container->cuentas()->listByUser($user['id'], $espacioId), static fn (Cuenta $c): bool => $c->activa));
+            $totales = $this->container->reportes()->totalesMes($user['id'], $mes, $anio, $espacioId);
+            $categorias = Categorias::agrupar($this->container->reportes()->gastosPorCategoria($user['id'], $mes, $anio, $espacioId));
+            $ultimos = $this->container->movimientos()->search($user['id'], Filtros::desde([]), 5, 0, $espacioId);
+            $presupuestos = $this->container->presupuestos()->listByMonth($user['id'], $mes, $anio, $espacioId);
         } catch (RuntimeException $error) {
             [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
             Response::plain($status, $message . "\n");

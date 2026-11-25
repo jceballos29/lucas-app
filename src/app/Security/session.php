@@ -136,15 +136,71 @@ function resolve_user_session(): array
         return ['user' => null, 'expired' => false, 'revoked' => true];
     }
 
-    // Los montos de toda la petición se muestran en la moneda del usuario (RF-03).
-    \App\Support\Dinero::usarMoneda($current->moneda);
+    // Comprobar si la sesión tiene seleccionado un espacio compartido activo (Fase 10).
+    // Si el usuario ya no es miembro de ese espacio (o el espacio fue eliminado), vuelve automáticamente al espacio personal.
+    $espacioId = null;
+    $espacioNombre = null;
+    $espacioRol = null;
+    $monedaActiva = $current->moneda;
+
+    $rawEspacio = $_SESSION['espacio_id'] ?? null;
+    if (is_int($rawEspacio) && $rawEspacio > 0) {
+        $espacio = \App\Container::shared()->espacios()->findForMember($current->id, $rawEspacio);
+        if ($espacio !== null) {
+            $espacioId = $espacio->id;
+            $espacioNombre = $espacio->nombre;
+            $espacioRol = $espacio->rolUsuario;
+            $monedaActiva = $espacio->moneda;
+        } else {
+            unset($_SESSION['espacio_id']);
+        }
+    }
+
+    // Los montos de toda la petición se muestran en la moneda del usuario o del espacio compartido activo (RF-03, Fase 10).
+    \App\Support\Dinero::usarMoneda($monedaActiva);
 
     $_SESSION['last_seen'] = time();
     $_SESSION['user_name'] = $current->nombre;
     $_SESSION['user_email'] = $current->correo;
     $_SESSION['user_role'] = $current->rol;
 
-    return ['user' => ['id' => $current->id, 'name' => $current->nombre, 'email' => $current->correo, 'role' => $current->rol], 'expired' => false, 'revoked' => false];
+    return [
+        'user' => [
+            'id' => $current->id,
+            'name' => $current->nombre,
+            'email' => $current->correo,
+            'role' => $current->rol,
+            'espacio_id' => $espacioId,
+            'espacio_nombre' => $espacioNombre,
+            'espacio_rol' => $espacioRol,
+        ],
+        'expired' => false,
+        'revoked' => false,
+    ];
+}
+
+/** Cambia el espacio activo en la sesión (`null` = volver a Mi espacio personal). */
+function set_active_espacio(?int $espacioId): void
+{
+    start_app_session();
+    if ($espacioId === null || $espacioId < 1) {
+        unset($_SESSION['espacio_id']);
+    } else {
+        $_SESSION['espacio_id'] = $espacioId;
+    }
+}
+
+/**
+ * Exige que el usuario tenga permiso de escritura en el espacio activo (`propietario` o `editor`, o espacio personal).
+ * Si su rol en el espacio compartido es `lector`, responde 403 y corta.
+ *
+ * @param array{espacio_rol?: string|null} $user
+ */
+function require_espacio_write(array $user): void
+{
+    if (!\App\Espacios\ReglasEspacio::puedeEscribir($user['espacio_rol'] ?? null)) {
+        \App\Http\Response::plain(403, "Acceso denegado: tienes rol de solo lectura en este espacio compartido.\n", ['Cache-Control: no-store']);
+    }
 }
 
 /** Huella corta del hash de una contraseña (no revela el hash): sirve para saber si la contraseña cambió desde que se abrió la sesión. */
