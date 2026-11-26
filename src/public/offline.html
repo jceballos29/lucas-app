@@ -17,6 +17,20 @@
 <body>
     <main class="main" id="contenido" tabindex="-1">
         <div class="main__inner">
+            <div class="page-head">
+                <div>
+                    <a class="logo logo--light" href="/panel.php">
+                        <svg class="logo__mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+                            <rect class="logo__bg" width="32" height="32" rx="9"/>
+                            <path class="logo__axis" d="M8.2 8v16h16"/>
+                            <rect class="logo__bar" x="11.8" y="17" width="3.4" height="5" rx="1.2"/>
+                            <rect class="logo__bar" x="16.6" y="13.5" width="3.4" height="8.5" rx="1.2"/>
+                            <rect class="logo__bar logo__bar--now" x="21.4" y="9.5" width="3.4" height="12.5" rx="1.2"/>
+                        </svg>
+                        <span>Lucas</span>
+                    </a>
+                </div>
+            </div>
             <div class="card form-card">
                 <div class="card__head">
                     <div>
@@ -25,7 +39,9 @@
                     </div>
                 </div>
                 <p>Comprueba tu conexión Wi-Fi o de datos móviles y vuelve a intentarlo para continuar registrando o consultando tus movimientos.</p>
-                <p><a class="btn" href="/panel.php"><span>Reintentar conexión</span></a></p>
+                <div class="form-actions">
+                    <a class="btn" href="/panel.php"><span>Reintentar conexión</span></a>
+                </div>
             </div>
         </div>
     </main>

@@ -32,7 +32,7 @@ $filasSesiones = array_map(static function (array $s) use ($sesionActualHash): a
     $badgeActual = $esActual ? ' ' . Ui::badge('Este dispositivo', 'brand', 'check') : '';
 
     return [
-        'dispositivo' => new Html('<span class="cell-title">' . escape($dispositivo) . '</span>' . $badgeActual . '<span class="cell-sub">IP: ' . escape($s['ip']) . '</span>'),
+        'dispositivo' => new Html('<div><span class="cell-title">' . escape($dispositivo) . '</span>' . $badgeActual . '<span class="cell-sub">IP: ' . escape($s['ip']) . '</span></div>'),
         'inicio' => format_utc_datetime($s['creado_en']),
         'actividad' => format_utc_datetime($s['ultimo_uso']),
         'acciones' => $esActual

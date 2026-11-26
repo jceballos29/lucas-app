@@ -160,7 +160,8 @@ input[type="date"].input { appearance: none; }
 
 /* ---------- Tarjeta ---------- */
 .card { padding: var(--s-5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--sh-1); }
-.card__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); margin-bottom: var(--s-4); }
+.card__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-3); margin-bottom: var(--s-4); }
+.card__head > div:first-child { flex: 1 1 200px; min-width: 0; }
 .card__title { font-size: var(--fs-md); font-weight: 650; }
 .card__subtitle { margin-top: 2px; font-size: var(--fs-sm); color: var(--muted); }
 .card--flush { padding: 0; }
@@ -190,7 +191,7 @@ input[type="date"].input { appearance: none; }
 .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .table tbody tr { display: block; padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--line); }
 .table tbody tr:last-child { border-bottom: 0; }
-.table td { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: 5px 0; }
+.table td { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2) var(--s-3); padding: 6px 0; }
 .table td::before { content: attr(data-label); flex: none; font-size: var(--fs-sm); color: var(--muted); }
 .table td.is-actions { justify-content: flex-end; padding-top: var(--s-3); }
 .table td.is-actions::before { content: none; }
