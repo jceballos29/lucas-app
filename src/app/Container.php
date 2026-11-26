@@ -33,6 +33,7 @@ use App\Repository\PresupuestoRepository;
 use App\Repository\RecurrenteRepository;
 use App\Repository\ReporteRepository;
 use App\Repository\RestablecimientoRepository;
+use App\Repository\SesionRepository;
 use App\Repository\TransferenciaRepository;
 use App\Repository\UsuarioRepository;
 use App\Transferencias\GestionTransferencias;
@@ -223,6 +224,11 @@ final class Container
     public function restablecimientos(): RestablecimientoRepository
     {
         return new RestablecimientoRepository($this->pdo());
+    }
+
+    public function sesiones(): SesionRepository
+    {
+        return new SesionRepository($this->pdo());
     }
 
     public function recuperacion(): RecuperacionClave

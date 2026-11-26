@@ -70,12 +70,47 @@ final class PerfilController
                             $hash = password_hash($nueva, PASSWORD_DEFAULT);
                             $this->container->usuarios()->updatePasswordHash($usuario->id, $hash);
                             // Esta sesión sigue abierta (se renueva su id y su huella); las demás sesiones de la cuenta se cierran.
+                            $oldSidHash = \App\Repository\SesionRepository::hashId((string) session_id());
                             refresh_session_fingerprint($hash);
                             session_regenerate_id(true);
+                            $newSidHash = \App\Repository\SesionRepository::hashId((string) session_id());
+                            $sesionesRepo = $this->container->sesiones();
+                            $sesionesRepo->rotarId(
+                                $usuario->id,
+                                $oldSidHash,
+                                $newSidHash,
+                                (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'),
+                                (string) ($_SERVER['HTTP_USER_AGENT'] ?? 'Navegador web'),
+                            );
+                            $sesionesRepo->eliminarOtrasDeUsuario($usuario->id, $newSidHash);
                             Flash::set('ok', 'Tu contraseña se cambió. Las demás sesiones abiertas de tu cuenta se cerraron.');
                             Response::redirect('/perfil.php');
                         }
                         break;
+
+                    case 'cerrar_sesion':
+                        $idSesion = self::field('id_sesion');
+                        $actualHash = \App\Repository\SesionRepository::hashId((string) session_id());
+                        if (preg_match('/^[a-f0-9]{64}$/', $idSesion) !== 1) {
+                            Response::plain(400, "Solicitud no válida.\n");
+                        }
+                        if (hash_equals($actualHash, $idSesion)) {
+                            log_out_user();
+                            Response::redirect('/login.php');
+                        }
+                        if (!$this->container->sesiones()->eliminarDeUsuario($usuario->id, $idSesion)) {
+                            Response::plain(404, "No encontrado.\n");
+                        }
+                        Flash::set('ok', 'Se cerró la sesión del dispositivo seleccionado.');
+                        Response::redirect('/perfil.php');
+
+                    case 'cerrar_otras_sesiones':
+                        $actualHash = \App\Repository\SesionRepository::hashId((string) session_id());
+                        $cerradas = $this->container->sesiones()->eliminarOtrasDeUsuario($usuario->id, $actualHash);
+                        Flash::set('ok', $cerradas === 1
+                            ? 'Se cerró la otra sesión activa de tu cuenta.'
+                            : "Se cerraron las demás sesiones activas ($cerradas).");
+                        Response::redirect('/perfil.php');
 
                     case 'eliminar':
                         $errors = $this->verificarClave($usuario->correo, $usuario->contrasenaHash, self::field('eliminar_clave'), 'eliminar_clave');
@@ -98,6 +133,8 @@ final class PerfilController
                         Response::plain(400, "Solicitud no válida.\n");
                 }
             }
+            $sesionesActivas = $this->container->sesiones()->listByUser($usuario->id, SESSION_IDLE_TIMEOUT);
+            $sesionActualHash = \App\Repository\SesionRepository::hashId((string) session_id());
         } catch (RuntimeException $error) {
             [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
             Response::plain($status, $message . "\n");
@@ -107,6 +144,8 @@ final class PerfilController
             'usuario' => $usuario,
             'old' => $old,
             'errors' => $errors,
+            'sesiones' => $sesionesActivas,
+            'sesionActualHash' => $sesionActualHash,
             'flash' => Flash::pull(),
         ], 'Mi perfil', $user, $user['role'] === 'admin' ? 'admin' : 'app', 'perfil');
     }

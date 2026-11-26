@@ -233,3 +233,15 @@ CREATE TABLE restablecimientos (
   INDEX idx_usuario (id_usuario),
   FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
 );
+
+-- Registro de sesiones activas por usuario (Fase 17). Solo se guarda el HASH (SHA-256) del id de sesión.
+CREATE TABLE sesiones_usuario (
+  id_sesion  CHAR(64) PRIMARY KEY,
+  id_usuario INT NOT NULL,
+  ip         VARCHAR(45) NOT NULL,
+  user_agent VARCHAR(255) NOT NULL,
+  creado_en  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ultimo_uso TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_ses_usuario_uso (id_usuario, ultimo_uso),
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+);

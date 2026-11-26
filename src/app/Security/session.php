@@ -136,6 +136,17 @@ function resolve_user_session(): array
         return ['user' => null, 'expired' => false, 'revoked' => true];
     }
 
+    // Comprobar que la sesión sigue activa en el registro de sesiones del usuario (Fase 17: cierre remoto desde Mi perfil).
+    $sid = (string) session_id();
+    if ($sid !== '') {
+        $sessionHash = \App\Repository\SesionRepository::hashId($sid);
+        if (!\App\Container::shared()->sesiones()->validarYRenovar($current->id, $sessionHash)) {
+            log_out_user();
+
+            return ['user' => null, 'expired' => false, 'revoked' => true];
+        }
+    }
+
     // Comprobar si la sesión tiene seleccionado un espacio compartido activo (Fase 10).
     // Si el usuario ya no es miembro de ese espacio (o el espacio fue eliminado), vuelve automáticamente al espacio personal.
     $espacioId = null;
@@ -239,12 +250,34 @@ function log_in_user(array $user): void
     // Se REEMPLAZA todo $_SESSION: también se descarta el token CSRF de la sesión anónima, y el primer formulario
     // de la sesión ya autenticada recibe uno nuevo (el que conociera quien vio la página de login no sirve).
     $_SESSION = ['user_id' => $user['id'], 'user_name' => $user['name'], 'user_email' => $user['email'], 'user_role' => $user['role'], 'pw_fp' => $user['fp'], 'last_seen' => time()];
+
+    $sid = (string) session_id();
+    if ($sid !== '') {
+        try {
+            \App\Container::shared()->sesiones()->registrar(
+                (int) $user['id'],
+                \App\Repository\SesionRepository::hashId($sid),
+                (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'),
+                (string) ($_SERVER['HTTP_USER_AGENT'] ?? 'Navegador web'),
+                SESSION_IDLE_TIMEOUT,
+            );
+        } catch (Throwable) {
+            // Si la BD falla aquí, la siguiente petición en resolve_user_session() lo detectará de forma controlada.
+        }
+    }
 }
 
-/** Cierra la sesión: vacía los datos, borra la cookie del navegador y destruye el archivo del servidor. */
+/** Cierra la sesión: vacía los datos, borra la cookie del navegador, elimina el registro en BD y destruye el archivo del servidor. */
 function log_out_user(): void
 {
     start_app_session();
+    $sid = (string) session_id();
+    if ($sid !== '' && isset($_SESSION['user_id'])) {
+        try {
+            \App\Container::shared()->sesiones()->eliminarPorHash(\App\Repository\SesionRepository::hashId($sid));
+        } catch (Throwable) {
+        }
+    }
     $_SESSION = [];
 
     if (!headers_sent()) {

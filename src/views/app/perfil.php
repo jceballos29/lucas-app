@@ -4,21 +4,50 @@ declare(strict_types=1);
 
 use App\Domain\Usuario;
 use App\Support\Dinero;
+use App\Support\DispositivoSesion;
+use App\View\Fecha;
+use App\View\Html;
 use App\View\Ui;
 
 /**
- * Perfil (RF-03, RNF-20).
+ * Perfil (RF-03, RNF-20, Fase 17: panel de sesiones activas).
  *
  * @var Usuario $usuario
  * @var array{nombre: string, moneda: string} $old Valores del formulario de datos.
  * @var array<string, string> $errors Error por campo.
+ * @var list<array{id_sesion: string, ip: string, user_agent: string, creado_en: string, ultimo_uso: string}>|null $sesiones
+ * @var string|null $sesionActualHash
  * @var array{tone: string, message: string}|null $flash
  */
 $flash = $flash ?? null;
+$sesiones = $sesiones ?? [];
+$sesionActualHash = $sesionActualHash ?? '';
 $monedas = [];
 foreach (Dinero::MONEDAS as $codigo => $simbolo) {
     $monedas[$codigo] = $codigo . ' (' . $simbolo . ')';
 }
+$filasSesiones = array_map(static function (array $s) use ($sesionActualHash): array {
+    $esActual = $sesionActualHash !== '' && hash_equals($sesionActualHash, $s['id_sesion']);
+    $dispositivo = DispositivoSesion::describir($s['user_agent']);
+    $badgeActual = $esActual ? ' ' . Ui::badge('Este dispositivo', 'brand', 'check') : '';
+
+    return [
+        'dispositivo' => new Html('<span class="cell-title">' . escape($dispositivo) . '</span>' . $badgeActual . '<span class="cell-sub">IP: ' . escape($s['ip']) . '</span>'),
+        'inicio' => format_utc_datetime($s['creado_en']),
+        'actividad' => format_utc_datetime($s['ultimo_uso']),
+        'acciones' => $esActual
+            ? Ui::badge('Sesión actual', 'neutral')
+            : Ui::postForm('/perfil.php', ['accion' => 'cerrar_sesion', 'id_sesion' => $s['id_sesion']], Ui::button('Cerrar sesión', [
+                'type' => 'submit',
+                'variant' => 'secondary',
+                'size' => 'sm',
+                'attrs' => [
+                    'data-confirm' => '¿Cerrar la sesión abierta en «' . $dispositivo . '» (IP ' . $s['ip'] . ')?',
+                    'data-confirm-ok' => 'Cerrar sesión',
+                ],
+            ])),
+    ];
+}, $sesiones);
 ?>
 <?= Ui::pageHead('Mi perfil', $usuario->correo) ?>
 
@@ -44,6 +73,38 @@ foreach (Dinero::MONEDAS as $codigo => $simbolo) {
         <?= Ui::field(['id' => 'clave_nueva2', 'label' => 'Repite la contraseña nueva', 'type' => 'password', 'autocomplete' => 'new-password', 'required' => true, 'error' => $errors['clave_nueva2'] ?? null]) ?>
         <div class="form-actions"><?= Ui::button('Cambiar contraseña', ['type' => 'submit']) ?></div>
     </form>
+<?= Ui::cardClose() ?>
+
+<?= Ui::cardOpen([
+    'title' => 'Sesiones activas y dispositivos',
+    'subtitle' => 'Revisa desde dónde has iniciado sesión en Lucas y cierra cualquier dispositivo que ya no uses',
+    'class' => 'form-card',
+    'action' => count($sesiones) > 1
+        ? Ui::postForm('/perfil.php', ['accion' => 'cerrar_otras_sesiones'], Ui::button('Cerrar todas las demás', [
+            'type' => 'submit',
+            'variant' => 'secondary',
+            'size' => 'sm',
+            'attrs' => [
+                'data-confirm' => '¿Cerrar todas las demás sesiones abiertas de tu cuenta excepto la de este dispositivo?',
+                'data-confirm-ok' => 'Cerrar las demás',
+            ],
+        ]))
+        : null,
+]) ?>
+    <?php if ($filasSesiones === []): ?>
+        <p class="muted">Solo tienes activa la sesión de este dispositivo.</p>
+    <?php else: ?>
+        <?= Ui::table([
+            'caption' => 'Sesiones activas de tu cuenta',
+            'columns' => [
+                ['key' => 'dispositivo', 'label' => 'Dispositivo e IP'],
+                ['key' => 'inicio', 'label' => 'Inicio de sesión'],
+                ['key' => 'actividad', 'label' => 'Última actividad'],
+                ['key' => 'acciones', 'label' => 'Acciones', 'kind' => 'actions'],
+            ],
+            'rows' => $filasSesiones,
+        ]) ?>
+    <?php endif; ?>
 <?= Ui::cardClose() ?>
 
 <?= Ui::cardOpen(['title' => 'Eliminar mi cuenta', 'class' => 'form-card danger-zone']) ?>

@@ -153,6 +153,7 @@ final class UsuarioRepository implements CredentialSource
             'DELETE FROM cuentas WHERE id_usuario = :id AND id_espacio IS NULL',
             'DELETE FROM categorias WHERE id_usuario = :id AND id_espacio IS NULL',
             'DELETE FROM espacio_miembros WHERE id_usuario = :id',
+            'DELETE FROM sesiones_usuario WHERE id_usuario = :id',
             'DELETE FROM restablecimientos WHERE id_usuario = :id',
             'DELETE FROM usuarios WHERE id_usuario = :id',
         ] as $sql) {

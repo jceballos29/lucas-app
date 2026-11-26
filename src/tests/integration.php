@@ -1335,4 +1335,34 @@ same('resumenTarjeta desglosa capital e interés del próximo corte (100.000 + 6
     $resTcInt['interesDiferidoFuturo'],
 ]);
 
+section('SesionRepository: panel de sesiones activas y cierre remoto (Fase 17)');
+$sesRepo = $container->sesiones();
+$sesUser = (int) $usuarios->create('Sebastián Sesiones', 'sebastian.ses@correo.com', 'x');
+$sesOtro = (int) $usuarios->create('Otro Sesiones', 'otro.ses@correo.com', 'x');
+$h1 = App\Repository\SesionRepository::hashId('sid-1');
+$h2 = App\Repository\SesionRepository::hashId('sid-2');
+$hOtro = App\Repository\SesionRepository::hashId('sid-otro');
+
+$sesRepo->registrar($sesUser, $h1, '192.168.1.10', 'Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0');
+$sesRepo->registrar($sesUser, $h2, '10.0.0.5', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Version/17.5 Safari/604.1');
+$sesRepo->registrar($sesOtro, $hOtro, '172.16.0.1', 'curl/8.5.0');
+
+same('listByUser devuelve solo las 2 sesiones activas del usuario', 2, count($sesRepo->listByUser($sesUser)));
+same('validarYRenovar reconoce las sesiones propias y rechaza la de otro usuario', [true, true, false], [
+    $sesRepo->validarYRenovar($sesUser, $h1),
+    $sesRepo->validarYRenovar($sesUser, $h2),
+    $sesRepo->validarYRenovar($sesUser, $hOtro),
+]);
+same('un usuario no puede cerrar la sesión de otro usuario', false, $sesRepo->eliminarDeUsuario($sesUser, $hOtro));
+same('eliminarDeUsuario cierra la sesión remota h2', [true, false], [
+    $sesRepo->eliminarDeUsuario($sesUser, $h2),
+    $sesRepo->validarYRenovar($sesUser, $h2),
+]);
+$sesRepo->registrar($sesUser, $h2, '10.0.0.5', 'Safari');
+same('eliminarOtrasDeUsuario cierra todas menos la sesión actual h1', [1, true, false], [
+    $sesRepo->eliminarOtrasDeUsuario($sesUser, $h1),
+    $sesRepo->validarYRenovar($sesUser, $h1),
+    $sesRepo->validarYRenovar($sesUser, $h2),
+]);
+
 finish();

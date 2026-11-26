@@ -1512,5 +1512,30 @@ check "el icono PWA 512x512 responde 200" "200" "$CODE"
 request "$J7" GET /icons/icon-maskable-512.png
 check "el icono PWA maskable 512x512 responde 200" "200" "$CODE"
 
+echo; echo "== Panel de sesiones activas en Mi perfil y revocación remota (Fase 17)"
+JSES1="$(new_jar)"; USES="smoke_${RUN}_ses@correo.com"; register "$JSES1" "$USES" "$P"
+USESID="$(uid "$USES")"
+JSES2="$(new_jar)"; login "$JSES2" "$USES" "$P"
+check "la segunda sesión del usuario inicia correctamente" "302 /panel.php" "$CODE $LOC"
+check "hay 2 sesiones activas registradas en sesiones_usuario" "2" "$(sql "SELECT COUNT(*) FROM sesiones_usuario WHERE id_usuario=$USESID")"
+
+request "$JSES1" GET /perfil.php
+check "perfil responde 200" "200" "$CODE"
+contains "muestra la tarjeta de Sesiones activas y dispositivos" "Sesiones activas y dispositivos" "$TMP/body"
+contains "marca la sesión presente con Este dispositivo" "Este dispositivo" "$TMP/body"
+contains "muestra el botón para cerrar la sesión remota" "Cerrar sesión" "$TMP/body"
+contains "muestra el botón para cerrar todas las demás sesiones" "Cerrar todas las demás" "$TMP/body"
+
+# Desde JSES1 cerrar todas las demás sesiones (revoca JSES2)
+post_form "$JSES1" /perfil.php /perfil.php "accion=cerrar_otras_sesiones"
+check "cerrar otras sesiones redirige a perfil" "302 /perfil.php" "$CODE $LOC"
+check "solo queda 1 sesión activa en la BD" "1" "$(sql "SELECT COUNT(*) FROM sesiones_usuario WHERE id_usuario=$USESID")"
+
+request "$JSES2" GET /panel.php
+check "la sesión remota cerrada es expulsada de inmediato con msg=revoked" "302 /login.php?msg=revoked" "$CODE $LOC"
+
+request "$JSES1" GET /panel.php
+check "la sesión actual sigue abierta y funcionando (200)" "200" "$CODE"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

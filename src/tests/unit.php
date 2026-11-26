@@ -991,4 +991,26 @@ same('todos los iconos declarados en manifest.webmanifest existen en public/', t
         && is_file($publicDir . '/offline.html');
 })());
 
+section('DispositivoSesion y SesionRepository::hashId (Fase 17)');
+use App\Support\DispositivoSesion as DS;
+use App\Repository\SesionRepository as SR;
+same('DispositivoSesion::describir reconoce navegadores y sistemas operativos', [
+    'Firefox en Linux',
+    'Chrome en Android',
+    'Safari en iPhone',
+    'Edge en Windows',
+    'cURL / CLI',
+    'Dispositivo desconocido',
+], [
+    DS::describir('Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0'),
+    DS::describir('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36'),
+    DS::describir('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'),
+    DS::describir('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0'),
+    DS::describir('curl/8.5.0'),
+    DS::describir('   '),
+]);
+same('SesionRepository::hashId genera un SHA-256 de 64 hex distinto del session_id en claro', true,
+    strlen(SR::hashId('sesion-secreta')) === 64 && SR::hashId('sesion-secreta') !== 'sesion-secreta'
+);
+
 finish();
