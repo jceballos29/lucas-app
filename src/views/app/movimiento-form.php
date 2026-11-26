@@ -27,14 +27,20 @@ $splitOld = $splitOld ?? [
 $splitAbierto = isset($errors['split']) || array_filter($splitOld, static fn (array $s): bool => $s['id_categoria'] !== '' || $s['monto'] !== '') !== [];
 
 $opcionesCuenta = [];
+$atributosCuenta = [];
 foreach ($cuentas as $c) {
     $opcionesCuenta[(string) $c->id] = $c->nombre . ($c->activa ? '' : ' (inactiva)') . ' · ' . \App\Support\Dinero::formatear($c->saldo);
+    $atributosCuenta[(string) $c->id] = ['data-cuenta-tipo' => $c->tipo];
 }
 $opcionesCategoria = [];
 $atributosCategoria = [];
 foreach ($categorias as $k) {
     $opcionesCategoria[(string) $k->id] = $k->nombre;
     $atributosCategoria[(string) $k->id] = ['data-tipo' => $k->tipo];
+}
+$opcionesCuotas = [];
+for ($q = 1; $q <= 36; $q++) {
+    $opcionesCuotas[(string) $q] = $q === 1 ? '1 cuota (de contado)' : "$q cuotas";
 }
 ?>
 <?= Ui::pageHead($editando ? 'Editar movimiento' : 'Nuevo movimiento', $editando ? 'Corrige los datos del movimiento' : 'Registra un ingreso o un gasto') ?>
@@ -54,9 +60,14 @@ foreach ($categorias as $k) {
         <?= Ui::field(['id' => 'monto', 'label' => 'Monto', 'size' => 'lg', 'value' => $old['monto'], 'placeholder' => '$ 0', 'required' => true, 'error' => $errors['monto'] ?? null, 'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off', 'data-money' => true]]) ?>
         <div class="form-grid">
             <?= Ui::field(['id' => 'fecha', 'label' => 'Fecha', 'type' => 'date', 'value' => $old['fecha'], 'required' => true, 'error' => $errors['fecha'] ?? null]) ?>
-            <?= Ui::select(['id' => 'cuenta', 'name' => 'id_cuenta', 'label' => 'Cuenta', 'blank' => 'Elige una cuenta', 'options' => $opcionesCuenta, 'selected' => $old['id_cuenta'], 'error' => $errors['id_cuenta'] ?? null]) ?>
+            <?= Ui::select(['id' => 'cuenta', 'name' => 'id_cuenta', 'label' => 'Cuenta', 'blank' => 'Elige una cuenta', 'options' => $opcionesCuenta, 'optionAttrs' => $atributosCuenta, 'selected' => $old['id_cuenta'], 'error' => $errors['id_cuenta'] ?? null]) ?>
         </div>
-        <?= Ui::select(['id' => 'categoria', 'name' => 'id_categoria', 'label' => 'Categoría', 'blank' => 'Elige una categoría', 'options' => $opcionesCategoria, 'optionAttrs' => $atributosCategoria, 'selected' => $old['id_categoria'], 'error' => $errors['id_categoria'] ?? null]) ?>
+        <div class="form-grid">
+            <?= Ui::select(['id' => 'categoria', 'name' => 'id_categoria', 'label' => 'Categoría', 'blank' => 'Elige una categoría', 'options' => $opcionesCategoria, 'optionAttrs' => $atributosCategoria, 'selected' => $old['id_categoria'], 'error' => $errors['id_categoria'] ?? null]) ?>
+            <div id="campo-cuotas">
+                <?= Ui::select(['id' => 'num_cuotas', 'name' => 'num_cuotas', 'label' => 'Número de cuotas (tarjeta de crédito)', 'options' => $opcionesCuotas, 'selected' => (string) ($old['num_cuotas'] ?? '1'), 'error' => $errors['num_cuotas'] ?? null]) ?>
+            </div>
+        </div>
         <div class="form-grid">
             <?= Ui::field(['id' => 'descripcion', 'label' => 'Descripción', 'value' => $old['descripcion'], 'placeholder' => 'Ej.: Almuerzo con compañeros', 'hint' => 'Opcional. Hasta 150 caracteres.', 'error' => $errors['descripcion'] ?? null, 'attrs' => ['maxlength' => '150']]) ?>
             <?= Ui::field(['id' => 'etiqueta', 'label' => 'Etiqueta / Proyecto (#tag)', 'value' => $old['etiqueta'] ?? '', 'placeholder' => 'Ej.: vacaciones-2026', 'hint' => 'Opcional. Agrupa gastos de un viaje, evento o proyecto.', 'error' => $errors['etiqueta'] ?? null, 'attrs' => ['maxlength' => '40']]) ?>

@@ -7,8 +7,10 @@ namespace App\Movimientos;
 use App\Database\Transaction;
 use App\Repository\CategoriaRepository;
 use App\Repository\CuentaRepository;
+use App\Repository\CuotaTarjetaRepository;
 use App\Repository\MovimientoRepository;
 use App\Support\Dinero;
+use App\Tarjetas\PlanCuotas;
 use PDO;
 
 /**
@@ -21,12 +23,13 @@ final class GestionMovimientos
         private readonly MovimientoRepository $movimientos,
         private readonly CuentaRepository $cuentas,
         private readonly CategoriaRepository $categorias,
+        private readonly ?CuotaTarjetaRepository $cuotasTarjeta = null,
     ) {
     }
 
     /**
      * @param int|null $movimientoId null = movimiento nuevo
-     * @param array{tipo: string, monto: string, fecha: string, id_cuenta: int, id_categoria: int, descripcion: string|null} $datos
+     * @param array{tipo: string, monto: string, fecha: string, id_cuenta: int, id_categoria: int, descripcion: string|null, etiqueta?: string|null, num_cuotas?: int} $datos
      * @return array{codigo: string, id: int|null, cuenta: string|null, saldo?: string|null}
      */
     public function guardar(int $userId, ?int $movimientoId, array $datos, ?int $espacioId = null): array
@@ -79,6 +82,9 @@ final class GestionMovimientos
                 }
             }
 
+            $esGastoTarjeta = ($cuenta['tipo'] ?? '') === 'tarjeta_credito' && $datos['tipo'] === 'gasto';
+            $numCuotas = $esGastoTarjeta ? max(1, min(36, (int) ($datos['num_cuotas'] ?? 1))) : 1;
+
             if ($movimientoId === null) {
                 $id = $this->movimientos->insert(
                     $userId,
@@ -90,6 +96,8 @@ final class GestionMovimientos
                     $datos['descripcion'],
                     $espacioId,
                     $datos['etiqueta'] ?? null,
+                    null,
+                    $numCuotas,
                 );
             } else {
                 $this->movimientos->update(
@@ -103,8 +111,16 @@ final class GestionMovimientos
                     $datos['descripcion'],
                     $espacioId,
                     $datos['etiqueta'] ?? null,
+                    $numCuotas,
                 );
                 $id = $movimientoId;
+            }
+
+            if ($this->cuotasTarjeta !== null) {
+                $cuotas = $esGastoTarjeta
+                    ? PlanCuotas::generar($datos['monto'], $numCuotas, $datos['fecha'], $cuenta['dia_corte'] ?? null)
+                    : [];
+                $this->cuotasTarjeta->replaceForTransaccion($id, $datos['id_cuenta'], $cuotas);
             }
 
             return ['codigo' => ReglasMovimiento::OK, 'id' => $id, 'cuenta' => $cuenta['nombre'] ?? null, 'saldo' => $saldoDisponible];
@@ -154,10 +170,12 @@ final class GestionMovimientos
 
             $grupoSplit = bin2hex(random_bytes(8));
             $etiqueta = $base['etiqueta'] ?? null;
+            $esGastoTarjeta = ($cuenta['tipo'] ?? '') === 'tarjeta_credito' && $base['tipo'] === 'gasto';
+            $numCuotas = $esGastoTarjeta ? max(1, min(36, (int) ($base['num_cuotas'] ?? 1))) : 1;
             $ids = [];
 
             foreach ($partes as $parte) {
-                $ids[] = $this->movimientos->insert(
+                $id = $this->movimientos->insert(
                     $userId,
                     $base['id_cuenta'],
                     $parte['id_categoria'],
@@ -168,7 +186,14 @@ final class GestionMovimientos
                     $espacioId,
                     $etiqueta,
                     $grupoSplit,
+                    $numCuotas,
                 );
+                $ids[] = $id;
+
+                if ($this->cuotasTarjeta !== null && $esGastoTarjeta) {
+                    $cuotas = PlanCuotas::generar($parte['monto'], $numCuotas, $base['fecha'], $cuenta['dia_corte'] ?? null);
+                    $this->cuotasTarjeta->replaceForTransaccion($id, $base['id_cuenta'], $cuotas);
+                }
             }
 
             return [

@@ -16,6 +16,7 @@ use App\Repository\AdminStatsRepository;
 use App\Repository\AporteRepository;
 use App\Repository\CategoriaRepository;
 use App\Repository\CuentaRepository;
+use App\Repository\CuotaTarjetaRepository;
 use App\Repository\DeudaRepository;
 use App\Repository\EspacioRepository;
 use App\Mail\Mailer;
@@ -123,9 +124,14 @@ final class Container
         return new MovimientoRepository($this->pdo());
     }
 
+    public function cuotasTarjeta(): CuotaTarjetaRepository
+    {
+        return new CuotaTarjetaRepository($this->pdo());
+    }
+
     public function gestionMovimientos(): GestionMovimientos
     {
-        return new GestionMovimientos($this->pdo(), $this->movimientos(), $this->cuentas(), $this->categorias());
+        return new GestionMovimientos($this->pdo(), $this->movimientos(), $this->cuentas(), $this->categorias(), $this->cuotasTarjeta());
     }
 
     public function importadorCsv(): ImportadorCsv

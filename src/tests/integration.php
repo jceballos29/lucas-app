@@ -1250,4 +1250,52 @@ same('filtrar por etiqueta en MovimientoRepository trae las 2 partidas', 2, $mov
 $repTags = $reportes->gastosPorEtiqueta($sUser, 11, 2026);
 same('gastosPorEtiqueta suma el total gastado bajo #vacaciones-2026 en noviembre', [['etiqueta' => 'vacaciones-2026', 'total' => '300000.00', 'cantidad' => 2]], $repTags);
 
+section('Tarjetas de crédito: compras a cuotas, fecha de corte y fecha de pago (Fase 15)');
+$tcUser = (int) $usuarios->create('Valeria Tarjetas', 'valeria.tc@correo.com', 'x');
+$tcId = $cuentas->create($tcUser, 'Mastercard Black', 'tarjeta_credito', '0.00', null, 15, 28);
+$tcEfec = $cuentas->create($tcUser, 'Efectivo Valeria', 'efectivo', '500000.00');
+$tcObj = $cuentas->findOwned($tcUser, $tcId);
+same('la tarjeta guarda dia_corte=15 y dia_pago_limite=28', [15, 28], [$tcObj?->diaCorte, $tcObj?->diaPagoLimite]);
+
+$movCuotas = $container->gestionMovimientos()->guardar($tcUser, null, [
+    'tipo' => 'gasto',
+    'monto' => '600000.00',
+    'fecha' => '2026-11-10',
+    'id_cuenta' => $tcId,
+    'id_categoria' => $catA,
+    'descripcion' => 'Televisor a 6 cuotas',
+    'num_cuotas' => 6,
+]);
+same('registrar compra a 6 cuotas con tarjeta de crédito devuelve ok', 'ok', $movCuotas['codigo']);
+same('el saldo total de la tarjeta refleja la deuda total (-600.000)', '-600000.00', (string) $cuentas->findOwned($tcUser, $tcId)?->saldo);
+$resTc = $container->cuotasTarjeta()->resumenTarjeta($tcId, 15, 28, '2026-11-12');
+same('en el ciclo que corta el 2026-11-15 entra la cuota 1 (100.000) y quedan 500.000 diferidos a meses futuros', [
+    '100000.00',
+    '500000.00',
+    1,
+    '2026-11-15',
+    '2026-11-28',
+], [
+    $resTc['cuotaProximoCorte'],
+    $resTc['deudaDiferidaFutura'],
+    $resTc['numCuotasEnCurso'],
+    $resTc['proximoCorte']['fecha'] ?? '',
+    $resTc['proximoPago']['fecha'] ?? '',
+]);
+
+// Si se registra un gasto con num_cuotas=6 en una cuenta de efectivo, se fuerza a 1 cuota y no genera cuotas_tarjeta.
+$movEfecCuotas = $container->gestionMovimientos()->guardar($tcUser, null, [
+    'tipo' => 'gasto',
+    'monto' => '120000.00',
+    'fecha' => '2026-11-10',
+    'id_cuenta' => $tcEfec,
+    'id_categoria' => $catA,
+    'descripcion' => 'Compra en efectivo',
+    'num_cuotas' => 6,
+]);
+same('en cuenta de efectivo num_cuotas se fuerza a 1 y no crea filas en cuotas_tarjeta', [1, 0], [
+    $movs->findOwned($tcUser, (int) $movEfecCuotas['id'])?->numCuotas,
+    (int) $pdo->query('SELECT COUNT(*) FROM cuotas_tarjeta WHERE id_transaccion = ' . (int) $movEfecCuotas['id'])->fetchColumn(),
+]);
+
 finish();

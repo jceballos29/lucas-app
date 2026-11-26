@@ -22,6 +22,7 @@ final class Movimiento
         public readonly string $autorNombre = '',
         public readonly ?string $etiqueta = null,
         public readonly ?string $grupoSplit = null,
+        public readonly int $numCuotas = 1,
     ) {
     }
 
@@ -43,6 +44,7 @@ final class Movimiento
             (string) ($row['autor_nombre'] ?? ''),
             isset($row['etiqueta']) && $row['etiqueta'] !== '' ? (string) $row['etiqueta'] : null,
             isset($row['grupo_split']) && $row['grupo_split'] !== '' ? (string) $row['grupo_split'] : null,
+            isset($row['num_cuotas']) ? max(1, (int) $row['num_cuotas']) : 1,
         );
     }
 

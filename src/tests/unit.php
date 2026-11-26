@@ -872,4 +872,56 @@ $valSplitUnaSola = $mv14->validateSplit([
 same('validateSplit exige al menos 2 partes', true, isset($valSplitUnaSola['errors']['split']));
 same('Filtros::desde incluye y normaliza la etiqueta', 'vacaciones-2026', App\Movimientos\Filtros::desde(['etiqueta' => '#Vacaciones 2026'])['etiqueta']);
 
+section('PlanCuotas y CicloTarjeta: compras a cuotas, fecha de corte y fecha de pago (Fase 15)');
+use App\Tarjetas\PlanCuotas as PC;
+use App\Tarjetas\CicloTarjeta as CT;
+$cuotas3 = PC::generar('100000.00', 3, '2026-11-10', 15);
+same('100.000 en 3 cuotas reparte los centavos exactos: 33.333,34 + 33.333,33 + 33.333,33', [
+    '33333.34',
+    '33333.33',
+    '33333.33',
+    '100000.00',
+], [
+    $cuotas3[0]['monto_capital'],
+    $cuotas3[1]['monto_capital'],
+    $cuotas3[2]['monto_capital'],
+    D::sumar(array_column($cuotas3, 'monto_capital')),
+]);
+same('compra el día 10 con corte el 15: la cuota 1 entra en el corte del mismo mes (2026-11-15)', [
+    '2026-11-15',
+    '2026-12-15',
+    '2027-01-15',
+], array_column($cuotas3, 'fecha_cobro'));
+
+$cuotasPostCorte = PC::generar('600000.00', 2, '2026-11-20', 15);
+same('compra el día 20 (después del corte del 15): la cuota 1 pasa al corte del mes siguiente (2026-12-15)', [
+    '2026-12-15',
+    '2027-01-15',
+], array_column($cuotasPostCorte, 'fecha_cobro'));
+
+$cuotasFeb = PC::generar('200000.00', 2, '2026-01-10', 31);
+same('corte día 31 se ajusta al último día de febrero no bisiesto (28)', ['2026-01-31', '2026-02-28'], array_column($cuotasFeb, 'fecha_cobro'));
+
+same('CicloTarjeta::proximaFecha calcula próximo corte y días restantes', [
+    ['fecha' => '2026-11-15', 'dias' => 5],
+    ['fecha' => '2026-12-15', 'dias' => 25],
+], [
+    CT::proximaFecha(15, '2026-11-10'),
+    CT::proximaFecha(15, '2026-11-20'),
+]);
+same('CicloTarjeta::ventanaCicloActual devuelve la ventana entre el corte anterior + 1 día y el próximo corte', [
+    '2026-10-16',
+    '2026-11-15',
+], CT::ventanaCicloActual(15, '2026-11-10'));
+
+$cv15 = new App\Validation\CuentaValidator();
+$valTc = $cv15->validate(['nombre' => 'Visa Oro', 'tipo' => 'tarjeta_credito', 'saldo_inicial' => '0', 'dia_corte' => '15', 'dia_pago_limite' => '28']);
+same('CuentaValidator acepta dia_corte y dia_pago_limite en tarjeta_credito', [[], 15, 28], [$valTc['errors'], $valTc['data']['dia_corte'], $valTc['data']['dia_pago_limite']]);
+same('CuentaValidator ignora dia_corte en cuenta de ahorros', null, $cv15->validate(['nombre' => 'Ahorros', 'tipo' => 'ahorro', 'saldo_inicial' => '0', 'dia_corte' => '15'])['data']['dia_corte']);
+same('CuentaValidator rechaza dia_corte fuera de 1..31', true, isset($cv15->validate(['nombre' => 'Visa', 'tipo' => 'tarjeta_credito', 'dia_corte' => '35'])['errors']['dia_corte']));
+same('MovimientoValidator valida num_cuotas entre 1 y 36', [6, true], [
+    $mv14->validate(['tipo' => 'gasto', 'monto' => '100.000', 'fecha' => '2026-11-25', 'id_cuenta' => '1', 'id_categoria' => '2', 'num_cuotas' => '6'])['data']['num_cuotas'],
+    isset($mv14->validate(['tipo' => 'gasto', 'monto' => '100.000', 'fecha' => '2026-11-25', 'id_cuenta' => '1', 'id_categoria' => '2', 'num_cuotas' => '48'])['errors']['num_cuotas']),
+]);
+
 finish();

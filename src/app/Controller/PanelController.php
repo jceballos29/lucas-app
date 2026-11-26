@@ -39,6 +39,23 @@ final class PanelController
             $categorias = Categorias::agrupar($this->container->reportes()->gastosPorCategoria($user['id'], $mes, $anio, $espacioId));
             $ultimos = $this->container->movimientos()->search($user['id'], Filtros::desde([]), 5, 0, $espacioId);
             $presupuestos = $this->container->presupuestos()->listByMonth($user['id'], $mes, $anio, $espacioId);
+
+            $tarjetasPorVencer = [];
+            $hoyStr = $hoy->format('Y-m-d');
+            foreach ($cuentas as $c) {
+                if ($c->tipo === 'tarjeta_credito' && $c->diaPagoLimite !== null && Dinero::aCentavos($c->saldo) < 0) {
+                    $proxPago = \App\Tarjetas\CicloTarjeta::proximaFecha($c->diaPagoLimite, $hoyStr);
+                    if ($proxPago !== null && $proxPago['dias'] <= 5) {
+                        $tarjetasPorVencer[] = [
+                            'id' => $c->id,
+                            'nombre' => $c->nombre,
+                            'deuda' => ltrim($c->saldo, '-'),
+                            'fecha' => $proxPago['fecha'],
+                            'dias' => $proxPago['dias'],
+                        ];
+                    }
+                }
+            }
         } catch (RuntimeException $error) {
             [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
             Response::plain($status, $message . "\n");
@@ -60,6 +77,7 @@ final class PanelController
             'ultimos' => $ultimos,
             'presupuestos' => $presupuestos,
             'recurrentesVencidos' => $recurrentesVencidos,
+            'tarjetasPorVencer' => $tarjetasPorVencer,
         ], 'Panel', $user, 'app', 'panel');
     }
 }

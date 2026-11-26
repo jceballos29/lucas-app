@@ -1441,5 +1441,25 @@ request "$JTR" GET /reportes.php
 contains "los reportes muestran la tarjeta de gastos por etiqueta" "Gastos por etiqueta" "$TMP/body"
 contains "con la etiqueta #viaje-fin-anio y su total de 120.000" "#viaje-fin-anio" "$TMP/body"
 
+echo; echo "== Gestión avanzada de tarjetas de crédito: cuotas, corte y pago (Fase 15)"
+post_form "$JTR" /cuenta-form.php "/cuenta-form.php?id=$CVISA" "id=$CVISA" "nombre=Visa" "tipo=tarjeta_credito" "saldo_inicial=-200.000" "dia_corte=15" "dia_pago_limite=28"
+check "guardar día de corte y límite de pago en tarjeta Visa redirige a cuentas" "302 /cuentas.php" "$CODE $LOC"
+check "la BD guardó dia_corte=15 y dia_pago_limite=28" "15|28" "$(sql "SELECT CONCAT(dia_corte,'|',dia_pago_limite) FROM cuentas WHERE id_cuenta=$CVISA")"
+
+post_form "$JTR" /movimiento-form.php /movimiento-form.php \
+  "tipo=gasto" "monto=300.000" "fecha=$HOY_APP" "id_cuenta=$CVISA" \
+  "id_categoria=$KG" "descripcion=Nevera a 6 cuotas" "num_cuotas=6"
+check "registrar compra a 6 cuotas con tarjeta redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
+check "generó las 6 filas en cuotas_tarjeta por 50.000 cada una" "6|300000.00" "$(sql "SELECT CONCAT(COUNT(*),'|',SUM(monto_total)) FROM cuotas_tarjeta WHERE id_cuenta=$CVISA")"
+
+request "$JTR" GET /movimientos.php
+contains "el listado de movimientos muestra el número de cuotas y el valor mensual" '6 cuotas ($50.000/mes)' "$TMP/body"
+
+request "$JTR" GET /cuentas.php
+contains "la tarjeta en Cuentas muestra Cuota próximo corte" "Cuota próximo corte" "$TMP/body"
+contains "muestra el monto diferido a meses futuros (\$250.000)" '$250.000' "$TMP/body"
+contains "muestra el día de corte configurado" "Día 15" "$TMP/body"
+contains "muestra la fecha límite de pago configurada" "Día 28" "$TMP/body"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

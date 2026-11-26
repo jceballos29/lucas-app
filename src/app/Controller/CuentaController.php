@@ -35,6 +35,14 @@ final class CuentaController
             }
 
             $lista = $cuentas->listByUser($user['id'], $espacioId);
+            $hoy = date('Y-m-d');
+            $resumenesTarjeta = [];
+            $cuotasRepo = $this->container->cuotasTarjeta();
+            foreach ($lista as $c) {
+                if ($c->tipo === 'tarjeta_credito') {
+                    $resumenesTarjeta[$c->id] = $cuotasRepo->resumenTarjeta($c->id, $c->diaCorte, $c->diaPagoLimite, $hoy);
+                }
+            }
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -42,7 +50,12 @@ final class CuentaController
         // El saldo total (RF-07) suma solo las cuentas activas.
         $total = Dinero::sumar(array_map(static fn (Cuenta $c): string => $c->saldo, array_filter($lista, static fn (Cuenta $c): bool => $c->activa)));
 
-        View::page('app/cuentas', ['cuentas' => $lista, 'total' => $total, 'flash' => Flash::pull()], 'Cuentas', $user, 'app', 'cuentas');
+        View::page('app/cuentas', [
+            'cuentas' => $lista,
+            'resumenesTarjeta' => $resumenesTarjeta,
+            'total' => $total,
+            'flash' => Flash::pull(),
+        ], 'Cuentas', $user, 'app', 'cuentas');
     }
 
     /** Alta (sin `id`) o edición (`?id=`) de una cuenta. */
@@ -69,8 +82,14 @@ final class CuentaController
 
             $errors = [];
             $old = $cuenta === null
-                ? ['nombre' => '', 'tipo' => 'efectivo', 'saldo_inicial' => '']
-                : ['nombre' => $cuenta->nombre, 'tipo' => $cuenta->tipo, 'saldo_inicial' => Dinero::paraCampo($cuenta->saldoInicial)];
+                ? ['nombre' => '', 'tipo' => 'efectivo', 'saldo_inicial' => '', 'dia_corte' => '', 'dia_pago_limite' => '']
+                : [
+                    'nombre' => $cuenta->nombre,
+                    'tipo' => $cuenta->tipo,
+                    'saldo_inicial' => Dinero::paraCampo($cuenta->saldoInicial),
+                    'dia_corte' => $cuenta->diaCorte !== null ? (string) $cuenta->diaCorte : '',
+                    'dia_pago_limite' => $cuenta->diaPagoLimite !== null ? (string) $cuenta->diaPagoLimite : '',
+                ];
 
             if ($isPost) {
                 reject_foreign_origin();
@@ -83,6 +102,8 @@ final class CuentaController
                     'nombre' => $data['nombre'],
                     'tipo' => $data['tipo'],
                     'saldo_inicial' => is_string($_POST['saldo_inicial'] ?? null) ? trim($_POST['saldo_inicial']) : '',
+                    'dia_corte' => is_string($_POST['dia_corte'] ?? null) ? trim($_POST['dia_corte']) : '',
+                    'dia_pago_limite' => is_string($_POST['dia_pago_limite'] ?? null) ? trim($_POST['dia_pago_limite']) : '',
                 ];
 
                 if (!isset($errors['nombre']) && $repo->nameTaken($user['id'], $data['nombre'], $cuenta?->id, $espacioId)) {
@@ -91,10 +112,27 @@ final class CuentaController
 
                 if ($errors === []) {
                     if ($cuenta === null) {
-                        $repo->create($user['id'], $data['nombre'], $data['tipo'], $data['saldo_inicial'], $espacioId);
+                        $repo->create(
+                            $user['id'],
+                            $data['nombre'],
+                            $data['tipo'],
+                            $data['saldo_inicial'],
+                            $espacioId,
+                            $data['dia_corte'],
+                            $data['dia_pago_limite'],
+                        );
                         Flash::set('ok', "Se creó la cuenta «{$data['nombre']}».");
                     } else {
-                        $repo->update($user['id'], $cuenta->id, $data['nombre'], $data['tipo'], $data['saldo_inicial'], $espacioId);
+                        $repo->update(
+                            $user['id'],
+                            $cuenta->id,
+                            $data['nombre'],
+                            $data['tipo'],
+                            $data['saldo_inicial'],
+                            $espacioId,
+                            $data['dia_corte'],
+                            $data['dia_pago_limite'],
+                        );
                         Flash::set('ok', "Se guardaron los cambios de «{$data['nombre']}».");
                     }
 

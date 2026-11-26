@@ -88,7 +88,7 @@ final class MovimientoController
                 ['id_categoria' => '', 'monto' => '', 'descripcion' => ''],
             ];
             $old = $movimiento === null
-                ? ['tipo' => 'gasto', 'monto' => '', 'fecha' => date('Y-m-d'), 'id_cuenta' => '', 'id_categoria' => '', 'descripcion' => '', 'etiqueta' => '']
+                ? ['tipo' => 'gasto', 'monto' => '', 'fecha' => date('Y-m-d'), 'id_cuenta' => '', 'id_categoria' => '', 'descripcion' => '', 'etiqueta' => '', 'num_cuotas' => '1']
                 : [
                     'tipo' => $movimiento->tipo,
                     'monto' => Dinero::paraCampo($movimiento->monto),
@@ -97,6 +97,7 @@ final class MovimientoController
                     'id_categoria' => (string) $movimiento->idCategoria,
                     'descripcion' => $movimiento->descripcion ?? '',
                     'etiqueta' => $movimiento->etiqueta ?? '',
+                    'num_cuotas' => (string) $movimiento->numCuotas,
                 ];
 
             if ($isPost) {
@@ -129,6 +130,7 @@ final class MovimientoController
                         'id_categoria' => '',
                         'descripcion' => $splitRes['base']['descripcion'] ?? '',
                         'etiqueta' => is_string($_POST['etiqueta'] ?? null) ? trim($_POST['etiqueta']) : '',
+                        'num_cuotas' => (string) ($splitRes['base']['num_cuotas'] ?? 1),
                     ];
 
                     if ($errors === []) {
@@ -186,6 +188,7 @@ final class MovimientoController
                         'id_categoria' => (string) ($result['data']['id_categoria'] ?: ''),
                         'descripcion' => $result['data']['descripcion'] ?? '',
                         'etiqueta' => is_string($_POST['etiqueta'] ?? null) ? trim($_POST['etiqueta']) : '',
+                        'num_cuotas' => (string) ($result['data']['num_cuotas'] ?? 1),
                     ];
 
                     if ($errors === []) {

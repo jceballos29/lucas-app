@@ -23,6 +23,28 @@ $editando = $cuenta !== null;
         <?= Ui::field(['id' => 'nombre', 'label' => 'Nombre', 'value' => $old['nombre'], 'placeholder' => 'Ej.: Bancolombia ahorros', 'required' => true, 'error' => $errors['nombre'] ?? null, 'attrs' => ['maxlength' => '60']]) ?>
         <?= Ui::select(['id' => 'tipo', 'label' => 'Tipo', 'options' => Cuenta::TIPOS, 'selected' => $old['tipo'], 'error' => $errors['tipo'] ?? null]) ?>
         <?= Ui::field(['id' => 'saldo_inicial', 'label' => 'Saldo inicial', 'size' => 'lg', 'value' => $old['saldo_inicial'], 'placeholder' => '$ 0', 'hint' => 'Lo que tienes hoy en esta cuenta. Opcional. Una tarjeta de crédito puede empezar en negativo (lo que debes).', 'error' => $errors['saldo_inicial'] ?? null, 'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off', 'data-money' => 'signed']]) ?>
+        <div class="form-grid" id="campos-tarjeta">
+            <?= Ui::field([
+                'id' => 'dia_corte',
+                'label' => 'Día de corte del extracto (1 a 31)',
+                'type' => 'number',
+                'value' => $old['dia_corte'] ?? '',
+                'placeholder' => 'Ej.: 15',
+                'hint' => 'Solo para tarjeta de crédito (opcional).',
+                'error' => $errors['dia_corte'] ?? null,
+                'attrs' => ['min' => '1', 'max' => '31', 'inputmode' => 'numeric'],
+            ]) ?>
+            <?= Ui::field([
+                'id' => 'dia_pago_limite',
+                'label' => 'Día límite de pago (1 a 31)',
+                'type' => 'number',
+                'value' => $old['dia_pago_limite'] ?? '',
+                'placeholder' => 'Ej.: 28',
+                'hint' => 'Para avisarte antes del vencimiento (opcional).',
+                'error' => $errors['dia_pago_limite'] ?? null,
+                'attrs' => ['min' => '1', 'max' => '31', 'inputmode' => 'numeric'],
+            ]) ?>
+        </div>
         <div class="form-actions">
             <?= Ui::button($editando ? 'Guardar cambios' : 'Crear cuenta', ['type' => 'submit']) ?>
             <?= Ui::button('Cancelar', ['href' => '/cuentas.php', 'variant' => 'secondary']) ?>

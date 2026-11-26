@@ -26,6 +26,8 @@ final class Cuenta
         public readonly string $saldoInicial,
         public readonly bool $activa,
         public readonly string $saldo,
+        public readonly ?int $diaCorte = null,
+        public readonly ?int $diaPagoLimite = null,
     ) {
     }
 
@@ -40,6 +42,8 @@ final class Cuenta
             (string) $row['saldo_inicial'],
             (bool) $row['activa'],
             (string) $row['saldo'],
+            isset($row['dia_corte']) && $row['dia_corte'] !== null ? (int) $row['dia_corte'] : null,
+            isset($row['dia_pago_limite']) && $row['dia_pago_limite'] !== null ? (int) $row['dia_pago_limite'] : null,
         );
     }
 

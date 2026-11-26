@@ -15,6 +15,7 @@ use App\View\Ui;
  * @var array{tone: string, message: string}|null $flash
  */
 $flash = $flash ?? null;
+$resumenesTarjeta = $resumenesTarjeta ?? [];
 $puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 $acciones = $puedeEscribir ? Html::join([
     Ui::button('Transferir', ['href' => '/transferencia-form.php', 'variant' => 'secondary', 'icon' => 'transfer']),
@@ -33,6 +34,15 @@ $acciones = $puedeEscribir ? Html::join([
 <?php else: ?>
 <div class="cards-grid cards-grid--3">
     <?php foreach ($cuentas as $c): ?>
+        <?php
+        $resTarjeta = $c->tipo === 'tarjeta_credito' ? ($resumenesTarjeta[$c->id] ?? null) : null;
+        $mostrarResumenTarjeta = $resTarjeta !== null && (
+            $c->diaCorte !== null
+            || $c->diaPagoLimite !== null
+            || Dinero::aCentavos($resTarjeta['cuotaProximoCorte']) > 0
+            || Dinero::aCentavos($resTarjeta['deudaDiferidaFutura']) > 0
+        );
+        ?>
         <?= Ui::cardOpen(['tag' => 'article', 'class' => 'account' . ($c->activa ? '' : ' account--off')]) ?>
             <div class="account__head">
                 <span class="account__icon"><?= Ui::icon($c->icono()) ?></span>
@@ -40,6 +50,36 @@ $acciones = $puedeEscribir ? Html::join([
                 <?= Ui::badge($c->activa ? $c->tipoTexto() : 'Inactiva', $c->activa ? 'neutral' : 'outline') ?>
             </div>
             <div class="account__balance"><small>Saldo actual</small><strong><?= escape(Dinero::formatear($c->saldo)) ?></strong></div>
+
+            <?php if ($mostrarResumenTarjeta): ?>
+            <dl class="card-cycle">
+                <?php if (Dinero::aCentavos($resTarjeta['cuotaProximoCorte']) > 0 || $c->diaCorte !== null): ?>
+                    <div>
+                        <dt>Cuota próximo corte</dt>
+                        <dd><strong><?= escape(Dinero::formatear($resTarjeta['cuotaProximoCorte'])) ?></strong></dd>
+                    </div>
+                <?php endif; ?>
+                <?php if (Dinero::aCentavos($resTarjeta['deudaDiferidaFutura']) > 0): ?>
+                    <div>
+                        <dt>Diferido a meses futuros</dt>
+                        <dd><?= escape(Dinero::formatear($resTarjeta['deudaDiferidaFutura'])) ?></dd>
+                    </div>
+                <?php endif; ?>
+                <?php if ($c->diaCorte !== null): ?>
+                    <div>
+                        <dt>Día de corte</dt>
+                        <dd>Día <?= (int) $c->diaCorte ?><?= $resTarjeta['proximoCorte'] !== null ? ' (' . escape(\App\View\Fecha::diaMes($resTarjeta['proximoCorte']['fecha'])) . ')' : '' ?></dd>
+                    </div>
+                <?php endif; ?>
+                <?php if ($c->diaPagoLimite !== null): ?>
+                    <div>
+                        <dt>Fecha límite de pago</dt>
+                        <dd>Día <?= (int) $c->diaPagoLimite ?><?= $resTarjeta['proximoPago'] !== null ? ' (en ' . (int) $resTarjeta['proximoPago']['dias'] . ((int) $resTarjeta['proximoPago']['dias'] === 1 ? ' día' : ' días') . ')' : '' ?></dd>
+                    </div>
+                <?php endif; ?>
+            </dl>
+            <?php endif; ?>
+
             <?php if ($puedeEscribir): ?>
             <div class="account__actions">
                 <?php if ($c->activa && $c->tipo === 'tarjeta_credito' && Dinero::aCentavos($c->saldo) < 0): ?>

@@ -171,4 +171,15 @@
     selDestino.addEventListener('change', syncTransferAccounts);
     syncTransferAccounts();
   }
+
+  /* 8. En cuenta-form.php, mostrar los días de corte y pago solo cuando el tipo elegido es tarjeta_credito. */
+  var selTipoCuenta = document.getElementById('tipo');
+  var camposTarjeta = document.getElementById('campos-tarjeta');
+  if (selTipoCuenta && camposTarjeta && selTipoCuenta.tagName === 'SELECT') {
+    var syncTipoCuenta = function () {
+      camposTarjeta.hidden = selTipoCuenta.value !== 'tarjeta_credito';
+    };
+    selTipoCuenta.addEventListener('change', syncTipoCuenta);
+    syncTipoCuenta();
+  }
 })();

@@ -14,7 +14,7 @@ use PDO;
 final class MovimientoRepository
 {
     private const SELECT = 'SELECT t.id_transaccion, t.id_usuario, t.id_cuenta, t.id_categoria, t.tipo, t.monto, t.fecha, t.descripcion,
-            t.etiqueta, t.grupo_split,
+            t.etiqueta, t.grupo_split, t.num_cuotas,
             c.nombre AS cuenta_nombre, k.nombre AS categoria_nombre, k.color AS categoria_color, u.nombre AS autor_nombre
         FROM transacciones t
         JOIN cuentas c ON c.id_cuenta = t.id_cuenta
@@ -119,10 +119,11 @@ final class MovimientoRepository
         ?int $espacioId = null,
         ?string $etiqueta = null,
         ?string $grupoSplit = null,
+        int $numCuotas = 1,
     ): int {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO transacciones (id_usuario, id_espacio, id_cuenta, id_categoria, tipo, monto, fecha, descripcion, etiqueta, grupo_split)
-             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :fecha, :desc, :etiqueta, :split)'
+            'INSERT INTO transacciones (id_usuario, id_espacio, id_cuenta, id_categoria, tipo, monto, fecha, descripcion, etiqueta, grupo_split, num_cuotas)
+             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :fecha, :desc, :etiqueta, :split, :cuotas)'
         );
         $stmt->execute([
             'u' => $userId,
@@ -135,6 +136,7 @@ final class MovimientoRepository
             'desc' => $descripcion,
             'etiqueta' => $etiqueta,
             'split' => $grupoSplit,
+            'cuotas' => max(1, min(36, $numCuotas)),
         ]);
 
         return (int) $this->pdo->lastInsertId();
@@ -151,10 +153,11 @@ final class MovimientoRepository
         ?string $descripcion,
         ?int $espacioId = null,
         ?string $etiqueta = null,
+        int $numCuotas = 1,
     ): bool {
         [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
-            "UPDATE transacciones SET id_cuenta = :cuenta, id_categoria = :cat, tipo = :tipo, monto = :monto, fecha = :fecha, descripcion = :desc, etiqueta = :etiqueta
+            "UPDATE transacciones SET id_cuenta = :cuenta, id_categoria = :cat, tipo = :tipo, monto = :monto, fecha = :fecha, descripcion = :desc, etiqueta = :etiqueta, num_cuotas = :cuotas
              WHERE id_transaccion = :id AND $scope"
         );
         $stmt->execute($params + [
@@ -165,6 +168,7 @@ final class MovimientoRepository
             'fecha' => $fecha,
             'desc' => $descripcion,
             'etiqueta' => $etiqueta,
+            'cuotas' => max(1, min(36, $numCuotas)),
             'id' => $id,
         ]);
 

@@ -15,12 +15,14 @@ final class MovimientoValidator
 {
     public const DESCRIPCION_MAX = 150;
     public const ETIQUETA_MAX = 40;
+    public const CUOTAS_MIN = 1;
+    public const CUOTAS_MAX = 36;
     public const ANIO_MIN = 2000;
     public const ANIO_MAX = 2100;
 
     /**
-     * @param array<string, mixed> $input Normalmente $_POST (tipo, monto, fecha, id_cuenta, id_categoria, descripcion, etiqueta).
-     * @return array{data: array{tipo: string, monto: string, fecha: string, id_cuenta: int, id_categoria: int, descripcion: string|null, etiqueta: string|null}, errors: array<string, string>}
+     * @param array<string, mixed> $input Normalmente $_POST (tipo, monto, fecha, id_cuenta, id_categoria, descripcion, etiqueta, num_cuotas).
+     * @return array{data: array{tipo: string, monto: string, fecha: string, id_cuenta: int, id_categoria: int, descripcion: string|null, etiqueta: string|null, num_cuotas: int}, errors: array<string, string>}
      */
     public function validate(array $input): array
     {
@@ -29,6 +31,7 @@ final class MovimientoValidator
         $fecha = trim(self::text($input['fecha'] ?? ''));
         $descripcion = trim(preg_replace('/\s+/u', ' ', self::text($input['descripcion'] ?? '')) ?? '');
         $etiquetaRaw = trim(self::text($input['etiqueta'] ?? ''));
+        $cuotasRaw = trim(self::text($input['num_cuotas'] ?? ''));
         $errors = [];
 
         if (!in_array($tipo, ['ingreso', 'gasto'], true)) {
@@ -68,6 +71,18 @@ final class MovimientoValidator
             }
         }
 
+        $numCuotas = 1;
+        if ($cuotasRaw !== '') {
+            if (!ctype_digit($cuotasRaw) || (int) $cuotasRaw < self::CUOTAS_MIN || (int) $cuotasRaw > self::CUOTAS_MAX) {
+                $errors['num_cuotas'] = 'El número de cuotas debe estar entre ' . self::CUOTAS_MIN . ' y ' . self::CUOTAS_MAX . '.';
+            } else {
+                $numCuotas = (int) $cuotasRaw;
+            }
+        }
+        if ($tipo === 'ingreso') {
+            $numCuotas = 1;
+        }
+
         return [
             'data' => [
                 'tipo' => $tipo,
@@ -77,6 +92,7 @@ final class MovimientoValidator
                 'id_categoria' => $idCategoria,
                 'descripcion' => $descripcion === '' ? null : $descripcion,
                 'etiqueta' => $etiqueta,
+                'num_cuotas' => $numCuotas,
             ],
             'errors' => $errors,
         ];
@@ -124,6 +140,19 @@ final class MovimientoValidator
             if ($etiqueta === null) {
                 $errors['etiqueta'] = 'La etiqueta solo admite letras, números y guiones (hasta ' . self::ETIQUETA_MAX . ' caracteres, ej. vacaciones-2026).';
             }
+        }
+
+        $cuotasRaw = trim(self::text($input['num_cuotas'] ?? ''));
+        $numCuotas = 1;
+        if ($cuotasRaw !== '') {
+            if (!ctype_digit($cuotasRaw) || (int) $cuotasRaw < self::CUOTAS_MIN || (int) $cuotasRaw > self::CUOTAS_MAX) {
+                $errors['num_cuotas'] = 'El número de cuotas debe estar entre ' . self::CUOTAS_MIN . ' y ' . self::CUOTAS_MAX . '.';
+            } else {
+                $numCuotas = (int) $cuotasRaw;
+            }
+        }
+        if ($tipo === 'ingreso') {
+            $numCuotas = 1;
         }
 
         $catsRaw = is_array($input['split_categoria'] ?? null) ? $input['split_categoria'] : [];
@@ -195,6 +224,7 @@ final class MovimientoValidator
                 'id_cuenta' => $idCuenta,
                 'descripcion' => $descripcionBase === '' ? null : $descripcionBase,
                 'etiqueta' => $etiqueta,
+                'num_cuotas' => $numCuotas,
             ],
             'partes' => $partes,
             'errors' => $errors,

@@ -28,6 +28,7 @@ use App\View\Ui;
  * @var list<Recurrente> $recurrentesVencidos
  */
 $recurrentesVencidos = $recurrentesVencidos ?? [];
+$tarjetasPorVencer = $tarjetasPorVencer ?? [];
 $puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 $balanceCentavos = Dinero::aCentavos($balance);
 $balanceTono = $balanceCentavos < 0 ? 'out' : ($balanceCentavos > 0 ? 'in' : 'plain');
@@ -38,6 +39,10 @@ $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'val
 <?php if ($recurrentesVencidos !== []): ?>
     <?= Ui::notice(new Html('Tienes <strong>' . count($recurrentesVencidos) . (count($recurrentesVencidos) === 1 ? ' gasto o ingreso fijo pendiente' : ' gastos o ingresos fijos pendientes') . '</strong> por aplicar. <a href="/recurrentes.php">Revisar en Gastos fijos</a>.'), 'warn') ?>
 <?php endif; ?>
+
+<?php foreach ($tarjetasPorVencer as $tv): ?>
+    <?= Ui::notice(new Html('La fecha límite de pago de <strong>' . escape($tv['nombre']) . '</strong> vence ' . ($tv['dias'] === 0 ? '<strong>hoy</strong>' : 'en <strong>' . (int) $tv['dias'] . ($tv['dias'] === 1 ? ' día' : ' días') . '</strong>') . ' (deuda actual: ' . escape(Dinero::formatear($tv['deuda'])) . '). <a href="/transferencia-form.php?destino=' . (int) $tv['id'] . '">Abonar a la tarjeta</a>.'), 'warn') ?>
+<?php endforeach; ?>
 
 <?php foreach ($presupuestos as $p): ?><?= Avisos::presupuesto($p) ?><?php endforeach; ?>
 

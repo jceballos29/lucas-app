@@ -44,6 +44,10 @@ $rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompar
     if ($m->grupoSplit !== null) {
         $partesSub[] = 'Dividido';
     }
+    if ($m->numCuotas > 1) {
+        $cuotaMes = \App\Tarjetas\PlanCuotas::primeraCuota($m->monto, $m->numCuotas);
+        $partesSub[] = $m->numCuotas . ' cuotas (' . escape(Dinero::formatear($cuotaMes)) . '/mes)';
+    }
     $metaSub = $partesSub !== []
         ? '<span class="cell-sub">' . implode(' · ', $partesSub) . '</span>'
         : '';

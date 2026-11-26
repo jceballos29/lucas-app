@@ -14,14 +14,16 @@ final class CuentaValidator
     public const NOMBRE_MAX = 60;
 
     /**
-     * @param array<string, mixed> $input Normalmente $_POST (nombre, tipo, saldo_inicial).
-     * @return array{data: array{nombre: string, tipo: string, saldo_inicial: string}, errors: array<string, string>}
+     * @param array<string, mixed> $input Normalmente $_POST (nombre, tipo, saldo_inicial, dia_corte, dia_pago_limite).
+     * @return array{data: array{nombre: string, tipo: string, saldo_inicial: string, dia_corte: int|null, dia_pago_limite: int|null}, errors: array<string, string>}
      */
     public function validate(array $input): array
     {
         $nombre = trim(preg_replace('/\s+/u', ' ', self::text($input['nombre'] ?? '')) ?? '');
         $tipo = self::text($input['tipo'] ?? '');
         $saldoTexto = trim(self::text($input['saldo_inicial'] ?? ''));
+        $diaCorteTexto = trim(self::text($input['dia_corte'] ?? ''));
+        $diaPagoTexto = trim(self::text($input['dia_pago_limite'] ?? ''));
         $errors = [];
 
         $largo = mb_strlen($nombre);
@@ -41,7 +43,37 @@ final class CuentaValidator
             $errors['saldo_inicial'] = 'El saldo inicial no puede ser negativo (solo una tarjeta de crédito puede empezar debiendo).';
         }
 
-        return ['data' => ['nombre' => $nombre, 'tipo' => $tipo, 'saldo_inicial' => $saldo ?? '0.00'], 'errors' => $errors];
+        $diaCorte = null;
+        $diaPagoLimite = null;
+
+        if ($tipo === 'tarjeta_credito') {
+            if ($diaCorteTexto !== '') {
+                if (!ctype_digit($diaCorteTexto) || (int) $diaCorteTexto < 1 || (int) $diaCorteTexto > 31) {
+                    $errors['dia_corte'] = 'El día de corte debe ser un número entre 1 y 31.';
+                } else {
+                    $diaCorte = (int) $diaCorteTexto;
+                }
+            }
+
+            if ($diaPagoTexto !== '') {
+                if (!ctype_digit($diaPagoTexto) || (int) $diaPagoTexto < 1 || (int) $diaPagoTexto > 31) {
+                    $errors['dia_pago_limite'] = 'El día límite de pago debe ser un número entre 1 y 31.';
+                } else {
+                    $diaPagoLimite = (int) $diaPagoTexto;
+                }
+            }
+        }
+
+        return [
+            'data' => [
+                'nombre' => $nombre,
+                'tipo' => $tipo,
+                'saldo_inicial' => $saldo ?? '0.00',
+                'dia_corte' => $diaCorte,
+                'dia_pago_limite' => $diaPagoLimite,
+            ],
+            'errors' => $errors,
+        ];
     }
 
     private static function text(mixed $value): string

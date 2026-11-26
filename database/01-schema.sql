@@ -42,13 +42,15 @@ CREATE TABLE espacio_invitaciones (
 );
 
 CREATE TABLE cuentas (
-  id_cuenta     INT AUTO_INCREMENT PRIMARY KEY,
-  id_usuario    INT NOT NULL,
-  id_espacio    INT NULL,
-  nombre        VARCHAR(60) NOT NULL,
-  tipo          ENUM('efectivo','bancaria','tarjeta_credito','ahorro') NOT NULL,
-  saldo_inicial DECIMAL(12,2) NOT NULL DEFAULT 0,
-  activa        BOOLEAN NOT NULL DEFAULT TRUE,
+  id_cuenta       INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario      INT NOT NULL,
+  id_espacio      INT NULL,
+  nombre          VARCHAR(60) NOT NULL,
+  tipo            ENUM('efectivo','bancaria','tarjeta_credito','ahorro') NOT NULL,
+  saldo_inicial   DECIMAL(12,2) NOT NULL DEFAULT 0,
+  dia_corte       TINYINT NULL CHECK (dia_corte BETWEEN 1 AND 31),
+  dia_pago_limite TINYINT NULL CHECK (dia_pago_limite BETWEEN 1 AND 31),
+  activa          BOOLEAN NOT NULL DEFAULT TRUE,
   FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
   FOREIGN KEY (id_espacio) REFERENCES espacios(id_espacio) ON DELETE CASCADE
 );
@@ -76,6 +78,7 @@ CREATE TABLE transacciones (
   descripcion    VARCHAR(150),
   etiqueta       VARCHAR(40) NULL,
   grupo_split    CHAR(16) NULL,
+  num_cuotas     TINYINT NOT NULL DEFAULT 1 CHECK (num_cuotas BETWEEN 1 AND 36),
   creado_en      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (id_usuario)   REFERENCES usuarios(id_usuario)     ON DELETE CASCADE,
   FOREIGN KEY (id_espacio)   REFERENCES espacios(id_espacio)     ON DELETE CASCADE,
@@ -83,6 +86,20 @@ CREATE TABLE transacciones (
   FOREIGN KEY (id_categoria) REFERENCES categorias(id_categoria),
   INDEX idx_usuario_fecha (id_usuario, fecha),
   INDEX idx_trans_etiqueta (id_usuario, etiqueta)
+);
+
+CREATE TABLE cuotas_tarjeta (
+  id_cuota       INT AUTO_INCREMENT PRIMARY KEY,
+  id_transaccion INT NOT NULL,
+  id_cuenta      INT NOT NULL,
+  numero         TINYINT NOT NULL CHECK (numero BETWEEN 1 AND 36),
+  fecha_cobro    DATE NOT NULL,
+  monto_capital  DECIMAL(12,2) NOT NULL CHECK (monto_capital > 0),
+  monto_interes  DECIMAL(12,2) NOT NULL DEFAULT 0.00 CHECK (monto_interes >= 0),
+  monto_total    DECIMAL(12,2) NOT NULL CHECK (monto_total > 0),
+  FOREIGN KEY (id_transaccion) REFERENCES transacciones(id_transaccion) ON DELETE CASCADE,
+  FOREIGN KEY (id_cuenta)      REFERENCES cuentas(id_cuenta) ON DELETE CASCADE,
+  INDEX idx_cuotas_cuenta_fecha (id_cuenta, fecha_cobro)
 );
 
 CREATE TABLE presupuestos (
