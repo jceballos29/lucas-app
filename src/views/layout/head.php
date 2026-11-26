@@ -17,6 +17,8 @@ declare(strict_types=1);
     <meta name="theme-color" content="#061A24">
     <title><?= escape(($pageTitle ?? 'Inicio') . ' · Lucas') ?></title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.webmanifest">
     <?php foreach (['tokens', 'base', 'components', 'layout', 'pages'] as $layer): ?>
     <link rel="stylesheet" href="<?= escape(asset("css/$layer.css")) ?>">
     <?php endforeach; ?>

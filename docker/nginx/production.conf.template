@@ -46,6 +46,21 @@ server {
         try_files $uri $uri/ /index.php?$query_string;
     }
 
+    location = /sw.js {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri =404;
+    }
+
+    location = /manifest.webmanifest {
+        include /etc/nginx/snippets/security-headers.conf;
+        default_type application/manifest+json;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Cache-Control "public, max-age=3600" always;
+        try_files $uri =404;
+    }
+
     location ~* \.(css|js|svg|png|ico)$ {
         include /etc/nginx/snippets/security-headers.conf;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;

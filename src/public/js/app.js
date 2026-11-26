@@ -204,4 +204,11 @@
     tipoRadios.forEach(function (r) { r.addEventListener('change', syncCuotasTarjeta); });
     syncCuotasTarjeta();
   }
+
+  /* 10. Registro del Service Worker para PWA instalable (Fase 16). */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
+    });
+  }
 })();

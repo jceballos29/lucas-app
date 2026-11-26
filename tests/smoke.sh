@@ -1486,5 +1486,31 @@ request "$JTR" GET /cuentas.php
 contains "la tarjeta en Cuentas muestra la tasa mensual configurada (2 % M.V.)" "2 % M.V." "$TMP/body"
 contains "y desglosa Capital + Interés en el próximo corte" "Interés \$6.000" "$TMP/body"
 
+echo; echo "== Aplicación Web Progresiva / PWA instalable (Fase 16)"
+request "$J7" GET /login.php
+contains "el layout HTML enlaza el manifiesto PWA" 'rel="manifest" href="/manifest.webmanifest"' "$TMP/body"
+contains "el layout HTML enlaza apple-touch-icon" 'rel="apple-touch-icon" href="/icons/apple-touch-icon.png"' "$TMP/body"
+
+request "$J7" GET /manifest.webmanifest
+check "manifest.webmanifest responde 200" "200" "$CODE"
+contains "manifest.webmanifest tiene display standalone" '"display": "standalone"' "$TMP/body"
+contains "manifest.webmanifest incluye el acceso directo a Nuevo movimiento" '"/movimiento-form.php"' "$TMP/body"
+
+request "$J7" GET /sw.js
+check "sw.js responde 200" "200" "$CODE"
+check "sw.js se sirve con Cache-Control: no-cache" "Cache-Control: no-cache" "$(grep -i '^cache-control' "$TMP/hdr" | tr -d '\r')"
+contains "sw.js precachea offline.html y activos estáticos" "'/offline.html'" "$TMP/body"
+
+request "$J7" GET /offline.html
+check "offline.html responde 200" "200" "$CODE"
+contains "offline.html informa cuando no hay conexión" "Sin conexión a internet" "$TMP/body"
+
+request "$J7" GET /icons/icon-192.png
+check "el icono PWA 192x192 responde 200" "200" "$CODE"
+request "$J7" GET /icons/icon-512.png
+check "el icono PWA 512x512 responde 200" "200" "$CODE"
+request "$J7" GET /icons/icon-maskable-512.png
+check "el icono PWA maskable 512x512 responde 200" "200" "$CODE"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

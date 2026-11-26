@@ -1,0 +1,79 @@
+{
+  "name": "Lucas · Finanzas Personales",
+  "short_name": "Lucas",
+  "description": "Gestiona tus cuentas, movimientos, presupuestos, metas de ahorro y deudas de forma clara y segura.",
+  "lang": "es-CO",
+  "start_url": "/panel.php",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F4FAFD",
+  "theme_color": "#061A24",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nuevo movimiento",
+      "short_name": "Registrar",
+      "description": "Registrar un gasto o ingreso rápido",
+      "url": "/movimiento-form.php",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Movimientos",
+      "short_name": "Movimientos",
+      "description": "Ver historial de ingresos y gastos",
+      "url": "/movimientos.php",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Cuentas",
+      "short_name": "Cuentas",
+      "description": "Consultar saldos de cuentas y tarjetas",
+      "url": "/cuentas.php",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

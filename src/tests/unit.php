@@ -963,4 +963,32 @@ same('CuentaValidator valida tasa_mensual en tarjeta_credito', [215, true], [
     isset($cv15->validate(['nombre' => 'Visa', 'tipo' => 'tarjeta_credito', 'tasa_mensual' => '25'])['errors']['tasa_mensual']),
 ]);
 
+section('PWA: manifest.webmanifest, iconos y Service Worker (Fase 16)');
+$publicDir = dirname(__DIR__) . '/public';
+$manifestRaw = (string) file_get_contents($publicDir . '/manifest.webmanifest');
+$manifestJson = json_decode($manifestRaw, true);
+same('manifest.webmanifest es JSON válido con display=standalone y start_url=/panel.php', [
+    true,
+    'Lucas',
+    'standalone',
+    '/panel.php',
+    '#061A24',
+], [
+    is_array($manifestJson),
+    $manifestJson['short_name'] ?? '',
+    $manifestJson['display'] ?? '',
+    $manifestJson['start_url'] ?? '',
+    $manifestJson['theme_color'] ?? '',
+]);
+same('todos los iconos declarados en manifest.webmanifest existen en public/', true, (static function () use ($manifestJson, $publicDir): bool {
+    foreach ($manifestJson['icons'] ?? [] as $ic) {
+        if (!is_file($publicDir . ($ic['src'] ?? ''))) {
+            return false;
+        }
+    }
+    return is_file($publicDir . '/icons/apple-touch-icon.png')
+        && is_file($publicDir . '/sw.js')
+        && is_file($publicDir . '/offline.html');
+})());
+
 finish();
