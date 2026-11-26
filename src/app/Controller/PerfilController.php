@@ -65,12 +65,24 @@ final class PerfilController
                         Response::redirect('/perfil.php');
 
                     case 'resumen_prueba':
+                        // Límite anti-abuso del correo: un resumen de prueba por usuario y hora.
+                        $claveTope = sprintf('resumen-prueba:u%d:%s', $usuario->id, gmdate('YmdH'));
+
+                        if (!$this->container->notificaciones()->reservar($usuario->id, null, $claveTope)) {
+                            Flash::set('error', 'Ya te enviamos un resumen de prueba hace poco. Inténtalo de nuevo dentro de una hora.');
+                            Response::redirect('/perfil.php');
+                        }
+
                         $anterior = Mes::anterior((int) date('n'), (int) date('Y'));
 
                         try {
                             $enviado = $this->container->resumenMensual()->enviar($usuario, $anterior['mes'], $anterior['anio'], true);
                         } catch (MailException) {
                             $enviado = false;
+                        }
+
+                        if (!$enviado) {
+                            $this->container->notificaciones()->liberar($claveTope);
                         }
 
                         Flash::set($enviado ? 'ok' : 'error', $enviado
