@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Domain\Movimiento;
+use App\Support\ConversorMoneda;
+use App\Support\Dinero;
 use PDO;
 
 /**
@@ -15,7 +17,7 @@ final class MovimientoRepository
 {
     private const SELECT = 'SELECT t.id_transaccion, t.id_usuario, t.id_cuenta, t.id_categoria, t.tipo, t.monto, t.fecha, t.descripcion,
             t.etiqueta, t.grupo_split, t.num_cuotas, t.con_intereses, t.tasa_mensual_bps,
-            c.nombre AS cuenta_nombre, k.nombre AS categoria_nombre, k.color AS categoria_color, u.nombre AS autor_nombre
+            c.nombre AS cuenta_nombre, c.moneda AS cuenta_moneda, k.nombre AS categoria_nombre, k.color AS categoria_color, u.nombre AS autor_nombre
         FROM transacciones t
         JOIN cuentas c ON c.id_cuenta = t.id_cuenta
         JOIN categorias k ON k.id_categoria = t.id_categoria
@@ -82,20 +84,44 @@ final class MovimientoRepository
 
     /**
      * @param array{desde: string, hasta: string, cuenta: int, categoria: int, tipo: string} $filtros
+     * @param array<string, int> $tasas
      * @return array{ingresos: string, gastos: string}
      */
-    public function totals(int $userId, array $filtros, ?int $espacioId = null): array
+    public function totals(int $userId, array $filtros, ?int $espacioId = null, string $monedaBase = '', array $tasas = []): array
     {
         [$where, $params] = self::where($userId, $filtros, $espacioId);
+        if ($monedaBase === '') {
+            $stmt = $this->pdo->prepare(
+                "SELECT COALESCE(SUM(CASE WHEN t.tipo = 'ingreso' THEN t.monto END), 0) AS ingresos,
+                        COALESCE(SUM(CASE WHEN t.tipo = 'gasto' THEN t.monto END), 0) AS gastos
+                 FROM transacciones t" . $where
+            );
+            $stmt->execute($params);
+            $row = $stmt->fetch();
+
+            return ['ingresos' => (string) $row['ingresos'], 'gastos' => (string) $row['gastos']];
+        }
+
         $stmt = $this->pdo->prepare(
-            "SELECT COALESCE(SUM(CASE WHEN t.tipo = 'ingreso' THEN t.monto END), 0) AS ingresos,
+            "SELECT c.moneda,
+                    COALESCE(SUM(CASE WHEN t.tipo = 'ingreso' THEN t.monto END), 0) AS ingresos,
                     COALESCE(SUM(CASE WHEN t.tipo = 'gasto' THEN t.monto END), 0) AS gastos
-             FROM transacciones t" . $where
+             FROM transacciones t
+             JOIN cuentas c ON c.id_cuenta = t.id_cuenta" . $where . ' GROUP BY c.moneda'
         );
         $stmt->execute($params);
-        $row = $stmt->fetch();
 
-        return ['ingresos' => (string) $row['ingresos'], 'gastos' => (string) $row['gastos']];
+        $ingresos = [];
+        $gastos = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $monedaCuenta = is_string($r['moneda'] ?? null) && $r['moneda'] !== '' ? $r['moneda'] : $monedaBase;
+            $ing = (string) $r['ingresos'];
+            $gas = (string) $r['gastos'];
+            $ingresos[] = ConversorMoneda::convertir($ing, $monedaCuenta, $monedaBase, $tasas) ?? $ing;
+            $gastos[] = ConversorMoneda::convertir($gas, $monedaCuenta, $monedaBase, $tasas) ?? $gas;
+        }
+
+        return ['ingresos' => Dinero::sumar($ingresos), 'gastos' => Dinero::sumar($gastos)];
     }
 
     public function findOwned(int $userId, int $id, ?int $espacioId = null): ?Movimiento

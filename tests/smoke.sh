@@ -1537,5 +1537,54 @@ check "la sesión remota cerrada es expulsada de inmediato con msg=revoked" "302
 request "$JSES1" GET /panel.php
 check "la sesión actual sigue abierta y funcionando (200)" "200" "$CODE"
 
+echo; echo "== Multimoneda por cuenta, transferencias multimoneda y conversión en reportes/presupuestos (Fase 18)"
+JMU="$(new_jar)"; UMU="smoke_${RUN}_multi@correo.com"; register "$JMU" "$UMU" "$P"
+UMUID="$(uid "$UMU")"
+post_form "$JMU" /cuenta-form.php /cuenta-form.php "nombre=Banco Local" "tipo=bancaria" "saldo_inicial=1.000.000"
+post_form "$JMU" /cuenta-form.php /cuenta-form.php "nombre=Cuenta Dolar" "tipo=ahorro" "moneda=USD" "saldo_inicial=500"
+CMU_COP="$(sql "SELECT id_cuenta FROM cuentas WHERE id_usuario=$UMUID AND nombre='Banco Local'")"
+CMU_USD="$(sql "SELECT id_cuenta FROM cuentas WHERE id_usuario=$UMUID AND nombre='Cuenta Dolar'")"
+check "la cuenta en dólares guardó moneda=USD" "USD" "$(sql "SELECT moneda FROM cuentas WHERE id_cuenta=$CMU_USD")"
+
+request "$JMU" GET /cuentas.php
+contains "muestra el saldo en dólares con símbolo US\$" 'US$500' "$TMP/body"
+contains "avisa que falta la tasa de cambio para consolidar USD" "sin tasa de cambio hacia" "$TMP/body"
+
+post_form "$JMU" /cuentas.php /cuentas.php "accion=guardar_tasa" "moneda_origen=USD" "moneda_destino=COP" "tasa=4.000"
+check "guardar tasa USD->COP redirige a cuentas#tasas-cambio" "302 /cuentas.php#tasas-cambio" "$CODE $LOC"
+request "$JMU" GET /cuentas.php
+contains "muestra el patrimonio neto consolidado (1.000.000 + 500*4.000 = 3.000.000)" '$3.000.000' "$TMP/body"
+contains "muestra la equivalencia aproximada en la tarjeta de Cuenta Dolar" '≈ $2.000.000 COP' "$TMP/body"
+contains "muestra la tasa guardada en la tabla de tasas" "1 USD = 4.000 COP" "$TMP/body"
+
+request "$JMU" GET /panel.php
+contains "el panel principal también consolida el saldo total en \$3.000.000" '$3.000.000' "$TMP/body"
+
+# Transferencia multimoneda de 100 USD a Banco Local con monto destino explícito de 410.000 COP
+post_form "$JMU" /transferencia-form.php /transferencia-form.php \
+  "id_cuenta_origen=$CMU_USD" "id_cuenta_destino=$CMU_COP" "monto=100" "monto_destino=410.000" "fecha=$HOY_APP" "descripcion=Cambio divisas"
+check "registrar transferencia multimoneda redirige al listado" "302 /transferencias.php" "$CODE $LOC"
+request "$JMU" GET /transferencias.php
+contains "muestra el monto origen en dólares" 'US$100' "$TMP/body"
+contains "y el monto recibido convertido en destino" '→ $410.000' "$TMP/body"
+request "$JMU" GET /cuentas.php
+contains "Cuenta Dolar bajó a US\$400" 'US$400' "$TMP/body"
+contains "y Banco Local subió a \$1.410.000" '$1.410.000' "$TMP/body"
+
+# Conversión al vuelo en presupuestos y reportes: presupuesto 500.000 COP y gasto de 100 USD (= 400.000 COP = 80 %)
+MES_HOY="$(date +%m | sed 's/^0//')"
+ANIO_HOY="$(date +%Y)"
+post_form "$JMU" /presupuesto-form.php /presupuesto-form.php "id_categoria=$KG" "mes=$MES_HOY" "anio=$ANIO_HOY" "monto_limite=500.000"
+post_form "$JMU" /movimiento-form.php /movimiento-form.php \
+  "tipo=gasto" "monto=100" "fecha=$HOY_APP" "id_cuenta=$CMU_USD" "id_categoria=$KG" "descripcion=Compra en dolares"
+check "registrar gasto en dólares redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
+request "$JMU" GET /movimientos.php
+contains "dispara el aviso de presupuesto al 80 % convirtiendo 100 USD a \$400.000" '80 %' "$TMP/body"
+contains "y muestra el movimiento en su moneda original US\$100" 'US$100' "$TMP/body"
+request "$JMU" GET "/presupuestos.php?mes=$MES_HOY&anio=$ANIO_HOY"
+contains "presupuestos muestra \$400.000 de \$500.000 convertidos al vuelo" '$400.000 de $500.000' "$TMP/body"
+request "$JMU" GET "/reportes.php?mes=$MES_HOY&anio=$ANIO_HOY"
+contains "reportes muestra \$400.000 convertidos al vuelo" '$400.000' "$TMP/body"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

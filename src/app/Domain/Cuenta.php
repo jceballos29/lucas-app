@@ -29,6 +29,7 @@ final class Cuenta
         public readonly ?int $diaCorte = null,
         public readonly ?int $diaPagoLimite = null,
         public readonly int $tasaMensualBps = 0,
+        public readonly ?string $moneda = null,
     ) {
     }
 
@@ -46,7 +47,14 @@ final class Cuenta
             isset($row['dia_corte']) && $row['dia_corte'] !== null ? (int) $row['dia_corte'] : null,
             isset($row['dia_pago_limite']) && $row['dia_pago_limite'] !== null ? (int) $row['dia_pago_limite'] : null,
             isset($row['tasa_mensual_bps']) ? (int) $row['tasa_mensual_bps'] : 0,
+            isset($row['moneda']) && is_string($row['moneda']) && $row['moneda'] !== '' ? $row['moneda'] : null,
         );
+    }
+
+    /** Código ISO de la moneda de esta cuenta (si es null, hereda la moneda base activa). */
+    public function monedaEfectiva(?string $monedaBase = null): string
+    {
+        return $this->moneda ?? $monedaBase ?? \App\Support\Dinero::monedaActual();
     }
 
     public function tasaTexto(): string

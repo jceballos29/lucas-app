@@ -40,11 +40,13 @@ final class TransferenciaController
             }
 
             $repo = $this->container->transferencias();
+            $monedaBase = Dinero::monedaActual();
+            $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
             $total = $repo->countByUser($user['id'], $espacioId);
             $paginas = max(1, (int) ceil($total / self::POR_PAGINA));
             $pagina = min($paginas, self::page($_GET['pagina'] ?? 1));
             $filas = $repo->listByUser($user['id'], self::POR_PAGINA, ($pagina - 1) * self::POR_PAGINA, $espacioId);
-            $montoTotal = $repo->totalByUser($user['id'], $espacioId);
+            $montoTotal = $repo->totalByUser($user['id'], $espacioId, $monedaBase, $tasas);
             $cuentasActivas = array_values(array_filter(
                 $this->container->cuentas()->listByUser($user['id'], $espacioId),
                 static fn (Cuenta $c): bool => $c->activa
@@ -91,6 +93,8 @@ final class TransferenciaController
                     'id_cuenta_origen' => (string) (self::id($_GET['origen'] ?? '') ?: ''),
                     'id_cuenta_destino' => (string) (self::id($_GET['destino'] ?? '') ?: ''),
                     'monto' => '',
+                    'monto_destino' => '',
+                    'tasa_cambio' => '',
                     'fecha' => date('Y-m-d'),
                     'descripcion' => '',
                 ]
@@ -98,6 +102,8 @@ final class TransferenciaController
                     'id_cuenta_origen' => (string) $transferencia->idCuentaOrigen,
                     'id_cuenta_destino' => (string) $transferencia->idCuentaDestino,
                     'monto' => Dinero::paraCampo($transferencia->monto),
+                    'monto_destino' => $transferencia->montoDestino !== null ? Dinero::paraCampo($transferencia->montoDestino) : '',
+                    'tasa_cambio' => '',
                     'fecha' => $transferencia->fecha,
                     'descripcion' => $transferencia->descripcion ?? '',
                 ];
@@ -113,6 +119,8 @@ final class TransferenciaController
                     'id_cuenta_origen' => (string) ($data['id_cuenta_origen'] ?: ''),
                     'id_cuenta_destino' => (string) ($data['id_cuenta_destino'] ?: ''),
                     'monto' => is_string($_POST['monto'] ?? null) ? trim($_POST['monto']) : '',
+                    'monto_destino' => is_string($_POST['monto_destino'] ?? null) ? trim($_POST['monto_destino']) : '',
+                    'tasa_cambio' => is_string($_POST['tasa_cambio'] ?? null) ? trim($_POST['tasa_cambio']) : '',
                     'fecha' => is_string($_POST['fecha'] ?? null) ? trim($_POST['fecha']) : '',
                     'descripcion' => $data['descripcion'] ?? '',
                 ];
@@ -122,9 +130,14 @@ final class TransferenciaController
 
                     switch ($saved['codigo']) {
                         case ReglasTransferencia::OK:
-                            $mensaje = $transferencia === null
-                                ? 'Se transfirieron ' . Dinero::formatear($data['monto']) . " de «{$saved['origen']}» a «{$saved['destino']}»."
-                                : 'Se guardaron los cambios de la transferencia.';
+                            if ($transferencia === null) {
+                                $montoTxt = ($saved['monto_destino'] ?? null) !== null
+                                    ? Dinero::formatearEn($data['monto'], $saved['moneda_origen'] ?? null) . ' → ' . Dinero::formatearEn((string) $saved['monto_destino'], $saved['moneda_destino'] ?? null)
+                                    : Dinero::formatearEn($data['monto'], $saved['moneda_origen'] ?? null);
+                                $mensaje = "Se transfirieron $montoTxt de «{$saved['origen']}» a «{$saved['destino']}».";
+                            } else {
+                                $mensaje = 'Se guardaron los cambios de la transferencia.';
+                            }
                             Flash::set('ok', $mensaje);
                             Response::redirect('/transferencias.php');
 
@@ -141,8 +154,14 @@ final class TransferenciaController
                             break;
 
                         case ReglasTransferencia::SALDO_INSUFICIENTE:
-                            $disponible = Dinero::formatear((string) ($saved['saldo'] ?? '0.00'));
+                            $disponible = Dinero::formatearEn((string) ($saved['saldo'] ?? '0.00'), $saved['moneda_origen'] ?? null);
                             $errors['monto'] = "La cuenta «{$saved['origen']}» tiene $disponible disponibles: no alcanza para realizar esta operación sin dejarla en negativo.";
+                            break;
+
+                        case ReglasTransferencia::FALTA_CONVERSION:
+                            $mOrig = (string) ($saved['moneda_origen'] ?? '');
+                            $mDest = (string) ($saved['moneda_destino'] ?? '');
+                            $errors['monto_destino'] = "Las cuentas usan monedas distintas ($mOrig → $mDest). Escribe el monto que llega en $mDest, indica la tasa aplicada o registra una tasa de referencia en Cuentas.";
                             break;
 
                         default:
@@ -157,6 +176,7 @@ final class TransferenciaController
                     || (string) $c->id === $old['id_cuenta_origen']
                     || (string) $c->id === $old['id_cuenta_destino']
             ));
+            $tasasMapa = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -166,6 +186,8 @@ final class TransferenciaController
             'old' => $old,
             'errors' => $errors,
             'cuentas' => $cuentas,
+            'tasasMapa' => $tasasMapa,
+            'monedaBase' => Dinero::monedaActual(),
         ], $transferencia === null ? 'Nueva transferencia' : 'Editar transferencia', $user, 'app', 'transferencias');
     }
 

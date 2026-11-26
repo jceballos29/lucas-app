@@ -29,6 +29,10 @@ $rows = array_map(static function (Transferencia $t) use ($pagina, $enEspacioCom
         ? '<span class="cell-sub">Por ' . escape($t->autorNombre) . '</span>'
         : '';
 
+    $montoCelda = ($t->montoDestino !== null && $t->esMultimoneda())
+        ? new Html('<div>' . Ui::money($t->monto, 'plain', $t->cuentaOrigenMoneda) . '<span class="cell-sub">→ ' . escape(Dinero::formatearEn($t->montoDestino, $t->cuentaDestinoMoneda)) . '</span></div>')
+        : Ui::money($t->monto, 'plain', $t->cuentaOrigenMoneda);
+
     return [
         'fecha' => Fecha::simple($t->fecha),
         'origen' => $t->cuentaOrigenNombre,
@@ -36,14 +40,14 @@ $rows = array_map(static function (Transferencia $t) use ($pagina, $enEspacioCom
         'descripcion' => $t->descripcion !== null
             ? new Html('<span class="cell-title">' . escape($t->descripcion) . '</span>' . $autorSub)
             : new Html('<span class="muted-note">Transferencia entre cuentas</span>' . $autorSub),
-        'monto' => Ui::money($t->monto),
+        'monto' => $montoCelda,
         'acciones' => $puedeEscribir ? Ui::actions([
             Ui::iconButton('edit', 'Editar transferencia ' . $etiqueta, ['href' => '/transferencia-form.php?id=' . $t->id]),
             Ui::postForm('/transferencias.php', ['id' => $t->id, 'accion' => 'eliminar', 'pagina' => $pagina], Ui::iconButton('trash', 'Eliminar transferencia ' . $etiqueta, [
                 'type' => 'submit',
                 'tone' => 'danger',
                 'attrs' => [
-                    'data-confirm' => '¿Eliminar la transferencia de ' . Dinero::formatear($t->monto) . ' de «' . $t->cuentaOrigenNombre . '» a «' . $t->cuentaDestinoNombre . '»? El dinero volverá a la cuenta de origen.',
+                    'data-confirm' => '¿Eliminar la transferencia de ' . Dinero::formatearEn($t->monto, $t->cuentaOrigenMoneda) . ' de «' . $t->cuentaOrigenNombre . '» a «' . $t->cuentaDestinoNombre . '»? El dinero volverá a la cuenta de origen.',
                     'data-confirm-ok' => 'Eliminar',
                 ],
             ])),

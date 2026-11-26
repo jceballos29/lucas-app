@@ -29,7 +29,7 @@ $splitAbierto = isset($errors['split']) || array_filter($splitOld, static fn (ar
 $opcionesCuenta = [];
 $atributosCuenta = [];
 foreach ($cuentas as $c) {
-    $opcionesCuenta[(string) $c->id] = $c->nombre . ($c->activa ? '' : ' (inactiva)') . ' · ' . \App\Support\Dinero::formatear($c->saldo);
+    $opcionesCuenta[(string) $c->id] = $c->nombre . ($c->activa ? '' : ' (inactiva)') . ' · ' . \App\Support\Dinero::formatearEn($c->saldo, $c->moneda);
     $atributosCuenta[(string) $c->id] = ['data-cuenta-tipo' => $c->tipo];
 }
 $opcionesCategoria = [];

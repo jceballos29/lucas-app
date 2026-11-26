@@ -31,7 +31,7 @@ foreach ($categorias as $k) {
 <?= Ui::cardOpen(['class' => 'form-card']) ?>
     <div class="goal__body">
         <div class="goal__amount">
-            <small>Saldo actual calculado en Lucas:</small> <?= escape(Dinero::formatear($cuenta->saldo)) ?>
+            <small>Saldo actual calculado en Lucas:</small> <?= escape(Dinero::formatearEn($cuenta->saldo, $cuenta->moneda)) ?>
         </div>
     </div>
 <?= Ui::cardClose() ?>

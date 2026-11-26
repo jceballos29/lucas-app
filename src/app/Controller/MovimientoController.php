@@ -32,11 +32,13 @@ final class MovimientoController
 
         try {
             $repo = $this->container->movimientos();
+            $monedaBase = Dinero::monedaActual();
+            $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
             $total = $repo->count($user['id'], $filtros, $espacioId);
             $paginas = max(1, (int) ceil($total / Filtros::POR_PAGINA));
             $pagina = min($paginas, self::page($_GET['pagina'] ?? 1));
             $filas = $repo->search($user['id'], $filtros, Filtros::POR_PAGINA, ($pagina - 1) * Filtros::POR_PAGINA, $espacioId);
-            $totales = $repo->totals($user['id'], $filtros, $espacioId);
+            $totales = $repo->totals($user['id'], $filtros, $espacioId, $monedaBase, $tasas);
             $etiquetas = $repo->listEtiquetas($user['id'], $espacioId);
             $cuentas = $this->container->cuentas()->listByUser($user['id'], $espacioId);
             $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
@@ -408,7 +410,12 @@ final class MovimientoController
     private function avisoPresupuesto(int $userId, int $categoriaId, string $fecha, ?int $espacioId = null): ?string
     {
         $mes = Mes::deFecha($fecha);
-        $presupuesto = $mes === null ? null : $this->container->presupuestos()->findForCategory($userId, $categoriaId, $mes['mes'], $mes['anio'], $espacioId);
+        if ($mes === null) {
+            return null;
+        }
+        $monedaBase = Dinero::monedaActual();
+        $tasas = $this->container->tasasCambio()->listMap($userId, $espacioId);
+        $presupuesto = $this->container->presupuestos()->findForCategory($userId, $categoriaId, $mes['mes'], $mes['anio'], $espacioId, $monedaBase, $tasas);
 
         if ($presupuesto === null) {
             return null;

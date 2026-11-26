@@ -48,9 +48,9 @@ $rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompar
         $cuotaMes = \App\Tarjetas\PlanCuotas::primeraCuota($m->monto, $m->numCuotas, $m->conIntereses, $m->tasaMensualBps);
         $interesTot = \App\Tarjetas\PlanCuotas::interesTotalCompra($m->monto, $m->numCuotas, $m->conIntereses, $m->tasaMensualBps);
         $txtInteres = ($m->conIntereses && Dinero::aCentavos($interesTot) > 0)
-            ? ' · Con interés (+' . escape(Dinero::formatear($interesTot)) . ' total)'
+            ? ' · Con interés (+' . escape(Dinero::formatearEn($interesTot, $m->cuentaMoneda)) . ' total)'
             : ' · Sin interés (0 %)';
-        $partesSub[] = $m->numCuotas . ' cuotas (' . escape(Dinero::formatear($cuotaMes)) . '/mes)' . $txtInteres;
+        $partesSub[] = $m->numCuotas . ' cuotas (' . escape(Dinero::formatearEn($cuotaMes, $m->cuentaMoneda)) . '/mes)' . $txtInteres;
     }
     $metaSub = $partesSub !== []
         ? '<span class="cell-sub">' . implode(' · ', $partesSub) . '</span>'
@@ -62,14 +62,14 @@ $rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompar
             ? new Html('<span class="cell-title">' . escape($m->descripcion) . '</span>' . $metaSub)
             : new Html('<span class="muted-note">Sin descripción</span>' . $metaSub),
         'categoria' => Ui::badge($m->categoriaNombre),
-        'cuenta' => $m->cuentaNombre,
-        'monto' => Ui::money($m->monto, $m->esIngreso() ? 'in' : 'out'),
+        'cuenta' => $m->cuentaNombre . ($m->cuentaMoneda !== null && $m->cuentaMoneda !== Dinero::monedaActual() ? ' (' . $m->cuentaMoneda . ')' : ''),
+        'monto' => Ui::money($m->monto, $m->esIngreso() ? 'in' : 'out', $m->cuentaMoneda),
         'acciones' => $puedeEscribir ? Ui::actions([
             Ui::iconButton('edit', 'Editar ' . $nombre, ['href' => '/movimiento-form.php?id=' . $m->id]),
             Ui::postForm('/movimiento-eliminar.php', ['id' => $m->id, 'volver' => $volver], Ui::iconButton('trash', 'Eliminar ' . $nombre, [
                 'type' => 'submit',
                 'tone' => 'danger',
-                'attrs' => ['data-confirm' => '¿Eliminar el movimiento «' . $nombre . '» de ' . Dinero::formatear($m->monto) . '? Esta acción no se puede deshacer.', 'data-confirm-ok' => 'Eliminar'],
+                'attrs' => ['data-confirm' => '¿Eliminar el movimiento «' . $nombre . '» de ' . Dinero::formatearEn($m->monto, $m->cuentaMoneda) . '? Esta acción no se puede deshacer.', 'data-confirm-ok' => 'Eliminar'],
             ])),
         ]) : new Html('<span class="muted-note">Solo lectura</span>'),
     ];

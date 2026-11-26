@@ -10,8 +10,19 @@ namespace App\Support;
  */
 final class Dinero
 {
-    /** Monedas que ofrece el perfil (RF-03) y su símbolo. Es solo cómo se MUESTRAN los montos: la aplicación no convierte entre monedas. */
+    /** Monedas soportadas por perfil, espacios y cuentas (RF-03, Fase 18) con su símbolo. */
     public const MONEDAS = ['COP' => '$', 'USD' => 'US$', 'EUR' => '€', 'MXN' => 'MX$'];
+
+    /** Etiquetas descriptivas de las monedas soportadas para selectores de formulario. */
+    public const MONEDAS_NOMBRES = [
+        'COP' => 'COP · Peso colombiano ($)',
+        'USD' => 'USD · Dólar estadounidense (US$)',
+        'EUR' => 'EUR · Euro (€)',
+        'MXN' => 'MXN · Peso mexicano (MX$)',
+    ];
+
+    /** Moneda base de esta petición (la del perfil del usuario o del espacio compartido activo). */
+    private static string $moneda = 'COP';
 
     /** El símbolo con el que se muestra el dinero en esta petición (el de la moneda del usuario). */
     private static string $simbolo = '$';
@@ -19,15 +30,32 @@ final class Dinero
     /** Máximo de un DECIMAL(12,2): 9.999.999.999,99 (en centavos). */
     public const MAX_CENTAVOS = 999_999_999_999;
 
-    /** Fija la moneda con la que se muestran los montos en ESTA petición (la sesión lo hace con la del usuario). Una desconocida cae a «$». */
+    /** Fija la moneda con la que se muestran los montos en ESTA petición (la sesión lo hace con la del usuario). Una desconocida cae a COP («$»). */
     public static function usarMoneda(string $codigo): void
     {
-        self::$simbolo = self::MONEDAS[$codigo] ?? '$';
+        if (isset(self::MONEDAS[$codigo])) {
+            self::$moneda = $codigo;
+            self::$simbolo = self::MONEDAS[$codigo];
+        } else {
+            self::$moneda = 'COP';
+            self::$simbolo = '$';
+        }
+    }
+
+    public static function monedaActual(): string
+    {
+        return self::$moneda;
     }
 
     public static function simbolo(): string
     {
         return self::$simbolo;
+    }
+
+    /** Símbolo de una moneda concreta, o el símbolo activo si `$codigo` es null o desconocido. */
+    public static function simboloDe(?string $codigo): string
+    {
+        return $codigo !== null && isset(self::MONEDAS[$codigo]) ? self::MONEDAS[$codigo] : self::$simbolo;
     }
 
     /**
@@ -96,12 +124,19 @@ final class Dinero
         return self::deCentavos(array_sum(array_map([self::class, 'aCentavos'], $montos)));
     }
 
-    /** Para mostrar: «$1.950.000», «−$80.000», «$1.250,50» (los decimales solo si los hay). */
+    /** Para mostrar en la moneda activa: «$1.950.000», «−$80.000», «$1.250,50» (los decimales solo si los hay). */
     public static function formatear(string $monto): string
     {
+        return self::formatearEn($monto, null);
+    }
+
+    /** Para mostrar en una moneda específica (`'USD'`, `'EUR'`, `'COP'`, `'MXN'`) o en la activa si es null. */
+    public static function formatearEn(string $monto, ?string $codigo = null): string
+    {
+        $simbolo = self::simboloDe($codigo);
         $centavos = self::aCentavos($monto);
         $abs = abs($centavos);
-        $texto = self::$simbolo . number_format(intdiv($abs, 100), 0, ',', '.') . ($abs % 100 !== 0 ? ',' . str_pad((string) ($abs % 100), 2, '0', STR_PAD_LEFT) : '');
+        $texto = $simbolo . number_format(intdiv($abs, 100), 0, ',', '.') . ($abs % 100 !== 0 ? ',' . str_pad((string) ($abs % 100), 2, '0', STR_PAD_LEFT) : '');
 
         return ($centavos < 0 ? '−' : '') . $texto;
     }

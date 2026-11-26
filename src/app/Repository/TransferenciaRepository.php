@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Domain\Transferencia;
+use App\Support\ConversorMoneda;
+use App\Support\Dinero;
 use PDO;
 
 /**
@@ -13,8 +15,10 @@ use PDO;
 final class TransferenciaRepository
 {
     private const SELECT = 'SELECT tr.id_transferencia, tr.id_usuario, tr.id_cuenta_origen, tr.id_cuenta_destino,
-            tr.monto, tr.fecha, tr.descripcion,
-            co.nombre AS cuenta_origen_nombre, cd.nombre AS cuenta_destino_nombre, u.nombre AS autor_nombre
+            tr.monto, tr.monto_destino, tr.fecha, tr.descripcion,
+            co.nombre AS cuenta_origen_nombre, co.moneda AS cuenta_origen_moneda,
+            cd.nombre AS cuenta_destino_nombre, cd.moneda AS cuenta_destino_moneda,
+            u.nombre AS autor_nombre
         FROM transferencias tr
         JOIN cuentas co ON co.id_cuenta = tr.id_cuenta_origen
         JOIN cuentas cd ON cd.id_cuenta = tr.id_cuenta_destino
@@ -52,13 +56,35 @@ final class TransferenciaRepository
         return (int) $stmt->fetchColumn();
     }
 
-    public function totalByUser(int $userId, ?int $espacioId = null): string
+    /** @param array<string, int> $tasas */
+    public function totalByUser(int $userId, ?int $espacioId = null, string $monedaBase = '', array $tasas = []): string
     {
-        [$scope, $params] = self::scope($userId, $espacioId);
-        $stmt = $this->pdo->prepare("SELECT COALESCE(SUM(monto), 0) FROM transferencias WHERE $scope");
+        if ($monedaBase === '') {
+            [$scope, $params] = self::scope($userId, $espacioId);
+            $stmt = $this->pdo->prepare("SELECT COALESCE(SUM(monto), 0) FROM transferencias WHERE $scope");
+            $stmt->execute($params);
+
+            return (string) $stmt->fetchColumn();
+        }
+
+        [$scope, $params] = self::scope($userId, $espacioId, 'tr');
+        $stmt = $this->pdo->prepare(
+            "SELECT co.moneda, COALESCE(SUM(tr.monto), 0) AS total
+             FROM transferencias tr
+             JOIN cuentas co ON co.id_cuenta = tr.id_cuenta_origen
+             WHERE $scope
+             GROUP BY co.moneda"
+        );
         $stmt->execute($params);
 
-        return (string) $stmt->fetchColumn();
+        $partes = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $monedaCuenta = is_string($r['moneda'] ?? null) && $r['moneda'] !== '' ? $r['moneda'] : $monedaBase;
+            $sub = (string) $r['total'];
+            $partes[] = ConversorMoneda::convertir($sub, $monedaCuenta, $monedaBase, $tasas) ?? $sub;
+        }
+
+        return Dinero::sumar($partes);
     }
 
     public function findOwned(int $userId, int $id, ?int $espacioId = null): ?Transferencia
@@ -71,11 +97,11 @@ final class TransferenciaRepository
         return $row === false ? null : Transferencia::fromRow($row);
     }
 
-    public function insert(int $userId, int $origenId, int $destinoId, string $monto, string $fecha, ?string $descripcion, ?int $espacioId = null): int
+    public function insert(int $userId, int $origenId, int $destinoId, string $monto, string $fecha, ?string $descripcion, ?int $espacioId = null, ?string $montoDestino = null): int
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO transferencias (id_usuario, id_espacio, id_cuenta_origen, id_cuenta_destino, monto, fecha, descripcion)
-             VALUES (:u, :e, :origen, :destino, :monto, :fecha, :desc)'
+            'INSERT INTO transferencias (id_usuario, id_espacio, id_cuenta_origen, id_cuenta_destino, monto, monto_destino, fecha, descripcion)
+             VALUES (:u, :e, :origen, :destino, :monto, :monto_destino, :fecha, :desc)'
         );
         $stmt->execute([
             'u' => $userId,
@@ -83,6 +109,7 @@ final class TransferenciaRepository
             'origen' => $origenId,
             'destino' => $destinoId,
             'monto' => $monto,
+            'monto_destino' => $montoDestino,
             'fecha' => $fecha,
             'desc' => $descripcion,
         ]);
@@ -90,18 +117,19 @@ final class TransferenciaRepository
         return (int) $this->pdo->lastInsertId();
     }
 
-    public function update(int $userId, int $id, int $origenId, int $destinoId, string $monto, string $fecha, ?string $descripcion, ?int $espacioId = null): bool
+    public function update(int $userId, int $id, int $origenId, int $destinoId, string $monto, string $fecha, ?string $descripcion, ?int $espacioId = null, ?string $montoDestino = null): bool
     {
         [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
             "UPDATE transferencias
-             SET id_cuenta_origen = :origen, id_cuenta_destino = :destino, monto = :monto, fecha = :fecha, descripcion = :desc
+             SET id_cuenta_origen = :origen, id_cuenta_destino = :destino, monto = :monto, monto_destino = :monto_destino, fecha = :fecha, descripcion = :desc
              WHERE id_transferencia = :id AND $scope"
         );
         $stmt->execute($params + [
             'origen' => $origenId,
             'destino' => $destinoId,
             'monto' => $monto,
+            'monto_destino' => $montoDestino,
             'fecha' => $fecha,
             'desc' => $descripcion,
             'id' => $id,

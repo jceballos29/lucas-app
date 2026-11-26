@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domain\Cuenta;
+use App\Support\Dinero;
 use App\View\Ui;
 
 /**
@@ -21,7 +22,10 @@ $editando = $cuenta !== null;
         <?= csrf_field() ?>
         <?php if ($editando): ?><input type="hidden" name="id" value="<?= (int) $cuenta->id ?>"><?php endif; ?>
         <?= Ui::field(['id' => 'nombre', 'label' => 'Nombre', 'value' => $old['nombre'], 'placeholder' => 'Ej.: Bancolombia ahorros', 'required' => true, 'error' => $errors['nombre'] ?? null, 'attrs' => ['maxlength' => '60']]) ?>
-        <?= Ui::select(['id' => 'tipo', 'label' => 'Tipo', 'options' => Cuenta::TIPOS, 'selected' => $old['tipo'], 'error' => $errors['tipo'] ?? null]) ?>
+        <div class="form-grid">
+            <?= Ui::select(['id' => 'tipo', 'label' => 'Tipo', 'options' => Cuenta::TIPOS, 'selected' => $old['tipo'], 'error' => $errors['tipo'] ?? null]) ?>
+            <?= Ui::select(['id' => 'moneda', 'label' => 'Moneda de la cuenta', 'blank' => 'Moneda principal (' . Dinero::monedaActual() . ')', 'options' => Dinero::MONEDAS_NOMBRES, 'selected' => $old['moneda'] ?? '', 'error' => $errors['moneda'] ?? null]) ?>
+        </div>
         <?= Ui::field(['id' => 'saldo_inicial', 'label' => 'Saldo inicial', 'size' => 'lg', 'value' => $old['saldo_inicial'], 'placeholder' => '$ 0', 'hint' => 'Lo que tienes hoy en esta cuenta. Opcional. Una tarjeta de crédito puede empezar en negativo (lo que debes).', 'error' => $errors['saldo_inicial'] ?? null, 'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off', 'data-money' => 'signed']]) ?>
         <div id="campos-tarjeta">
             <div class="form-grid">

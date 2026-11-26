@@ -21,6 +21,7 @@ final class CuentaValidator
     {
         $nombre = trim(preg_replace('/\s+/u', ' ', self::text($input['nombre'] ?? '')) ?? '');
         $tipo = self::text($input['tipo'] ?? '');
+        $monedaTexto = strtoupper(trim(self::text($input['moneda'] ?? '')));
         $saldoTexto = trim(self::text($input['saldo_inicial'] ?? ''));
         $diaCorteTexto = trim(self::text($input['dia_corte'] ?? ''));
         $diaPagoTexto = trim(self::text($input['dia_pago_limite'] ?? ''));
@@ -34,6 +35,15 @@ final class CuentaValidator
 
         if (!array_key_exists($tipo, Cuenta::TIPOS)) {
             $errors['tipo'] = 'Elige el tipo de cuenta.';
+        }
+
+        $moneda = null;
+        if ($monedaTexto !== '') {
+            if (!array_key_exists($monedaTexto, Dinero::MONEDAS)) {
+                $errors['moneda'] = 'Elige una moneda válida (COP, USD, EUR o MXN).';
+            } else {
+                $moneda = $monedaTexto;
+            }
         }
 
         // Vacío = 0. Solo una tarjeta de crédito puede empezar en negativo (lo que se debe).
@@ -79,6 +89,7 @@ final class CuentaValidator
             'data' => [
                 'nombre' => $nombre,
                 'tipo' => $tipo,
+                'moneda' => $moneda,
                 'saldo_inicial' => $saldo ?? '0.00',
                 'dia_corte' => $diaCorte,
                 'dia_pago_limite' => $diaPagoLimite,

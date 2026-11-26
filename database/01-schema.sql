@@ -47,6 +47,7 @@ CREATE TABLE cuentas (
   id_espacio       INT NULL,
   nombre           VARCHAR(60) NOT NULL,
   tipo             ENUM('efectivo','bancaria','tarjeta_credito','ahorro') NOT NULL,
+  moneda           CHAR(3) NULL,
   saldo_inicial    DECIMAL(12,2) NOT NULL DEFAULT 0,
   dia_corte        TINYINT NULL CHECK (dia_corte BETWEEN 1 AND 31),
   dia_pago_limite  TINYINT NULL CHECK (dia_pago_limite BETWEEN 1 AND 31),
@@ -180,6 +181,7 @@ CREATE TABLE transferencias (
   id_cuenta_origen  INT NOT NULL,
   id_cuenta_destino INT NOT NULL,
   monto             DECIMAL(12,2) NOT NULL CHECK (monto > 0),
+  monto_destino     DECIMAL(12,2) NULL CHECK (monto_destino > 0),
   fecha             DATE NOT NULL,
   descripcion       VARCHAR(150),
   creado_en         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -189,6 +191,20 @@ CREATE TABLE transferencias (
   FOREIGN KEY (id_cuenta_origen)  REFERENCES cuentas(id_cuenta),
   FOREIGN KEY (id_cuenta_destino) REFERENCES cuentas(id_cuenta),
   INDEX idx_transf_usuario_fecha (id_usuario, fecha)
+);
+
+CREATE TABLE tasas_cambio (
+  id_tasa        INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario     INT NOT NULL,
+  id_espacio     INT NULL,
+  moneda_origen  CHAR(3) NOT NULL,
+  moneda_destino CHAR(3) NOT NULL,
+  tasa_micros    BIGINT UNSIGNED NOT NULL CHECK (tasa_micros > 0),
+  actualizado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CHECK (moneda_origen <> moneda_destino),
+  INDEX idx_tasa_ambito (id_usuario, id_espacio, moneda_origen, moneda_destino),
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+  FOREIGN KEY (id_espacio) REFERENCES espacios(id_espacio) ON DELETE CASCADE
 );
 
 CREATE TABLE movimientos_recurrentes (

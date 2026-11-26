@@ -9,6 +9,7 @@ use App\Domain\Cuenta;
 use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Response;
+use App\Support\ConversorMoneda;
 use App\Support\Dinero;
 use App\Validation\CuentaValidator;
 use App\View\View;
@@ -31,10 +32,13 @@ final class CuentaController
 
             if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 require_espacio_write($user);
-                $this->toggle($user['id'], $espacioId);
+                $this->procesarPost($user['id'], $espacioId);
             }
 
             $lista = $cuentas->listByUser($user['id'], $espacioId);
+            $tasasRepo = $this->container->tasasCambio();
+            $tasasLista = $tasasRepo->listAll($user['id'], $espacioId);
+            $tasasMapa = $tasasRepo->listMap($user['id'], $espacioId);
             $hoy = date('Y-m-d');
             $resumenesTarjeta = [];
             $cuotasRepo = $this->container->cuotasTarjeta();
@@ -47,13 +51,18 @@ final class CuentaController
             self::fail($error);
         }
 
-        // El saldo total (RF-07) suma solo las cuentas activas.
-        $total = Dinero::sumar(array_map(static fn (Cuenta $c): string => $c->saldo, array_filter($lista, static fn (Cuenta $c): bool => $c->activa)));
+        // El patrimonio consolidado (RF-07, Fase 18) convierte las cuentas activas en otra moneda a la moneda base.
+        $monedaBase = Dinero::monedaActual();
+        $consolidado = ConversorMoneda::consolidarCuentas($lista, $monedaBase, $tasasMapa);
 
         View::page('app/cuentas', [
             'cuentas' => $lista,
             'resumenesTarjeta' => $resumenesTarjeta,
-            'total' => $total,
+            'total' => $consolidado['total'],
+            'porCuentaConsolidado' => $consolidado['porCuenta'],
+            'monedasSinTasa' => $consolidado['sinTasa'],
+            'tasas' => $tasasLista,
+            'monedaBase' => $monedaBase,
             'flash' => Flash::pull(),
         ], 'Cuentas', $user, 'app', 'cuentas');
     }
@@ -82,10 +91,11 @@ final class CuentaController
 
             $errors = [];
             $old = $cuenta === null
-                ? ['nombre' => '', 'tipo' => 'efectivo', 'saldo_inicial' => '', 'dia_corte' => '', 'dia_pago_limite' => '', 'tasa_mensual' => '']
+                ? ['nombre' => '', 'tipo' => 'efectivo', 'moneda' => '', 'saldo_inicial' => '', 'dia_corte' => '', 'dia_pago_limite' => '', 'tasa_mensual' => '']
                 : [
                     'nombre' => $cuenta->nombre,
                     'tipo' => $cuenta->tipo,
+                    'moneda' => $cuenta->moneda ?? '',
                     'saldo_inicial' => Dinero::paraCampo($cuenta->saldoInicial),
                     'dia_corte' => $cuenta->diaCorte !== null ? (string) $cuenta->diaCorte : '',
                     'dia_pago_limite' => $cuenta->diaPagoLimite !== null ? (string) $cuenta->diaPagoLimite : '',
@@ -102,6 +112,7 @@ final class CuentaController
                 $old = [
                     'nombre' => $data['nombre'],
                     'tipo' => $data['tipo'],
+                    'moneda' => is_string($_POST['moneda'] ?? null) ? strtoupper(trim($_POST['moneda'])) : '',
                     'saldo_inicial' => is_string($_POST['saldo_inicial'] ?? null) ? trim($_POST['saldo_inicial']) : '',
                     'dia_corte' => is_string($_POST['dia_corte'] ?? null) ? trim($_POST['dia_corte']) : '',
                     'dia_pago_limite' => is_string($_POST['dia_pago_limite'] ?? null) ? trim($_POST['dia_pago_limite']) : '',
@@ -123,6 +134,7 @@ final class CuentaController
                             $data['dia_corte'],
                             $data['dia_pago_limite'],
                             $data['tasa_mensual_bps'],
+                            $data['moneda'],
                         );
                         Flash::set('ok', "Se creó la cuenta «{$data['nombre']}».");
                     } else {
@@ -136,6 +148,7 @@ final class CuentaController
                             $data['dia_corte'],
                             $data['dia_pago_limite'],
                             $data['tasa_mensual_bps'],
+                            $data['moneda'],
                         );
                         Flash::set('ok', "Se guardaron los cambios de «{$data['nombre']}».");
                     }
@@ -239,11 +252,11 @@ final class CuentaController
                     switch ($res['codigo']) {
                         case \App\Cuentas\ConciliacionCuenta::OK:
                             $tipoTxt = $res['tipo_ajuste'] === 'ingreso' ? 'un ingreso de ajuste' : 'un gasto de ajuste';
-                            Flash::set('ok', "Se concilió el saldo de «{$cuenta->nombre}» registrando $tipoTxt por " . Dinero::formatear($res['diferencia']) . '.');
+                            Flash::set('ok', "Se concilió el saldo de «{$cuenta->nombre}» registrando $tipoTxt por " . Dinero::formatearEn($res['diferencia'], $cuenta->moneda) . '.');
                             Response::redirect('/cuentas.php');
 
                         case \App\Cuentas\ConciliacionCuenta::SIN_DIFERENCIA:
-                            Flash::set('info', "El saldo de «{$cuenta->nombre}» ya coincide con " . Dinero::formatear($saldoReal) . ': no hizo falta ningún ajuste.');
+                            Flash::set('info', "El saldo de «{$cuenta->nombre}» ya coincide con " . Dinero::formatearEn($saldoReal, $cuenta->moneda) . ': no hizo falta ningún ajuste.');
                             Response::redirect('/cuentas.php');
 
                         case \App\Cuentas\ConciliacionCuenta::SALDO_NEGATIVO_NO_PERMITIDO:
@@ -267,14 +280,47 @@ final class CuentaController
         ], 'Conciliar saldo', $user, 'app', 'cuentas');
     }
 
-    /** POST de activar/desactivar desde el listado. */
-    private function toggle(int $userId, ?int $espacioId): never
+    /** POST desde el listado de cuentas: activar/desactivar cuenta o gestionar tasas de cambio de referencia. */
+    private function procesarPost(int $userId, ?int $espacioId): never
     {
         reject_foreign_origin();
         require_csrf();
 
-        $id = is_string($_POST['id'] ?? null) && ctype_digit($_POST['id']) ? (int) $_POST['id'] : 0;
         $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+
+        if ($accion === 'guardar_tasa') {
+            $origen = is_string($_POST['moneda_origen'] ?? null) ? strtoupper(trim($_POST['moneda_origen'])) : '';
+            $destino = is_string($_POST['moneda_destino'] ?? null) ? strtoupper(trim($_POST['moneda_destino'])) : '';
+            $tasaTexto = is_string($_POST['tasa'] ?? null) ? trim($_POST['tasa']) : '';
+            $tasaMicros = ConversorMoneda::parseTasaMicros($tasaTexto);
+
+            if (!isset(Dinero::MONEDAS[$origen], Dinero::MONEDAS[$destino]) || $origen === $destino) {
+                Flash::set('error', 'Elige dos monedas distintas para registrar la tasa de cambio.');
+                Response::redirect('/cuentas.php#tasas-cambio');
+            }
+            if ($tasaMicros === null) {
+                Flash::set('error', 'Escribe una tasa de cambio válida mayor que cero (por ejemplo, 4.200 o 0,925).');
+                Response::redirect('/cuentas.php#tasas-cambio');
+            }
+
+            $this->container->tasasCambio()->upsert($userId, $origen, $destino, $tasaMicros, $espacioId);
+            Flash::set('ok', "Se guardó la tasa de referencia: 1 $origen = " . ConversorMoneda::formatearTasa($tasaMicros) . " $destino.");
+            Response::redirect('/cuentas.php#tasas-cambio');
+        }
+
+        if ($accion === 'eliminar_tasa') {
+            $idTasa = is_string($_POST['id_tasa'] ?? null) && ctype_digit($_POST['id_tasa']) ? (int) $_POST['id_tasa'] : 0;
+            if ($idTasa < 1) {
+                Response::plain(400, "Solicitud no válida.\n");
+            }
+            if (!$this->container->tasasCambio()->delete($userId, $idTasa, $espacioId)) {
+                Response::plain(404, "No encontrado.\n");
+            }
+            Flash::set('ok', 'Se eliminó la tasa de cambio.');
+            Response::redirect('/cuentas.php#tasas-cambio');
+        }
+
+        $id = is_string($_POST['id'] ?? null) && ctype_digit($_POST['id']) ? (int) $_POST['id'] : 0;
 
         if ($id < 1 || !in_array($accion, ['activar', 'desactivar'], true)) {
             Response::plain(400, "Solicitud no válida.\n");

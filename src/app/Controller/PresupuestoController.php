@@ -40,8 +40,10 @@ final class PresupuestoController
                 $this->procesarAccion($user['id'], $mes, $anio, $espacioId);
             }
 
-            $lista = $repo->listByMonth($user['id'], $mes, $anio, $espacioId);
-            $listaAnterior = $repo->listByMonth($user['id'], $anterior['mes'], $anterior['anio'], $espacioId);
+            $monedaBase = Dinero::monedaActual();
+            $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
+            $lista = $repo->listByMonth($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
+            $listaAnterior = $repo->listByMonth($user['id'], $anterior['mes'], $anterior['anio'], $espacioId, $monedaBase, $tasas);
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -182,7 +184,9 @@ final class PresupuestoController
             }
             $ingresoEstimado = Dinero::sumar($ingresosFijos);
             if (Dinero::aCentavos($ingresoEstimado) <= 0) {
-                $ingresoEstimado = $this->container->reportes()->totalesMes($user['id'], $mes, $anio, $espacioId)['ingresos'];
+                $monedaBase = Dinero::monedaActual();
+                $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
+                $ingresoEstimado = $this->container->reportes()->totalesMes($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas)['ingresos'];
             }
             if (Dinero::aCentavos($ingresoEstimado) <= 0) {
                 $ingresoEstimado = '3000000.00';

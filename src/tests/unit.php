@@ -1013,4 +1013,114 @@ same('SesionRepository::hashId genera un SHA-256 de 64 hex distinto del session_
     strlen(SR::hashId('sesion-secreta')) === 64 && SR::hashId('sesion-secreta') !== 'sesion-secreta'
 );
 
+section('Multimoneda: Dinero::formatearEn, ConversorMoneda y validadores (Fase 18)');
+use App\Support\ConversorMoneda as CM;
+use App\Domain\Cuenta as Cta;
+D::usarMoneda('COP');
+same('Dinero::monedaActual y formatearEn formatean cada moneda con su símbolo sin cambiar la moneda base', [
+    'COP',
+    'US$500',
+    '€1.250,50',
+    'MX$900',
+    '$1.000',
+    'COP',
+], [
+    D::monedaActual(),
+    D::formatearEn('500.00', 'USD'),
+    D::formatearEn('1250.50', 'EUR'),
+    D::formatearEn('900.00', 'MXN'),
+    D::formatearEn('1000.00', null),
+    D::monedaActual(),
+]);
+same('Ui::money respeta la moneda opcional de la cuenta', '<span class="money money--out">−US$120</span>', (string) App\View\Ui::money('120.00', 'out', 'USD'));
+same('ConversorMoneda::parseTasaMicros acepta formato colombiano y decimal y rechaza inválidos', [
+    4_200_000_000,
+    4_200_500_000,
+    925_000,
+    925_000,
+    238,
+    1_085_000,
+    1_080_000,
+    null,
+    null,
+    null,
+], [
+    CM::parseTasaMicros('4.200'),
+    CM::parseTasaMicros('4.200,50'),
+    CM::parseTasaMicros('0,925'),
+    CM::parseTasaMicros('0.925'),
+    CM::parseTasaMicros('0.000238'),
+    CM::parseTasaMicros('1,085'),
+    CM::parseTasaMicros('1.08'),
+    CM::parseTasaMicros('0'),
+    CM::parseTasaMicros('-4200'),
+    CM::parseTasaMicros('abc'),
+]);
+same('ConversorMoneda::formatearTasa formatea limpio sin ceros de más', ['4.200', '4.200,5', '0,925'], [
+    CM::formatearTasa(4_200_000_000),
+    CM::formatearTasa(4_200_500_000),
+    CM::formatearTasa(925_000),
+]);
+same('ConversorMoneda::convertir aplica tasa directa, inversa, identidad y null sin tasa', [
+    '420000.00',
+    '100.00',
+    '500.00',
+    null,
+    '-42000.00',
+], [
+    CM::convertir('100.00', 'USD', 'COP', ['USD:COP' => 4_200_000_000]),
+    CM::convertir('420000.00', 'COP', 'USD', ['USD:COP' => 4_200_000_000]),
+    CM::convertir('500.00', 'COP', 'COP', []),
+    CM::convertir('100.00', 'EUR', 'COP', ['USD:COP' => 4_200_000_000]),
+    CM::convertir('-10.00', 'USD', 'COP', ['USD:COP' => 4_200_000_000]),
+]);
+same('ConversorMoneda::tasaImplicita calcula millonésimas exactas', 4_150_000_000, CM::tasaImplicita('100.00', '415000.00'));
+
+$consCuentas = CM::consolidarCuentas([
+    new Cta(1, 1, 'Banco COP', 'bancaria', '1000000.00', true, '1000000.00', null, null, 0, null),
+    new Cta(2, 1, 'Cuenta USD', 'ahorro', '500.00', true, '500.00', null, null, 0, 'USD'),
+    new Cta(3, 1, 'Cuenta EUR', 'ahorro', '100.00', true, '100.00', null, null, 0, 'EUR'),
+    new Cta(4, 1, 'Inactiva USD', 'ahorro', '999.00', false, '999.00', null, null, 0, 'USD'),
+], 'COP', ['USD:COP' => 4_000_000_000]);
+same('consolidarCuentas suma activas con tasa (1M + 500*4000 = 3M), excluye inactivas y reporta monedas sin tasa', [
+    '3000000.00',
+    ['EUR'],
+    '2000000.00',
+    null,
+], [
+    $consCuentas['total'],
+    $consCuentas['sinTasa'],
+    $consCuentas['porCuenta'][2],
+    $consCuentas['porCuenta'][3],
+]);
+
+same('CuentaValidator acepta moneda válida, vacía (hereda perfil) y rechaza inválida', [
+    [[], 'USD'],
+    [[], null],
+    true,
+], [
+    [$cv15->validate(['nombre' => 'Ahorros USD', 'tipo' => 'ahorro', 'moneda' => 'usd'])['errors'], $cv15->validate(['nombre' => 'Ahorros USD', 'tipo' => 'ahorro', 'moneda' => 'usd'])['data']['moneda']],
+    [$cv15->validate(['nombre' => 'Efectivo', 'tipo' => 'efectivo', 'moneda' => ''])['errors'], $cv15->validate(['nombre' => 'Efectivo', 'tipo' => 'efectivo', 'moneda' => ''])['data']['moneda']],
+    isset($cv15->validate(['nombre' => 'Rara', 'tipo' => 'efectivo', 'moneda' => 'BTC'])['errors']['moneda']),
+]);
+
+$tv18 = new App\Validation\TransferenciaValidator();
+$valTrMulti = $tv18->validate([
+    'id_cuenta_origen' => '1',
+    'id_cuenta_destino' => '2',
+    'monto' => '100',
+    'monto_destino' => '415.000',
+    'tasa_cambio' => '4.150',
+    'fecha' => '2026-11-26',
+]);
+same('TransferenciaValidator valida monto_destino y tasa_cambio opcionales', [[], '415000.00', 4_150_000_000], [
+    $valTrMulti['errors'],
+    $valTrMulti['data']['monto_destino'],
+    $valTrMulti['data']['tasa_micros'],
+]);
+same('TransferenciaValidator rechaza monto_destino y tasa_cambio inválidos', [true, true], [
+    isset($tv18->validate(['id_cuenta_origen' => '1', 'id_cuenta_destino' => '2', 'monto' => '100', 'monto_destino' => '0', 'fecha' => '2026-11-26'])['errors']['monto_destino']),
+    isset($tv18->validate(['id_cuenta_origen' => '1', 'id_cuenta_destino' => '2', 'monto' => '100', 'tasa_cambio' => 'xyz', 'fecha' => '2026-11-26'])['errors']['tasa_cambio']),
+]);
+
 finish();

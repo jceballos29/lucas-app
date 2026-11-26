@@ -13,7 +13,7 @@ use PDO;
  */
 final class CuentaRepository
 {
-    private const SELECT = "SELECT c.id_cuenta, c.id_usuario, c.nombre, c.tipo, c.saldo_inicial, c.activa,
+    private const SELECT = "SELECT c.id_cuenta, c.id_usuario, c.nombre, c.tipo, c.moneda, c.saldo_inicial, c.activa,
             c.dia_corte, c.dia_pago_limite, c.tasa_mensual_bps,
             c.saldo_inicial
             + COALESCE((SELECT SUM(t.monto) FROM transacciones t WHERE t.id_cuenta = c.id_cuenta AND t.tipo = 'ingreso'), 0)
@@ -21,7 +21,7 @@ final class CuentaRepository
             - COALESCE((SELECT SUM(a.monto) FROM aportes_meta a WHERE a.id_cuenta = c.id_cuenta), 0)
             - COALESCE((SELECT SUM(pd.monto_total) FROM pagos_deuda pd WHERE pd.id_cuenta = c.id_cuenta), 0)
             - COALESCE((SELECT SUM(tr.monto) FROM transferencias tr WHERE tr.id_cuenta_origen = c.id_cuenta), 0)
-            + COALESCE((SELECT SUM(tr.monto) FROM transferencias tr WHERE tr.id_cuenta_destino = c.id_cuenta), 0) AS saldo
+            + COALESCE((SELECT SUM(COALESCE(tr.monto_destino, tr.monto)) FROM transferencias tr WHERE tr.id_cuenta_destino = c.id_cuenta), 0) AS saldo
         FROM cuentas c";
 
     public function __construct(private readonly PDO $pdo)
@@ -67,17 +67,19 @@ final class CuentaRepository
         ?int $diaCorte = null,
         ?int $diaPagoLimite = null,
         int $tasaMensualBps = 0,
+        ?string $moneda = null,
     ): int {
         $esTarjeta = $tipo === 'tarjeta_credito';
         $stmt = $this->pdo->prepare(
-            'INSERT INTO cuentas (id_usuario, id_espacio, nombre, tipo, saldo_inicial, dia_corte, dia_pago_limite, tasa_mensual_bps)
-             VALUES (:u, :e, :n, :t, :s, :dc, :dp, :tasa)'
+            'INSERT INTO cuentas (id_usuario, id_espacio, nombre, tipo, moneda, saldo_inicial, dia_corte, dia_pago_limite, tasa_mensual_bps)
+             VALUES (:u, :e, :n, :t, :m, :s, :dc, :dp, :tasa)'
         );
         $stmt->execute([
             'u' => $userId,
             'e' => $espacioId,
             'n' => $nombre,
             't' => $tipo,
+            'm' => $moneda,
             's' => $saldoInicial,
             'dc' => $esTarjeta ? $diaCorte : null,
             'dp' => $esTarjeta ? $diaPagoLimite : null,
@@ -98,16 +100,18 @@ final class CuentaRepository
         ?int $diaCorte = null,
         ?int $diaPagoLimite = null,
         int $tasaMensualBps = 0,
+        ?string $moneda = null,
     ): bool {
         $esTarjeta = $tipo === 'tarjeta_credito';
         [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
-            "UPDATE cuentas SET nombre = :n, tipo = :t, saldo_inicial = :s, dia_corte = :dc, dia_pago_limite = :dp, tasa_mensual_bps = :tasa
+            "UPDATE cuentas SET nombre = :n, tipo = :t, moneda = :m, saldo_inicial = :s, dia_corte = :dc, dia_pago_limite = :dp, tasa_mensual_bps = :tasa
              WHERE id_cuenta = :id AND $scope"
         );
         $stmt->execute($params + [
             'n' => $nombre,
             't' => $tipo,
+            'm' => $moneda,
             's' => $saldoInicial,
             'dc' => $esTarjeta ? $diaCorte : null,
             'dp' => $esTarjeta ? $diaPagoLimite : null,
@@ -131,18 +135,19 @@ final class CuentaRepository
     /**
      * Lee la cuenta BLOQUEANDO su fila hasta el final de la transacción (`FOR UPDATE`). Solo dentro de una transacción.
      *
-     * @return array{nombre: string, tipo: string, activa: bool, dia_corte: int|null, dia_pago_limite: int|null, tasa_mensual_bps: int}|null
+     * @return array{nombre: string, tipo: string, moneda: string|null, activa: bool, dia_corte: int|null, dia_pago_limite: int|null, tasa_mensual_bps: int}|null
      */
     public function lockForWrite(int $userId, int $id, ?int $espacioId = null): ?array
     {
         [$scope, $params] = self::scope($userId, $espacioId);
-        $stmt = $this->pdo->prepare("SELECT nombre, tipo, activa, dia_corte, dia_pago_limite, tasa_mensual_bps FROM cuentas WHERE id_cuenta = :id AND $scope FOR UPDATE");
+        $stmt = $this->pdo->prepare("SELECT nombre, tipo, moneda, activa, dia_corte, dia_pago_limite, tasa_mensual_bps FROM cuentas WHERE id_cuenta = :id AND $scope FOR UPDATE");
         $stmt->execute($params + ['id' => $id]);
         $row = $stmt->fetch();
 
         return $row === false ? null : [
             'nombre' => (string) $row['nombre'],
             'tipo' => (string) $row['tipo'],
+            'moneda' => isset($row['moneda']) && is_string($row['moneda']) && $row['moneda'] !== '' ? $row['moneda'] : null,
             'activa' => (bool) $row['activa'],
             'dia_corte' => $row['dia_corte'] !== null ? (int) $row['dia_corte'] : null,
             'dia_pago_limite' => $row['dia_pago_limite'] !== null ? (int) $row['dia_pago_limite'] : null,

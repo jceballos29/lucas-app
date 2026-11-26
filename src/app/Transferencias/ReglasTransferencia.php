@@ -21,6 +21,7 @@ final class ReglasTransferencia
     public const ORIGEN_INACTIVA = 'origen_inactiva';
     public const DESTINO_INACTIVA = 'destino_inactiva';
     public const SALDO_INSUFICIENTE = 'saldo_insuficiente';
+    public const FALTA_CONVERSION = 'falta_conversion';
 
     /**
      * @param array{nombre?: string, tipo?: string, activa: bool}|null $origen

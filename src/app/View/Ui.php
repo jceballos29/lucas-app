@@ -174,15 +174,15 @@ final class Ui
      * Cantidad de dinero en pesos con separador de miles. `$kind`: 'plain' (neutra), 'in' (ingreso, «+») o 'out' (gasto, «−»).
      * El signo va en el texto además del color, para que no dependa de verlo.
      */
-    public static function money(int|float|string $amount, string $kind = 'plain'): Html
+    public static function money(int|float|string $amount, string $kind = 'plain', ?string $moneda = null): Html
     {
         // Una cadena es un monto exacto de la BD («1250.50»): se formatea sin pasar por float (RNF-16).
         if (is_string($amount)) {
             $negative = str_starts_with($amount, '-');
-            $text = \App\Support\Dinero::formatear(ltrim($amount, '-'));
+            $text = \App\Support\Dinero::formatearEn(ltrim($amount, '-'), $moneda);
         } else {
             $negative = $amount < 0;
-            $text = \App\Support\Dinero::simbolo() . number_format(abs($amount), 0, ',', '.');
+            $text = \App\Support\Dinero::simboloDe($moneda) . number_format(abs($amount), 0, ',', '.');
         }
 
         $sign = match ($kind) {

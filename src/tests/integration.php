@@ -1365,4 +1365,114 @@ same('eliminarOtrasDeUsuario cierra todas menos la sesión actual h1', [1, true,
     $sesRepo->validarYRenovar($sesUser, $h2),
 ]);
 
+section('Multimoneda por cuenta, transferencias multimoneda y conversión en reportes/presupuestos (Fase 18)');
+$mUser = (int) $usuarios->create('Mateo Multimoneda', 'mateo.multi@correo.com', 'x');
+$tasasRepo = $container->tasasCambio();
+$cCop = $cuentas->create($mUser, 'Banco COP', 'bancaria', '1000000.00', null, null, null, 0, null);
+$cUsd = $cuentas->create($mUser, 'Ahorros USD', 'ahorro', '500.00', null, null, null, 0, 'USD');
+App\Support\Dinero::usarMoneda('COP');
+
+same('sin tasa guardada, transferir entre monedas sin monto_destino ni tasa devuelve falta_conversion', 'falta_conversion', $gt->guardar($mUser, null, [
+    'id_cuenta_origen' => $cUsd,
+    'id_cuenta_destino' => $cCop,
+    'monto' => '100.00',
+    'fecha' => '2026-11-26',
+    'descripcion' => 'Sin tasa',
+])['codigo']);
+
+$tasasRepo->upsert($mUser, 'USD', 'COP', 4_200_000_000);
+$tasasRepo->upsert($mUser, 'USD', 'COP', 4_000_000_000); // actualiza el mismo par
+$mapaMateo = $tasasRepo->listMap($mUser);
+same('TasaCambioRepository hace upsert del par USD:COP a 4.000', ['USD:COP' => 4_000_000_000], $mapaMateo);
+
+$consMateo = App\Support\ConversorMoneda::consolidarCuentas($cuentas->listByUser($mUser), 'COP', $mapaMateo);
+same('patrimonio consolidado de Mateo: 1.000.000 COP + 500 USD * 4.000 = 3.000.000 COP', ['3000000.00', []], [$consMateo['total'], $consMateo['sinTasa']]);
+
+// 1) Transferencia multimoneda con monto_destino explícito (100 USD -> 415.000 COP)
+$trMulti1 = $gt->guardar($mUser, null, [
+    'id_cuenta_origen' => $cUsd,
+    'id_cuenta_destino' => $cCop,
+    'monto' => '100.00',
+    'monto_destino' => '415000.00',
+    'fecha' => '2026-11-26',
+    'descripcion' => 'Cambio USD a COP por monto',
+]);
+same('transferencia multimoneda con monto_destino explícito', ['ok', '415000.00', '400.00', '1415000.00'], [
+    $trMulti1['codigo'],
+    $trMulti1['monto_destino'],
+    (string) $cuentas->findOwned($mUser, $cUsd)?->saldo,
+    (string) $cuentas->findOwned($mUser, $cCop)?->saldo,
+]);
+
+// 2) Transferencia multimoneda con tasa aplicada explícita (50 USD * 4.100 = 205.000 COP)
+$trMulti2 = $gt->guardar($mUser, null, [
+    'id_cuenta_origen' => $cUsd,
+    'id_cuenta_destino' => $cCop,
+    'monto' => '50.00',
+    'tasa_micros' => 4_100_000_000,
+    'fecha' => '2026-11-26',
+    'descripcion' => 'Cambio USD a COP por tasa',
+]);
+same('transferencia multimoneda con tasa aplicada explícita', ['ok', '205000.00', '350.00', '1620000.00'], [
+    $trMulti2['codigo'],
+    $trMulti2['monto_destino'],
+    (string) $cuentas->findOwned($mUser, $cUsd)?->saldo,
+    (string) $cuentas->findOwned($mUser, $cCop)?->saldo,
+]);
+
+// 3) Transferencia multimoneda usando tasa de referencia guardada (50 USD * 4.000 = 200.000 COP)
+$trMulti3 = $gt->guardar($mUser, null, [
+    'id_cuenta_origen' => $cUsd,
+    'id_cuenta_destino' => $cCop,
+    'monto' => '50.00',
+    'fecha' => '2026-11-26',
+    'descripcion' => 'Cambio USD a COP con tasa guardada',
+]);
+same('transferencia multimoneda con tasa de referencia guardada', ['ok', '200000.00', '300.00', '1820000.00'], [
+    $trMulti3['codigo'],
+    $trMulti3['monto_destino'],
+    (string) $cuentas->findOwned($mUser, $cUsd)?->saldo,
+    (string) $cuentas->findOwned($mUser, $cCop)?->saldo,
+]);
+
+// 4) Editar transferencia multimoneda #1 (de 415.000 a 400.000 COP) y luego eliminarla revierte exactamente el destino
+$trMulti1Id = (int) $trMulti1['id'];
+same('editar monto_destino de 415.000 a 400.000 ajusta Banco COP en -15.000 (a 1.805.000)', ['ok', '1805000.00'], [
+    $gt->guardar($mUser, $trMulti1Id, [
+        'id_cuenta_origen' => $cUsd,
+        'id_cuenta_destino' => $cCop,
+        'monto' => '100.00',
+        'monto_destino' => '400000.00',
+        'fecha' => '2026-11-26',
+        'descripcion' => 'Editada',
+    ])['codigo'],
+    (string) $cuentas->findOwned($mUser, $cCop)?->saldo,
+]);
+same('eliminar transferencia multimoneda revierte 100 USD en origen y 400.000 COP en destino', ['ok', '400.00', '1405000.00'], [
+    $gt->eliminar($mUser, $trMulti1Id)['codigo'],
+    (string) $cuentas->findOwned($mUser, $cUsd)?->saldo,
+    (string) $cuentas->findOwned($mUser, $cCop)?->saldo,
+]);
+
+// 5) Conversión al vuelo en ReporteRepository y PresupuestoRepository
+$ins($mUser, $cCop, $catA, 'gasto', '200000.00', '2026-11-15', 'Mercado COP');
+$ins($mUser, $cUsd, $catA, 'gasto', '100.00', '2026-11-16', 'Mercado USD');
+$presupuestos->create($mUser, $catA, 11, 2026, '500000.00');
+
+same('ReporteRepository::totalesMes convierte 100 USD a 400.000 COP y suma 600.000 COP', '600000.00', $reportes->totalesMes($mUser, 11, 2026, null, 'COP', $mapaMateo)['gastos']);
+same('ReporteRepository::gastosPorCategoria convierte al vuelo la categoría a 600.000 COP', '600000.00', $reportes->gastosPorCategoria($mUser, 11, 2026, null, 'COP', $mapaMateo)[0]['total']);
+same('ReporteRepository::evolucion convierte el mes a 600.000 COP', '600000.00', $reportes->evolucion($mUser, 11, 2026, 1, null, 'COP', $mapaMateo)[0]['gastos']);
+$presMateo = $presupuestos->findForCategory($mUser, $catA, 11, 2026, null, 'COP', $mapaMateo);
+same('PresupuestoRepository convierte 100 USD + 200.000 COP = 600.000 COP (120 %, excedido sobre límite 500.000)', ['600000.00', 120, 'excedido'], [
+    $presMateo?->gastado,
+    $presMateo?->progreso()['percent'],
+    $presMateo?->progreso()['estado'],
+]);
+same('migración 010-multimoneda-cuentas.sql es idempotente', true, (static function () use ($pdo): bool {
+    foreach (SqlScript::statements((string) file_get_contents(dirname(__DIR__, 2) . '/database/migrations/010-multimoneda-cuentas.sql')) as $s) {
+        $pdo->exec($s);
+    }
+    return (int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'tasas_cambio'")->fetchColumn() === 1;
+})());
+
 finish();

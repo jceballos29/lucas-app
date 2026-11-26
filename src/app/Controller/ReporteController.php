@@ -29,10 +29,12 @@ final class ReporteController
         $meses = ($_GET['meses'] ?? '') === '12' ? 12 : 6;
 
         try {
+            $monedaBase = Dinero::monedaActual();
+            $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
             $reportes = $this->container->reportes();
-            $categorias = Categorias::agrupar($reportes->gastosPorCategoria($user['id'], $mes, $anio, $espacioId));
-            $etiquetasMes = $reportes->gastosPorEtiqueta($user['id'], $mes, $anio, $espacioId);
-            $evolucion = $reportes->evolucion($user['id'], $mes, $anio, $meses, $espacioId);
+            $categorias = Categorias::agrupar($reportes->gastosPorCategoria($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas));
+            $etiquetasMes = $reportes->gastosPorEtiqueta($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
+            $evolucion = $reportes->evolucion($user['id'], $mes, $anio, $meses, $espacioId, $monedaBase, $tasas);
         } catch (RuntimeException $error) {
             [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
             Response::plain($status, $message . "\n");

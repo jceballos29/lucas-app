@@ -34,6 +34,7 @@ use App\Repository\RecurrenteRepository;
 use App\Repository\ReporteRepository;
 use App\Repository\RestablecimientoRepository;
 use App\Repository\SesionRepository;
+use App\Repository\TasaCambioRepository;
 use App\Repository\TransferenciaRepository;
 use App\Repository\UsuarioRepository;
 use App\Transferencias\GestionTransferencias;
@@ -140,6 +141,11 @@ final class Container
         return new ImportadorCsv($this->pdo(), $this->movimientos(), $this->cuentas(), $this->categorias());
     }
 
+    public function tasasCambio(): TasaCambioRepository
+    {
+        return new TasaCambioRepository($this->pdo());
+    }
+
     public function transferencias(): TransferenciaRepository
     {
         return new TransferenciaRepository($this->pdo());
@@ -147,7 +153,7 @@ final class Container
 
     public function gestionTransferencias(): GestionTransferencias
     {
-        return new GestionTransferencias($this->pdo(), $this->transferencias(), $this->cuentas());
+        return new GestionTransferencias($this->pdo(), $this->transferencias(), $this->cuentas(), $this->tasasCambio());
     }
 
     public function recurrentes(): RecurrenteRepository

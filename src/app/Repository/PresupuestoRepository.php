@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Domain\Presupuesto;
+use App\Support\ConversorMoneda;
+use App\Support\Dinero;
 use App\Support\Mes;
 use PDO;
 use PDOException;
 
 /**
  * Único sitio con el SQL de `presupuestos`. TODA consulta filtra por el usuario o el espacio compartido de la SESIÓN (RNF-04).
+ * Cuando se indica `$monedaBase` y `$tasas`, los gastos en cuentas de otras monedas se convierten al vuelo.
  */
 final class PresupuestoRepository
 {
@@ -34,18 +37,33 @@ final class PresupuestoRepository
     {
     }
 
-    /** Los presupuestos de un mes, por nombre de categoría. @return list<Presupuesto> */
-    public function listByMonth(int $userId, int $mes, int $anio, ?int $espacioId = null): array
+    /**
+     * Los presupuestos de un mes, por nombre de categoría.
+     *
+     * @param array<string, int> $tasas
+     * @return list<Presupuesto>
+     */
+    public function listByMonth(int $userId, int $mes, int $anio, ?int $espacioId = null, string $monedaBase = '', array $tasas = []): array
     {
         [$desde, $hasta] = Mes::limites($mes, $anio);
         [$select, $scope, $params] = self::selectAndScope($userId, $espacioId);
         $stmt = $this->pdo->prepare("$select WHERE $scope AND p.mes = :mes AND p.anio = :anio ORDER BY k.nombre, p.id_presupuesto");
         $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta, 'mes' => $mes, 'anio' => $anio]);
+        $rows = $stmt->fetchAll();
 
-        return array_map([Presupuesto::class, 'fromRow'], $stmt->fetchAll());
+        if ($monedaBase !== '' && $rows !== []) {
+            $gastados = $this->gastadoConvertidoPorCategoria($userId, $mes, $anio, $espacioId, $monedaBase, $tasas);
+            foreach ($rows as &$r) {
+                $r['gastado'] = $gastados[(int) $r['id_categoria']] ?? '0.00';
+            }
+            unset($r);
+        }
+
+        return array_map([Presupuesto::class, 'fromRow'], $rows);
     }
 
-    public function findOwned(int $userId, int $id, ?int $espacioId = null): ?Presupuesto
+    /** @param array<string, int> $tasas */
+    public function findOwned(int $userId, int $id, ?int $espacioId = null, string $monedaBase = '', array $tasas = []): ?Presupuesto
     {
         [$select, $scope, $params] = self::selectAndScope($userId, $espacioId);
         $stmt = $this->pdo->prepare("SELECT mes, anio FROM presupuestos p WHERE p.id_presupuesto = :id AND $scope");
@@ -61,10 +79,20 @@ final class PresupuestoRepository
         $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta, 'id' => $id]);
         $row = $stmt->fetch();
 
-        return $row === false ? null : Presupuesto::fromRow($row);
+        if ($row === false) {
+            return null;
+        }
+
+        if ($monedaBase !== '') {
+            $gastados = $this->gastadoConvertidoPorCategoria($userId, (int) $mes['mes'], (int) $mes['anio'], $espacioId, $monedaBase, $tasas, (int) $row['id_categoria']);
+            $row['gastado'] = $gastados[(int) $row['id_categoria']] ?? '0.00';
+        }
+
+        return Presupuesto::fromRow($row);
     }
 
-    public function findForCategory(int $userId, int $categoriaId, int $mes, int $anio, ?int $espacioId = null): ?Presupuesto
+    /** @param array<string, int> $tasas */
+    public function findForCategory(int $userId, int $categoriaId, int $mes, int $anio, ?int $espacioId = null, string $monedaBase = '', array $tasas = []): ?Presupuesto
     {
         [$desde, $hasta] = Mes::limites($mes, $anio);
         [$select, $scope, $params] = self::selectAndScope($userId, $espacioId);
@@ -72,18 +100,72 @@ final class PresupuestoRepository
         $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta, 'cat' => $categoriaId, 'mes' => $mes, 'anio' => $anio]);
         $row = $stmt->fetch();
 
-        return $row === false ? null : Presupuesto::fromRow($row);
+        if ($row === false) {
+            return null;
+        }
+
+        if ($monedaBase !== '') {
+            $gastados = $this->gastadoConvertidoPorCategoria($userId, $mes, $anio, $espacioId, $monedaBase, $tasas, $categoriaId);
+            $row['gastado'] = $gastados[$categoriaId] ?? '0.00';
+        }
+
+        return Presupuesto::fromRow($row);
     }
 
     /**
+     * @param array<string, int> $tasas
      * @return list<Presupuesto>
      */
-    public function alertas(int $userId, int $mes, int $anio, ?int $espacioId = null): array
+    public function alertas(int $userId, int $mes, int $anio, ?int $espacioId = null, string $monedaBase = '', array $tasas = []): array
     {
-        $alertas = array_values(array_filter($this->listByMonth($userId, $mes, $anio, $espacioId), static fn (Presupuesto $p): bool => $p->requiereAviso()));
+        $alertas = array_values(array_filter($this->listByMonth($userId, $mes, $anio, $espacioId, $monedaBase, $tasas), static fn (Presupuesto $p): bool => $p->requiereAviso()));
         usort($alertas, static fn (Presupuesto $a, Presupuesto $b): int => $b->progreso()['percent'] <=> $a->progreso()['percent']);
 
         return $alertas;
+    }
+
+    /**
+     * Suma de gastos del mes por categoría convirtiendo al vuelo los movimientos de cuentas en otra moneda.
+     *
+     * @param array<string, int> $tasas
+     * @return array<int, string> id_categoria => total convertido en `$monedaBase`
+     */
+    private function gastadoConvertidoPorCategoria(int $userId, int $mes, int $anio, ?int $espacioId, string $monedaBase, array $tasas, ?int $categoriaId = null): array
+    {
+        [$desde, $hasta] = Mes::limites($mes, $anio);
+        if ($espacioId === null) {
+            $scope = 't.id_usuario = :u AND t.id_espacio IS NULL';
+            $params = ['u' => $userId];
+        } else {
+            $scope = 't.id_espacio = :e';
+            $params = ['e' => $espacioId];
+        }
+
+        $filtroCat = '';
+        if ($categoriaId !== null) {
+            $filtroCat = ' AND t.id_categoria = :cat';
+            $params['cat'] = $categoriaId;
+        }
+
+        $stmt = $this->pdo->prepare(
+            "SELECT t.id_categoria, c.moneda, SUM(t.monto) AS total
+             FROM transacciones t
+             JOIN cuentas c ON c.id_cuenta = t.id_cuenta
+             WHERE $scope AND t.tipo = 'gasto' AND t.fecha >= :desde AND t.fecha < :hasta$filtroCat
+             GROUP BY t.id_categoria, c.moneda"
+        );
+        $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
+
+        $centavos = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $idCat = (int) $r['id_categoria'];
+            $monedaCuenta = is_string($r['moneda'] ?? null) && $r['moneda'] !== '' ? $r['moneda'] : $monedaBase;
+            $sub = (string) $r['total'];
+            $conv = ConversorMoneda::convertir($sub, $monedaCuenta, $monedaBase, $tasas) ?? $sub;
+            $centavos[$idCat] = ($centavos[$idCat] ?? 0) + Dinero::aCentavos($conv);
+        }
+
+        return array_map([Dinero::class, 'deCentavos'], $centavos);
     }
 
     public function create(int $userId, int $categoriaId, int $mes, int $anio, string $limite, ?int $espacioId = null): ?int

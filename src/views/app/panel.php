@@ -29,6 +29,8 @@ use App\View\Ui;
  */
 $recurrentesVencidos = $recurrentesVencidos ?? [];
 $tarjetasPorVencer = $tarjetasPorVencer ?? [];
+$monedasSinTasa = $monedasSinTasa ?? [];
+$monedaBase = $monedaBase ?? Dinero::monedaActual();
 $puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
 $balanceCentavos = Dinero::aCentavos($balance);
 $balanceTono = $balanceCentavos < 0 ? 'out' : ($balanceCentavos > 0 ? 'in' : 'plain');
@@ -40,8 +42,12 @@ $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'val
     <?= Ui::notice(new Html('Tienes <strong>' . count($recurrentesVencidos) . (count($recurrentesVencidos) === 1 ? ' gasto o ingreso fijo pendiente' : ' gastos o ingresos fijos pendientes') . '</strong> por aplicar. <a href="/recurrentes.php">Revisar en Gastos fijos</a>.'), 'warn') ?>
 <?php endif; ?>
 
+<?php if ($monedasSinTasa !== []): ?>
+    <?= Ui::notice(new Html('Tienes cuentas activas en <strong>' . escape(implode(', ', $monedasSinTasa)) . '</strong> sin tasa de cambio hacia <strong>' . escape($monedaBase) . '</strong>. <a href="/cuentas.php#tasas-cambio">Configura la tasa en Cuentas</a> para consolidar tu saldo total.'), 'warn') ?>
+<?php endif; ?>
+
 <?php foreach ($tarjetasPorVencer as $tv): ?>
-    <?= Ui::notice(new Html('La fecha límite de pago de <strong>' . escape($tv['nombre']) . '</strong> vence ' . ($tv['dias'] === 0 ? '<strong>hoy</strong>' : 'en <strong>' . (int) $tv['dias'] . ($tv['dias'] === 1 ? ' día' : ' días') . '</strong>') . ' (deuda actual: ' . escape(Dinero::formatear($tv['deuda'])) . '). <a href="/transferencia-form.php?destino=' . (int) $tv['id'] . '">Abonar a la tarjeta</a>.'), 'warn') ?>
+    <?= Ui::notice(new Html('La fecha límite de pago de <strong>' . escape($tv['nombre']) . '</strong> vence ' . ($tv['dias'] === 0 ? '<strong>hoy</strong>' : 'en <strong>' . (int) $tv['dias'] . ($tv['dias'] === 1 ? ' día' : ' días') . '</strong>') . ' (deuda actual: ' . escape(Dinero::formatearEn($tv['deuda'], $tv['moneda'] ?? null)) . '). <a href="/transferencia-form.php?destino=' . (int) $tv['id'] . '">Abonar a la tarjeta</a>.'), 'warn') ?>
 <?php endforeach; ?>
 
 <?php foreach ($presupuestos as $p): ?><?= Avisos::presupuesto($p) ?><?php endforeach; ?>
@@ -79,7 +85,7 @@ $slices = array_map(static fn (array $i): array => ['label' => $i['label'], 'val
                 <?php if ($puedeEscribir): ?><p><?= Ui::button($numCuentas === 0 ? 'Crear mi primera cuenta' : 'Registrar un movimiento', ['href' => $numCuentas === 0 ? '/cuenta-form.php' : '/movimiento-form.php', 'icon' => 'plus']) ?></p><?php endif; ?>
             <?php endif; ?>
             <?php foreach ($ultimos as $m): ?>
-                <?= Ui::listItem($m->descripcion ?? $m->categoriaNombre, $m->categoriaNombre . ' · ' . Fecha::diaMes($m->fecha), Ui::money($m->monto, $m->esIngreso() ? 'in' : 'out')) ?>
+                <?= Ui::listItem($m->descripcion ?? $m->categoriaNombre, $m->categoriaNombre . ' · ' . Fecha::diaMes($m->fecha), Ui::money($m->monto, $m->esIngreso() ? 'in' : 'out', $m->cuentaMoneda)) ?>
             <?php endforeach; ?>
         <?= Ui::cardClose() ?>
     </div>

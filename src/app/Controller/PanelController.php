@@ -10,6 +10,7 @@ use App\Http\Failure;
 use App\Http\Response;
 use App\Movimientos\Filtros;
 use App\Reportes\Categorias;
+use App\Support\ConversorMoneda;
 use App\Support\Dinero;
 use App\Support\Mes;
 use App\View\Fecha;
@@ -32,13 +33,16 @@ final class PanelController
         ['mes' => $mes, 'anio' => $anio] = Mes::desde([], $hoy);
 
         try {
+            $monedaBase = Dinero::monedaActual();
+            $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
             $this->container->gestionRecurrentes()->procesarVencidos($user['id'], $hoy->format('Y-m-d'), $espacioId);
             $recurrentesVencidos = $this->container->recurrentes()->listDueByUser($user['id'], $hoy->format('Y-m-d'), $espacioId);
             $cuentas = array_values(array_filter($this->container->cuentas()->listByUser($user['id'], $espacioId), static fn (Cuenta $c): bool => $c->activa));
-            $totales = $this->container->reportes()->totalesMes($user['id'], $mes, $anio, $espacioId);
-            $categorias = Categorias::agrupar($this->container->reportes()->gastosPorCategoria($user['id'], $mes, $anio, $espacioId));
+            $consolidado = ConversorMoneda::consolidarCuentas($cuentas, $monedaBase, $tasas);
+            $totales = $this->container->reportes()->totalesMes($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
+            $categorias = Categorias::agrupar($this->container->reportes()->gastosPorCategoria($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas));
             $ultimos = $this->container->movimientos()->search($user['id'], Filtros::desde([]), 5, 0, $espacioId);
-            $presupuestos = $this->container->presupuestos()->listByMonth($user['id'], $mes, $anio, $espacioId);
+            $presupuestos = $this->container->presupuestos()->listByMonth($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
 
             $tarjetasPorVencer = [];
             $hoyStr = $hoy->format('Y-m-d');
@@ -50,6 +54,7 @@ final class PanelController
                             'id' => $c->id,
                             'nombre' => $c->nombre,
                             'deuda' => ltrim($c->saldo, '-'),
+                            'moneda' => $c->moneda,
                             'fecha' => $proxPago['fecha'],
                             'dias' => $proxPago['dias'],
                         ];
@@ -68,7 +73,9 @@ final class PanelController
             'nombre' => explode(' ', trim($user['name']))[0],
             'mesTexto' => Fecha::mesNombre($mes) . ' de ' . $anio,
             'mesCorto' => ucfirst(Fecha::mesNombre($mes)),
-            'saldoTotal' => Dinero::sumar(array_map(static fn (Cuenta $c): string => $c->saldo, $cuentas)),
+            'saldoTotal' => $consolidado['total'],
+            'monedasSinTasa' => $consolidado['sinTasa'],
+            'monedaBase' => $monedaBase,
             'numCuentas' => count($cuentas),
             'ingresos' => $totales['ingresos'],
             'gastos' => $totales['gastos'],

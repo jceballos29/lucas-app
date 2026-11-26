@@ -18,6 +18,9 @@ final class Transferencia
         public readonly string $cuentaOrigenNombre = '',
         public readonly string $cuentaDestinoNombre = '',
         public readonly string $autorNombre = '',
+        public readonly ?string $montoDestino = null,
+        public readonly ?string $cuentaOrigenMoneda = null,
+        public readonly ?string $cuentaDestinoMoneda = null,
     ) {
     }
 
@@ -35,6 +38,22 @@ final class Transferencia
             (string) ($row['cuenta_origen_nombre'] ?? ''),
             (string) ($row['cuenta_destino_nombre'] ?? ''),
             (string) ($row['autor_nombre'] ?? ''),
+            isset($row['monto_destino']) && $row['monto_destino'] !== null && $row['monto_destino'] !== '' ? (string) $row['monto_destino'] : null,
+            isset($row['cuenta_origen_moneda']) && is_string($row['cuenta_origen_moneda']) && $row['cuenta_origen_moneda'] !== '' ? $row['cuenta_origen_moneda'] : null,
+            isset($row['cuenta_destino_moneda']) && is_string($row['cuenta_destino_moneda']) && $row['cuenta_destino_moneda'] !== '' ? $row['cuenta_destino_moneda'] : null,
         );
+    }
+
+    /** Monto acreditado en la cuenta de destino (en multimoneda es `monto_destino`; en misma moneda, `monto`). */
+    public function montoRecibido(): string
+    {
+        return $this->montoDestino ?? $this->monto;
+    }
+
+    public function esMultimoneda(?string $monedaBase = null): bool
+    {
+        $base = $monedaBase ?? \App\Support\Dinero::monedaActual();
+
+        return ($this->cuentaOrigenMoneda ?? $base) !== ($this->cuentaDestinoMoneda ?? $base);
     }
 }

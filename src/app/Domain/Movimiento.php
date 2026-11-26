@@ -25,6 +25,7 @@ final class Movimiento
         public readonly int $numCuotas = 1,
         public readonly bool $conIntereses = true,
         public readonly int $tasaMensualBps = 0,
+        public readonly ?string $cuentaMoneda = null,
     ) {
     }
 
@@ -49,6 +50,7 @@ final class Movimiento
             isset($row['num_cuotas']) ? max(1, (int) $row['num_cuotas']) : 1,
             isset($row['con_intereses']) ? (bool) $row['con_intereses'] : true,
             isset($row['tasa_mensual_bps']) ? max(0, (int) $row['tasa_mensual_bps']) : 0,
+            isset($row['cuenta_moneda']) && is_string($row['cuenta_moneda']) && $row['cuenta_moneda'] !== '' ? $row['cuenta_moneda'] : null,
         );
     }
 

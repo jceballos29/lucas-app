@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Validation;
 
+use App\Support\ConversorMoneda;
 use App\Support\Dinero;
 
 /**
@@ -15,12 +16,14 @@ final class TransferenciaValidator
     public const DESCRIPCION_MAX = 150;
 
     /**
-     * @param array<string, mixed> $input Normalmente $_POST (id_cuenta_origen, id_cuenta_destino, monto, fecha, descripcion).
-     * @return array{data: array{id_cuenta_origen: int, id_cuenta_destino: int, monto: string, fecha: string, descripcion: string|null}, errors: array<string, string>}
+     * @param array<string, mixed> $input Normalmente $_POST (id_cuenta_origen, id_cuenta_destino, monto, monto_destino, tasa_cambio, fecha, descripcion).
+     * @return array{data: array{id_cuenta_origen: int, id_cuenta_destino: int, monto: string, monto_destino: string|null, tasa_micros: int|null, fecha: string, descripcion: string|null}, errors: array<string, string>}
      */
     public function validate(array $input): array
     {
         $montoTexto = trim(self::text($input['monto'] ?? ''));
+        $montoDestinoTexto = trim(self::text($input['monto_destino'] ?? ''));
+        $tasaTexto = trim(self::text($input['tasa_cambio'] ?? ''));
         $fecha = trim(self::text($input['fecha'] ?? ''));
         $descripcion = trim(preg_replace('/\s+/u', ' ', self::text($input['descripcion'] ?? '')) ?? '');
         $errors = [];
@@ -44,6 +47,26 @@ final class TransferenciaValidator
             $errors['monto'] = 'El monto a transferir debe ser mayor que cero.';
         }
 
+        $montoDestino = null;
+        if ($montoDestinoTexto !== '') {
+            $parsedDest = Dinero::parse($montoDestinoTexto);
+            if ($parsedDest === null || $parsedDest === '0.00' || str_starts_with($parsedDest, '-')) {
+                $errors['monto_destino'] = 'Escribe un monto destino válido mayor que cero, o déjalo vacío para usar la tasa.';
+            } else {
+                $montoDestino = $parsedDest;
+            }
+        }
+
+        $tasaMicros = null;
+        if ($tasaTexto !== '') {
+            $parsedTasa = ConversorMoneda::parseTasaMicros($tasaTexto);
+            if ($parsedTasa === null) {
+                $errors['tasa_cambio'] = 'Escribe una tasa de cambio válida mayor que cero, por ejemplo 4.200 o 0,925.';
+            } else {
+                $tasaMicros = $parsedTasa;
+            }
+        }
+
         if (!MovimientoValidator::validDate($fecha)) {
             $errors['fecha'] = 'Elige una fecha válida.';
         }
@@ -57,6 +80,8 @@ final class TransferenciaValidator
                 'id_cuenta_origen' => $idOrigen,
                 'id_cuenta_destino' => $idDestino,
                 'monto' => $monto ?? '0.00',
+                'monto_destino' => $montoDestino,
+                'tasa_micros' => $tasaMicros,
                 'fecha' => $fecha,
                 'descripcion' => $descripcion === '' ? null : $descripcion,
             ],
