@@ -28,6 +28,7 @@ final class Cuenta
         public readonly string $saldo,
         public readonly ?int $diaCorte = null,
         public readonly ?int $diaPagoLimite = null,
+        public readonly int $tasaMensualBps = 0,
     ) {
     }
 
@@ -44,7 +45,32 @@ final class Cuenta
             (string) $row['saldo'],
             isset($row['dia_corte']) && $row['dia_corte'] !== null ? (int) $row['dia_corte'] : null,
             isset($row['dia_pago_limite']) && $row['dia_pago_limite'] !== null ? (int) $row['dia_pago_limite'] : null,
+            isset($row['tasa_mensual_bps']) ? (int) $row['tasa_mensual_bps'] : 0,
         );
+    }
+
+    public function tasaTexto(): string
+    {
+        if ($this->tasaMensualBps <= 0) {
+            return '0 % M.V.';
+        }
+        $entero = intdiv($this->tasaMensualBps, 100);
+        $dec = $this->tasaMensualBps % 100;
+
+        return $dec === 0
+            ? $entero . ' % M.V.'
+            : $entero . ',' . rtrim(sprintf('%02d', $dec), '0') . ' % M.V.';
+    }
+
+    public function tasaParaCampo(): string
+    {
+        if ($this->tasaMensualBps <= 0) {
+            return '';
+        }
+        $entero = intdiv($this->tasaMensualBps, 100);
+        $dec = $this->tasaMensualBps % 100;
+
+        return $dec === 0 ? (string) $entero : $entero . ',' . rtrim(sprintf('%02d', $dec), '0');
     }
 
     public function tipoTexto(): string

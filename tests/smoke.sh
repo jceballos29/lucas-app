@@ -1461,5 +1461,30 @@ contains "muestra el monto diferido a meses futuros (\$250.000)" '$250.000' "$TM
 contains "muestra el día de corte configurado" "Día 15" "$TMP/body"
 contains "muestra la fecha límite de pago configurada" "Día 28" "$TMP/body"
 
+echo; echo "== Intereses en compras a cuotas con tarjeta de crédito (Fase 15b)"
+post_form "$JTR" /cuenta-form.php "/cuenta-form.php?id=$CVISA" "id=$CVISA" "nombre=Visa" "tipo=tarjeta_credito" "saldo_inicial=-200.000" "dia_corte=15" "dia_pago_limite=28" "tasa_mensual=2"
+check "guardar tasa mensual de 2 % en tarjeta Visa redirige a cuentas" "302 /cuentas.php" "$CODE $LOC"
+check "la BD guardó tasa_mensual_bps=200" "200" "$(sql "SELECT tasa_mensual_bps FROM cuentas WHERE id_cuenta=$CVISA")"
+
+# Registrar compra a 3 cuotas de 300.000 SIN enviar con_intereses (por defecto es con intereses = 1)
+post_form "$JTR" /movimiento-form.php /movimiento-form.php \
+  "tipo=gasto" "monto=300.000" "fecha=$HOY_APP" "id_cuenta=$CVISA" \
+  "id_categoria=$KG" "descripcion=Audio a 3 cuotas con interes" "num_cuotas=3"
+check "registrar compra a 3 cuotas con interés por defecto redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
+request "$JTR" GET /movimientos.php
+contains "muestra la primera cuota con interés (\$106.000/mes) y el interés total (+\$12.000)" '3 cuotas ($106.000/mes) · Con interés (+$12.000 total)' "$TMP/body"
+
+# Registrar compra a 2 cuotas de 200.000 indicando explícitamente con_intereses=0 (Sin intereses)
+post_form "$JTR" /movimiento-form.php /movimiento-form.php \
+  "tipo=gasto" "monto=200.000" "fecha=$HOY_APP" "id_cuenta=$CVISA" \
+  "id_categoria=$KG" "descripcion=Promo comercio 0 interes" "num_cuotas=2" "con_intereses=0"
+check "registrar compra a 2 cuotas sin interés redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
+request "$JTR" GET /movimientos.php
+contains "muestra la compra a 2 cuotas marcada como Sin interés (0 %)" '2 cuotas ($100.000/mes) · Sin interés (0 %)' "$TMP/body"
+
+request "$JTR" GET /cuentas.php
+contains "la tarjeta en Cuentas muestra la tasa mensual configurada (2 % M.V.)" "2 % M.V." "$TMP/body"
+contains "y desglosa Capital + Interés en el próximo corte" "Interés \$6.000" "$TMP/body"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

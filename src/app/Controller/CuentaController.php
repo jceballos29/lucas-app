@@ -82,13 +82,14 @@ final class CuentaController
 
             $errors = [];
             $old = $cuenta === null
-                ? ['nombre' => '', 'tipo' => 'efectivo', 'saldo_inicial' => '', 'dia_corte' => '', 'dia_pago_limite' => '']
+                ? ['nombre' => '', 'tipo' => 'efectivo', 'saldo_inicial' => '', 'dia_corte' => '', 'dia_pago_limite' => '', 'tasa_mensual' => '']
                 : [
                     'nombre' => $cuenta->nombre,
                     'tipo' => $cuenta->tipo,
                     'saldo_inicial' => Dinero::paraCampo($cuenta->saldoInicial),
                     'dia_corte' => $cuenta->diaCorte !== null ? (string) $cuenta->diaCorte : '',
                     'dia_pago_limite' => $cuenta->diaPagoLimite !== null ? (string) $cuenta->diaPagoLimite : '',
+                    'tasa_mensual' => $cuenta->tasaParaCampo(),
                 ];
 
             if ($isPost) {
@@ -104,6 +105,7 @@ final class CuentaController
                     'saldo_inicial' => is_string($_POST['saldo_inicial'] ?? null) ? trim($_POST['saldo_inicial']) : '',
                     'dia_corte' => is_string($_POST['dia_corte'] ?? null) ? trim($_POST['dia_corte']) : '',
                     'dia_pago_limite' => is_string($_POST['dia_pago_limite'] ?? null) ? trim($_POST['dia_pago_limite']) : '',
+                    'tasa_mensual' => is_string($_POST['tasa_mensual'] ?? null) ? trim($_POST['tasa_mensual']) : '',
                 ];
 
                 if (!isset($errors['nombre']) && $repo->nameTaken($user['id'], $data['nombre'], $cuenta?->id, $espacioId)) {
@@ -120,6 +122,7 @@ final class CuentaController
                             $espacioId,
                             $data['dia_corte'],
                             $data['dia_pago_limite'],
+                            $data['tasa_mensual_bps'],
                         );
                         Flash::set('ok', "Se creó la cuenta «{$data['nombre']}».");
                     } else {
@@ -132,6 +135,7 @@ final class CuentaController
                             $espacioId,
                             $data['dia_corte'],
                             $data['dia_pago_limite'],
+                            $data['tasa_mensual_bps'],
                         );
                         Flash::set('ok', "Se guardaron los cambios de «{$data['nombre']}».");
                     }

@@ -24,12 +24,27 @@ final class PlanCuotas
     public const MAX_CUOTAS = 36;
 
     /**
+     * Genera el plan de cuotas con o sin intereses en centavos enteros (Fase 15 y Fase 15b).
+     *
+     * Cuando `$conIntereses === true`, `$numCuotas > 1` y `$tasaMensualBps > 0`:
+     *  - El capital se amortiza en N cuotas iguales (ajustando los primeros centavos del residuo).
+     *  - El interés de cada cuota k se calcula sobre el saldo de capital pendiente antes de esa cuota:
+     *    interes_centavos = floor((saldo_pendiente_centavos * tasa_bps + 500_000) / 1_000_000).
+     *  - Si la compra es a 1 sola cuota o `$conIntereses === false` o `$tasaMensualBps <= 0`, `monto_interes` es `0.00`.
+     *
      * @return list<array{numero: int, fecha_cobro: string, monto_capital: string, monto_interes: string, monto_total: string}>
      */
-    public static function generar(string $montoTotal, int $numCuotas, string $fechaCompra, ?int $diaCorte = null): array
-    {
+    public static function generar(
+        string $montoTotal,
+        int $numCuotas,
+        string $fechaCompra,
+        ?int $diaCorte = null,
+        bool $conIntereses = true,
+        int $tasaMensualBps = 0,
+    ): array {
         $n = max(self::MIN_CUOTAS, min(self::MAX_CUOTAS, $numCuotas));
         $totalCentavos = max(0, Dinero::aCentavos($montoTotal));
+        $tasaBps = ($conIntereses && $n > 1) ? max(0, $tasaMensualBps) : 0;
 
         $baseCentavos = intdiv($totalCentavos, $n);
         $residuo = $totalCentavos % $n;
@@ -42,18 +57,24 @@ final class PlanCuotas
         $cuotas = [];
         $anio = $anioBase;
         $mes = $mesBase;
+        $saldoPendiente = $totalCentavos;
 
         for ($i = 1; $i <= $n; $i++) {
             $capCentavos = $baseCentavos + ($i <= $residuo ? 1 : 0);
-            $montoCap = Dinero::deCentavos($capCentavos);
+            $intCentavos = $tasaBps > 0
+                ? intdiv($saldoPendiente * $tasaBps + 5_000, 10_000)
+                : 0;
+            $totCentavos = $capCentavos + $intCentavos;
 
             $cuotas[] = [
                 'numero' => $i,
                 'fecha_cobro' => self::fechaEnMes($anio, $mes, $diaObjetivo),
-                'monto_capital' => $montoCap,
-                'monto_interes' => '0.00',
-                'monto_total' => $montoCap,
+                'monto_capital' => Dinero::deCentavos($capCentavos),
+                'monto_interes' => Dinero::deCentavos($intCentavos),
+                'monto_total' => Dinero::deCentavos($totCentavos),
             ];
+
+            $saldoPendiente = max(0, $saldoPendiente - $capCentavos);
 
             $mes++;
             if ($mes > 12) {
@@ -66,15 +87,32 @@ final class PlanCuotas
     }
 
     /**
-     * Valor aproximado de la primera cuota para mostrar en resúmenes («6 cuotas de $50.000»).
+     * Valor de la primera cuota (capital + interés del mes 1 si aplica) para mostrar en resúmenes.
      */
-    public static function primeraCuota(string $montoTotal, int $numCuotas): string
+    public static function primeraCuota(string $montoTotal, int $numCuotas, bool $conIntereses = false, int $tasaMensualBps = 0): string
     {
         $n = max(self::MIN_CUOTAS, min(self::MAX_CUOTAS, $numCuotas));
         $totalCentavos = max(0, Dinero::aCentavos($montoTotal));
-        $base = intdiv($totalCentavos, $n) + ($totalCentavos % $n > 0 ? 1 : 0);
+        $cap1 = intdiv($totalCentavos, $n) + ($totalCentavos % $n > 0 ? 1 : 0);
+        $int1 = ($conIntereses && $n > 1 && $tasaMensualBps > 0)
+            ? intdiv($totalCentavos * $tasaMensualBps + 5_000, 10_000)
+            : 0;
 
-        return Dinero::deCentavos($base);
+        return Dinero::deCentavos($cap1 + $int1);
+    }
+
+    /**
+     * Suma total de intereses que generará una compra a N cuotas sobre todos los meses del diferido.
+     */
+    public static function interesTotalCompra(string $montoTotal, int $numCuotas, bool $conIntereses, int $tasaMensualBps): string
+    {
+        if (!$conIntereses || $numCuotas <= 1 || $tasaMensualBps <= 0) {
+            return '0.00';
+        }
+
+        $cuotas = self::generar($montoTotal, $numCuotas, '2026-01-01', 15, true, $tasaMensualBps);
+
+        return Dinero::sumar(array_column($cuotas, 'monto_interes'));
     }
 
     /**

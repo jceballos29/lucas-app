@@ -182,4 +182,26 @@
     selTipoCuenta.addEventListener('change', syncTipoCuenta);
     syncTipoCuenta();
   }
+
+  /* 9. En movimiento-form.php, mostrar los selectores de cuotas e intereses solo cuando la cuenta es tarjeta de crédito
+        y el movimiento es un gasto (y el selector de intereses solo si num_cuotas > 1). */
+  var selCuentaMov = document.getElementById('cuenta');
+  var selCuotasMov = document.getElementById('num_cuotas');
+  var boxCuotas = document.getElementById('campo-cuotas');
+  var boxIntereses = document.getElementById('campo-intereses-tarjeta');
+  if (selCuentaMov && selCuotasMov && boxCuotas && boxIntereses) {
+    var syncCuotasTarjeta = function () {
+      var optCuenta = selCuentaMov.options[selCuentaMov.selectedIndex];
+      var esTarjeta = !optCuenta || !optCuenta.value || optCuenta.getAttribute('data-cuenta-tipo') === 'tarjeta_credito';
+      var radioTipo = document.querySelector('input[name="tipo"]:checked');
+      var esGasto = !radioTipo || radioTipo.value === 'gasto';
+      var mostrarCuotas = esTarjeta && esGasto;
+      boxCuotas.hidden = !mostrarCuotas;
+      boxIntereses.hidden = !mostrarCuotas || Number(selCuotasMov.value) <= 1;
+    };
+    selCuentaMov.addEventListener('change', syncCuotasTarjeta);
+    selCuotasMov.addEventListener('change', syncCuotasTarjeta);
+    tipoRadios.forEach(function (r) { r.addEventListener('change', syncCuotasTarjeta); });
+    syncCuotasTarjeta();
+  }
 })();

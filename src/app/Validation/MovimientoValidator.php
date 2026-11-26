@@ -83,6 +83,10 @@ final class MovimientoValidator
             $numCuotas = 1;
         }
 
+        // Por defecto, las compras a cuotas son CON intereses, salvo que se indique explícitamente '0'.
+        $conInteresesRaw = trim(self::text($input['con_intereses'] ?? '1'));
+        $conIntereses = $conInteresesRaw !== '0';
+
         return [
             'data' => [
                 'tipo' => $tipo,
@@ -93,6 +97,7 @@ final class MovimientoValidator
                 'descripcion' => $descripcion === '' ? null : $descripcion,
                 'etiqueta' => $etiqueta,
                 'num_cuotas' => $numCuotas,
+                'con_intereses' => $conIntereses,
             ],
             'errors' => $errors,
         ];
@@ -154,6 +159,7 @@ final class MovimientoValidator
         if ($tipo === 'ingreso') {
             $numCuotas = 1;
         }
+        $conIntereses = trim(self::text($input['con_intereses'] ?? '1')) !== '0';
 
         $catsRaw = is_array($input['split_categoria'] ?? null) ? $input['split_categoria'] : [];
         $montosRaw = is_array($input['split_monto'] ?? null) ? $input['split_monto'] : [];
@@ -225,6 +231,7 @@ final class MovimientoValidator
                 'descripcion' => $descripcionBase === '' ? null : $descripcionBase,
                 'etiqueta' => $etiqueta,
                 'num_cuotas' => $numCuotas,
+                'con_intereses' => $conIntereses,
             ],
             'partes' => $partes,
             'errors' => $errors,

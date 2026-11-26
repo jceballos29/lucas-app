@@ -88,7 +88,7 @@ final class MovimientoController
                 ['id_categoria' => '', 'monto' => '', 'descripcion' => ''],
             ];
             $old = $movimiento === null
-                ? ['tipo' => 'gasto', 'monto' => '', 'fecha' => date('Y-m-d'), 'id_cuenta' => '', 'id_categoria' => '', 'descripcion' => '', 'etiqueta' => '', 'num_cuotas' => '1']
+                ? ['tipo' => 'gasto', 'monto' => '', 'fecha' => date('Y-m-d'), 'id_cuenta' => '', 'id_categoria' => '', 'descripcion' => '', 'etiqueta' => '', 'num_cuotas' => '1', 'con_intereses' => '1']
                 : [
                     'tipo' => $movimiento->tipo,
                     'monto' => Dinero::paraCampo($movimiento->monto),
@@ -98,6 +98,7 @@ final class MovimientoController
                     'descripcion' => $movimiento->descripcion ?? '',
                     'etiqueta' => $movimiento->etiqueta ?? '',
                     'num_cuotas' => (string) $movimiento->numCuotas,
+                    'con_intereses' => $movimiento->conIntereses ? '1' : '0',
                 ];
 
             if ($isPost) {
@@ -131,6 +132,7 @@ final class MovimientoController
                         'descripcion' => $splitRes['base']['descripcion'] ?? '',
                         'etiqueta' => is_string($_POST['etiqueta'] ?? null) ? trim($_POST['etiqueta']) : '',
                         'num_cuotas' => (string) ($splitRes['base']['num_cuotas'] ?? 1),
+                        'con_intereses' => ($splitRes['base']['con_intereses'] ?? true) ? '1' : '0',
                     ];
 
                     if ($errors === []) {
@@ -189,6 +191,7 @@ final class MovimientoController
                         'descripcion' => $result['data']['descripcion'] ?? '',
                         'etiqueta' => is_string($_POST['etiqueta'] ?? null) ? trim($_POST['etiqueta']) : '',
                         'num_cuotas' => (string) ($result['data']['num_cuotas'] ?? 1),
+                        'con_intereses' => ($result['data']['con_intereses'] ?? true) ? '1' : '0',
                     ];
 
                     if ($errors === []) {

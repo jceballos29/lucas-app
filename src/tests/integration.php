@@ -1298,4 +1298,41 @@ same('en cuenta de efectivo num_cuotas se fuerza a 1 y no crea filas en cuotas_t
     (int) $pdo->query('SELECT COUNT(*) FROM cuotas_tarjeta WHERE id_transaccion = ' . (int) $movEfecCuotas['id'])->fetchColumn(),
 ]);
 
+section('Intereses en compras a cuotas con tarjeta de crédito (Fase 15b)');
+$tcIntId = $cuentas->create($tcUser, 'Visa Platinum 2%', 'tarjeta_credito', '0.00', null, 15, 28, 200); // 2,00 % M.V.
+same('la tarjeta guarda tasa_mensual_bps = 200 (2 % M.V.)', [200, '2 % M.V.'], [
+    $cuentas->findOwned($tcUser, $tcIntId)?->tasaMensualBps,
+    $cuentas->findOwned($tcUser, $tcIntId)?->tasaTexto(),
+]);
+// Compra por defecto (con_intereses = true por omisión) de 300.000 a 3 cuotas:
+// Cuota 1 (2026-11-15): 100.000 capital + 6.000 interés = 106.000
+// Cuotas 2 y 3 (futuras): 200.000 capital + (4.000 + 2.000) interés = 206.000
+$movConInt = $container->gestionMovimientos()->guardar($tcUser, null, [
+    'tipo' => 'gasto',
+    'monto' => '300000.00',
+    'fecha' => '2026-11-10',
+    'id_cuenta' => $tcIntId,
+    'id_categoria' => $catA,
+    'descripcion' => 'Celular a 3 cuotas con interés',
+    'num_cuotas' => 3,
+]);
+same('guardar compra a 3 cuotas usa con_intereses=true por defecto y copia tasa 200 bps', [true, 200], [
+    $movs->findOwned($tcUser, (int) $movConInt['id'])?->conIntereses,
+    $movs->findOwned($tcUser, (int) $movConInt['id'])?->tasaMensualBps,
+]);
+$resTcInt = $container->cuotasTarjeta()->resumenTarjeta($tcIntId, 15, 28, '2026-11-12');
+same('resumenTarjeta desglosa capital e interés del próximo corte (100.000 + 6.000) y de los meses futuros (200.000 + 6.000)', [
+    '106000.00',
+    '100000.00',
+    '6000.00',
+    '206000.00',
+    '6000.00',
+], [
+    $resTcInt['cuotaProximoCorte'],
+    $resTcInt['capitalProximoCorte'],
+    $resTcInt['interesProximoCorte'],
+    $resTcInt['deudaDiferidaFutura'],
+    $resTcInt['interesDiferidoFuturo'],
+]);
+
 finish();

@@ -24,6 +24,7 @@ final class CuentaValidator
         $saldoTexto = trim(self::text($input['saldo_inicial'] ?? ''));
         $diaCorteTexto = trim(self::text($input['dia_corte'] ?? ''));
         $diaPagoTexto = trim(self::text($input['dia_pago_limite'] ?? ''));
+        $tasaTexto = trim(self::text($input['tasa_mensual'] ?? ''));
         $errors = [];
 
         $largo = mb_strlen($nombre);
@@ -45,6 +46,7 @@ final class CuentaValidator
 
         $diaCorte = null;
         $diaPagoLimite = null;
+        $tasaBps = 0;
 
         if ($tipo === 'tarjeta_credito') {
             if ($diaCorteTexto !== '') {
@@ -62,6 +64,15 @@ final class CuentaValidator
                     $diaPagoLimite = (int) $diaPagoTexto;
                 }
             }
+
+            if ($tasaTexto !== '') {
+                $parsedTasa = DeudaValidator::parseTasaBps($tasaTexto);
+                if ($parsedTasa === null || $parsedTasa < 0 || $parsedTasa > DeudaValidator::TASA_MAX_BPS) {
+                    $errors['tasa_mensual'] = 'Escribe una tasa mensual entre 0 y 20 %, por ejemplo 2,15 o 1,85.';
+                } else {
+                    $tasaBps = $parsedTasa;
+                }
+            }
         }
 
         return [
@@ -71,6 +82,7 @@ final class CuentaValidator
                 'saldo_inicial' => $saldo ?? '0.00',
                 'dia_corte' => $diaCorte,
                 'dia_pago_limite' => $diaPagoLimite,
+                'tasa_mensual_bps' => $tasaBps,
             ],
             'errors' => $errors,
         ];

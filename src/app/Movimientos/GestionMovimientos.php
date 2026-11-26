@@ -84,6 +84,8 @@ final class GestionMovimientos
 
             $esGastoTarjeta = ($cuenta['tipo'] ?? '') === 'tarjeta_credito' && $datos['tipo'] === 'gasto';
             $numCuotas = $esGastoTarjeta ? max(1, min(36, (int) ($datos['num_cuotas'] ?? 1))) : 1;
+            $conIntereses = $esGastoTarjeta && $numCuotas > 1 ? (bool) ($datos['con_intereses'] ?? true) : false;
+            $tasaBps = ($conIntereses && $numCuotas > 1) ? (int) ($cuenta['tasa_mensual_bps'] ?? 0) : 0;
 
             if ($movimientoId === null) {
                 $id = $this->movimientos->insert(
@@ -98,6 +100,8 @@ final class GestionMovimientos
                     $datos['etiqueta'] ?? null,
                     null,
                     $numCuotas,
+                    $conIntereses,
+                    $tasaBps,
                 );
             } else {
                 $this->movimientos->update(
@@ -112,13 +116,15 @@ final class GestionMovimientos
                     $espacioId,
                     $datos['etiqueta'] ?? null,
                     $numCuotas,
+                    $conIntereses,
+                    $tasaBps,
                 );
                 $id = $movimientoId;
             }
 
             if ($this->cuotasTarjeta !== null) {
                 $cuotas = $esGastoTarjeta
-                    ? PlanCuotas::generar($datos['monto'], $numCuotas, $datos['fecha'], $cuenta['dia_corte'] ?? null)
+                    ? PlanCuotas::generar($datos['monto'], $numCuotas, $datos['fecha'], $cuenta['dia_corte'] ?? null, $conIntereses, $tasaBps)
                     : [];
                 $this->cuotasTarjeta->replaceForTransaccion($id, $datos['id_cuenta'], $cuotas);
             }
@@ -172,6 +178,8 @@ final class GestionMovimientos
             $etiqueta = $base['etiqueta'] ?? null;
             $esGastoTarjeta = ($cuenta['tipo'] ?? '') === 'tarjeta_credito' && $base['tipo'] === 'gasto';
             $numCuotas = $esGastoTarjeta ? max(1, min(36, (int) ($base['num_cuotas'] ?? 1))) : 1;
+            $conIntereses = $esGastoTarjeta && $numCuotas > 1 ? (bool) ($base['con_intereses'] ?? true) : false;
+            $tasaBps = ($conIntereses && $numCuotas > 1) ? (int) ($cuenta['tasa_mensual_bps'] ?? 0) : 0;
             $ids = [];
 
             foreach ($partes as $parte) {
@@ -187,11 +195,13 @@ final class GestionMovimientos
                     $etiqueta,
                     $grupoSplit,
                     $numCuotas,
+                    $conIntereses,
+                    $tasaBps,
                 );
                 $ids[] = $id;
 
                 if ($this->cuotasTarjeta !== null && $esGastoTarjeta) {
-                    $cuotas = PlanCuotas::generar($parte['monto'], $numCuotas, $base['fecha'], $cuenta['dia_corte'] ?? null);
+                    $cuotas = PlanCuotas::generar($parte['monto'], $numCuotas, $base['fecha'], $cuenta['dia_corte'] ?? null, $conIntereses, $tasaBps);
                     $this->cuotasTarjeta->replaceForTransaccion($id, $base['id_cuenta'], $cuotas);
                 }
             }

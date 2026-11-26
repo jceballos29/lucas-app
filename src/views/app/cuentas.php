@@ -39,6 +39,7 @@ $acciones = $puedeEscribir ? Html::join([
         $mostrarResumenTarjeta = $resTarjeta !== null && (
             $c->diaCorte !== null
             || $c->diaPagoLimite !== null
+            || $c->tasaMensualBps > 0
             || Dinero::aCentavos($resTarjeta['cuotaProximoCorte']) > 0
             || Dinero::aCentavos($resTarjeta['deudaDiferidaFutura']) > 0
         );
@@ -56,13 +57,29 @@ $acciones = $puedeEscribir ? Html::join([
                 <?php if (Dinero::aCentavos($resTarjeta['cuotaProximoCorte']) > 0 || $c->diaCorte !== null): ?>
                     <div>
                         <dt>Cuota próximo corte</dt>
-                        <dd><strong><?= escape(Dinero::formatear($resTarjeta['cuotaProximoCorte'])) ?></strong></dd>
+                        <dd>
+                            <strong><?= escape(Dinero::formatear($resTarjeta['cuotaProximoCorte'])) ?></strong>
+                            <?php if (Dinero::aCentavos($resTarjeta['interesProximoCorte'] ?? '0.00') > 0): ?>
+                                <span class="cell-sub">Capital <?= escape(Dinero::formatear($resTarjeta['capitalProximoCorte'])) ?> + Interés <?= escape(Dinero::formatear($resTarjeta['interesProximoCorte'])) ?></span>
+                            <?php endif; ?>
+                        </dd>
                     </div>
                 <?php endif; ?>
                 <?php if (Dinero::aCentavos($resTarjeta['deudaDiferidaFutura']) > 0): ?>
                     <div>
                         <dt>Diferido a meses futuros</dt>
-                        <dd><?= escape(Dinero::formatear($resTarjeta['deudaDiferidaFutura'])) ?></dd>
+                        <dd>
+                            <?= escape(Dinero::formatear($resTarjeta['deudaDiferidaFutura'])) ?>
+                            <?php if (Dinero::aCentavos($resTarjeta['interesDiferidoFuturo'] ?? '0.00') > 0): ?>
+                                <span class="cell-sub">Incluye <?= escape(Dinero::formatear($resTarjeta['interesDiferidoFuturo'])) ?> de interés</span>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
+                <?php endif; ?>
+                <?php if ($c->tasaMensualBps > 0): ?>
+                    <div>
+                        <dt>Tasa mensual</dt>
+                        <dd><?= escape($c->tasaTexto()) ?></dd>
                     </div>
                 <?php endif; ?>
                 <?php if ($c->diaCorte !== null): ?>

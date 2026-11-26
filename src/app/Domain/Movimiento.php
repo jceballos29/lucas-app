@@ -23,6 +23,8 @@ final class Movimiento
         public readonly ?string $etiqueta = null,
         public readonly ?string $grupoSplit = null,
         public readonly int $numCuotas = 1,
+        public readonly bool $conIntereses = true,
+        public readonly int $tasaMensualBps = 0,
     ) {
     }
 
@@ -45,6 +47,8 @@ final class Movimiento
             isset($row['etiqueta']) && $row['etiqueta'] !== '' ? (string) $row['etiqueta'] : null,
             isset($row['grupo_split']) && $row['grupo_split'] !== '' ? (string) $row['grupo_split'] : null,
             isset($row['num_cuotas']) ? max(1, (int) $row['num_cuotas']) : 1,
+            isset($row['con_intereses']) ? (bool) $row['con_intereses'] : true,
+            isset($row['tasa_mensual_bps']) ? max(0, (int) $row['tasa_mensual_bps']) : 0,
         );
     }
 

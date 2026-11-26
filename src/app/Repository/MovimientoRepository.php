@@ -14,7 +14,7 @@ use PDO;
 final class MovimientoRepository
 {
     private const SELECT = 'SELECT t.id_transaccion, t.id_usuario, t.id_cuenta, t.id_categoria, t.tipo, t.monto, t.fecha, t.descripcion,
-            t.etiqueta, t.grupo_split, t.num_cuotas,
+            t.etiqueta, t.grupo_split, t.num_cuotas, t.con_intereses, t.tasa_mensual_bps,
             c.nombre AS cuenta_nombre, k.nombre AS categoria_nombre, k.color AS categoria_color, u.nombre AS autor_nombre
         FROM transacciones t
         JOIN cuentas c ON c.id_cuenta = t.id_cuenta
@@ -120,10 +120,12 @@ final class MovimientoRepository
         ?string $etiqueta = null,
         ?string $grupoSplit = null,
         int $numCuotas = 1,
+        bool $conIntereses = true,
+        int $tasaMensualBps = 0,
     ): int {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO transacciones (id_usuario, id_espacio, id_cuenta, id_categoria, tipo, monto, fecha, descripcion, etiqueta, grupo_split, num_cuotas)
-             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :fecha, :desc, :etiqueta, :split, :cuotas)'
+            'INSERT INTO transacciones (id_usuario, id_espacio, id_cuenta, id_categoria, tipo, monto, fecha, descripcion, etiqueta, grupo_split, num_cuotas, con_intereses, tasa_mensual_bps)
+             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :fecha, :desc, :etiqueta, :split, :cuotas, :con_int, :tasa)'
         );
         $stmt->execute([
             'u' => $userId,
@@ -137,6 +139,8 @@ final class MovimientoRepository
             'etiqueta' => $etiqueta,
             'split' => $grupoSplit,
             'cuotas' => max(1, min(36, $numCuotas)),
+            'con_int' => $conIntereses ? 1 : 0,
+            'tasa' => max(0, min(2000, $tasaMensualBps)),
         ]);
 
         return (int) $this->pdo->lastInsertId();
@@ -154,10 +158,12 @@ final class MovimientoRepository
         ?int $espacioId = null,
         ?string $etiqueta = null,
         int $numCuotas = 1,
+        bool $conIntereses = true,
+        int $tasaMensualBps = 0,
     ): bool {
         [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
-            "UPDATE transacciones SET id_cuenta = :cuenta, id_categoria = :cat, tipo = :tipo, monto = :monto, fecha = :fecha, descripcion = :desc, etiqueta = :etiqueta, num_cuotas = :cuotas
+            "UPDATE transacciones SET id_cuenta = :cuenta, id_categoria = :cat, tipo = :tipo, monto = :monto, fecha = :fecha, descripcion = :desc, etiqueta = :etiqueta, num_cuotas = :cuotas, con_intereses = :con_int, tasa_mensual_bps = :tasa
              WHERE id_transaccion = :id AND $scope"
         );
         $stmt->execute($params + [
@@ -169,6 +175,8 @@ final class MovimientoRepository
             'desc' => $descripcion,
             'etiqueta' => $etiqueta,
             'cuotas' => max(1, min(36, $numCuotas)),
+            'con_int' => $conIntereses ? 1 : 0,
+            'tasa' => max(0, min(2000, $tasaMensualBps)),
             'id' => $id,
         ]);
 

@@ -924,4 +924,43 @@ same('MovimientoValidator valida num_cuotas entre 1 y 36', [6, true], [
     isset($mv14->validate(['tipo' => 'gasto', 'monto' => '100.000', 'fecha' => '2026-11-25', 'id_cuenta' => '1', 'id_categoria' => '2', 'num_cuotas' => '48'])['errors']['num_cuotas']),
 ]);
 
+section('Intereses en compras a cuotas con tarjeta de crédito (Fase 15b)');
+same('por defecto MovimientoValidator marca con_intereses = true', [true, false], [
+    $mv14->validate(['tipo' => 'gasto', 'monto' => '100.000', 'fecha' => '2026-11-25', 'id_cuenta' => '1', 'id_categoria' => '2', 'num_cuotas' => '6'])['data']['con_intereses'],
+    $mv14->validate(['tipo' => 'gasto', 'monto' => '100.000', 'fecha' => '2026-11-25', 'id_cuenta' => '1', 'id_categoria' => '2', 'num_cuotas' => '6', 'con_intereses' => '0'])['data']['con_intereses'],
+]);
+// 300.000 a 3 cuotas con tasa 2 % M.V. (200 bps):
+// Cuota 1: saldo 300.000 -> capital 100.000 + interés 6.000 = 106.000
+// Cuota 2: saldo 200.000 -> capital 100.000 + interés 4.000 = 104.000
+// Cuota 3: saldo 100.000 -> capital 100.000 + interés 2.000 = 102.000
+// Interés total = 12.000
+$cuotasConInt = PC::generar('300000.00', 3, '2026-11-10', 15, true, 200);
+same('300.000 a 3 cuotas con 2 % M.V. calcula interés sobre saldo pendiente (6.000, 4.000, 2.000)', [
+    ['100000.00', '6000.00', '106000.00'],
+    ['100000.00', '4000.00', '104000.00'],
+    ['100000.00', '2000.00', '102000.00'],
+    '12000.00',
+], [
+    [$cuotasConInt[0]['monto_capital'], $cuotasConInt[0]['monto_interes'], $cuotasConInt[0]['monto_total']],
+    [$cuotasConInt[1]['monto_capital'], $cuotasConInt[1]['monto_interes'], $cuotasConInt[1]['monto_total']],
+    [$cuotasConInt[2]['monto_capital'], $cuotasConInt[2]['monto_interes'], $cuotasConInt[2]['monto_total']],
+    PC::interesTotalCompra('300000.00', 3, true, 200),
+]);
+$cuotasSinInt = PC::generar('300000.00', 3, '2026-11-10', 15, false, 200);
+same('si el usuario indica sin intereses (con_intereses=false), el interés es 0 aunque la tarjeta tenga tasa', [
+    '0.00',
+    '100000.00',
+    '0.00',
+], [
+    $cuotasSinInt[0]['monto_interes'],
+    $cuotasSinInt[0]['monto_total'],
+    PC::interesTotalCompra('300000.00', 3, false, 200),
+]);
+$cuota1Contado = PC::generar('300000.00', 1, '2026-11-10', 15, true, 200);
+same('a 1 sola cuota nunca se cobran intereses de diferido', '0.00', $cuota1Contado[0]['monto_interes']);
+same('CuentaValidator valida tasa_mensual en tarjeta_credito', [215, true], [
+    $cv15->validate(['nombre' => 'Visa', 'tipo' => 'tarjeta_credito', 'tasa_mensual' => '2,15'])['data']['tasa_mensual_bps'],
+    isset($cv15->validate(['nombre' => 'Visa', 'tipo' => 'tarjeta_credito', 'tasa_mensual' => '25'])['errors']['tasa_mensual']),
+]);
+
 finish();

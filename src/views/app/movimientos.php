@@ -45,8 +45,12 @@ $rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompar
         $partesSub[] = 'Dividido';
     }
     if ($m->numCuotas > 1) {
-        $cuotaMes = \App\Tarjetas\PlanCuotas::primeraCuota($m->monto, $m->numCuotas);
-        $partesSub[] = $m->numCuotas . ' cuotas (' . escape(Dinero::formatear($cuotaMes)) . '/mes)';
+        $cuotaMes = \App\Tarjetas\PlanCuotas::primeraCuota($m->monto, $m->numCuotas, $m->conIntereses, $m->tasaMensualBps);
+        $interesTot = \App\Tarjetas\PlanCuotas::interesTotalCompra($m->monto, $m->numCuotas, $m->conIntereses, $m->tasaMensualBps);
+        $txtInteres = ($m->conIntereses && Dinero::aCentavos($interesTot) > 0)
+            ? ' · Con interés (+' . escape(Dinero::formatear($interesTot)) . ' total)'
+            : ' · Sin interés (0 %)';
+        $partesSub[] = $m->numCuotas . ' cuotas (' . escape(Dinero::formatear($cuotaMes)) . '/mes)' . $txtInteres;
     }
     $metaSub = $partesSub !== []
         ? '<span class="cell-sub">' . implode(' · ', $partesSub) . '</span>'

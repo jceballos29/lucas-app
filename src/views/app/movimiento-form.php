@@ -68,6 +68,18 @@ for ($q = 1; $q <= 36; $q++) {
                 <?= Ui::select(['id' => 'num_cuotas', 'name' => 'num_cuotas', 'label' => 'Número de cuotas (tarjeta de crédito)', 'options' => $opcionesCuotas, 'selected' => (string) ($old['num_cuotas'] ?? '1'), 'error' => $errors['num_cuotas'] ?? null]) ?>
             </div>
         </div>
+        <div id="campo-intereses-tarjeta">
+            <?= Ui::select([
+                'id' => 'con_intereses',
+                'name' => 'con_intereses',
+                'label' => 'Intereses de la compra a cuotas (tarjeta de crédito)',
+                'options' => [
+                    '1' => 'Con intereses (aplica la tasa mensual de la tarjeta)',
+                    '0' => 'Sin intereses (0 % M.V. / promoción de comercio)',
+                ],
+                'selected' => (string) ($old['con_intereses'] ?? '1'),
+            ]) ?>
+        </div>
         <div class="form-grid">
             <?= Ui::field(['id' => 'descripcion', 'label' => 'Descripción', 'value' => $old['descripcion'], 'placeholder' => 'Ej.: Almuerzo con compañeros', 'hint' => 'Opcional. Hasta 150 caracteres.', 'error' => $errors['descripcion'] ?? null, 'attrs' => ['maxlength' => '150']]) ?>
             <?= Ui::field(['id' => 'etiqueta', 'label' => 'Etiqueta / Proyecto (#tag)', 'value' => $old['etiqueta'] ?? '', 'placeholder' => 'Ej.: vacaciones-2026', 'hint' => 'Opcional. Agrupa gastos de un viaje, evento o proyecto.', 'error' => $errors['etiqueta'] ?? null, 'attrs' => ['maxlength' => '40']]) ?>

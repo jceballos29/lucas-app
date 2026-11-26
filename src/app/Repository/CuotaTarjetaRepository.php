@@ -76,18 +76,22 @@ final class CuotaTarjetaRepository
         $rowCiclo = $stmtCiclo->fetch() ?: ['total' => '0.00', 'capital' => '0.00', 'interes' => '0.00', 'cantidad' => 0];
 
         $stmtFuturo = $this->pdo->prepare(
-            'SELECT COALESCE(SUM(monto_total), 0) AS futuro
+            'SELECT COALESCE(SUM(monto_total), 0) AS futuro,
+                    COALESCE(SUM(monto_capital), 0) AS capital_futuro,
+                    COALESCE(SUM(monto_interes), 0) AS interes_futuro
              FROM cuotas_tarjeta
              WHERE id_cuenta = :c AND fecha_cobro > :hasta'
         );
         $stmtFuturo->execute(['c' => $cuentaId, 'hasta' => $hasta]);
-        $futuro = (string) $stmtFuturo->fetchColumn();
+        $rowFuturo = $stmtFuturo->fetch() ?: ['futuro' => '0.00', 'capital_futuro' => '0.00', 'interes_futuro' => '0.00'];
 
         return [
             'cuotaProximoCorte' => (string) $rowCiclo['total'],
             'capitalProximoCorte' => (string) $rowCiclo['capital'],
             'interesProximoCorte' => (string) $rowCiclo['interes'],
-            'deudaDiferidaFutura' => $futuro,
+            'deudaDiferidaFutura' => (string) $rowFuturo['futuro'],
+            'capitalDiferidoFuturo' => (string) $rowFuturo['capital_futuro'],
+            'interesDiferidoFuturo' => (string) $rowFuturo['interes_futuro'],
             'numCuotasEnCurso' => (int) $rowCiclo['cantidad'],
             'proximoCorte' => CicloTarjeta::proximaFecha($diaCorte, $hoy),
             'proximoPago' => CicloTarjeta::proximaFecha($diaPagoLimite, $hoy),
