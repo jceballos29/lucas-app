@@ -227,6 +227,9 @@ final class RecurrenteController
                         $prox = Fecha::simple((string) $res['proximaFecha']);
                         $mensaje = "Se registró «{$nombre}» (" . Dinero::formatear($rec->monto) . ") en «{$res['cuenta']}». Próxima fecha: $prox.";
                         $aviso = !$rec->esIngreso() ? $this->avisoPresupuesto($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId) : null;
+                        if (!$rec->esIngreso()) {
+                            $this->container->notificadorPresupuesto()->notificarGasto($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId);
+                        }
                         Flash::set($aviso === null ? 'ok' : 'warn', $aviso === null ? $mensaje : "$mensaje $aviso");
                     } elseif ($res['codigo'] === ReglasMovimiento::SALDO_INSUFICIENTE) {
                         $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));

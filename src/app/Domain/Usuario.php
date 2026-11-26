@@ -18,6 +18,8 @@ final class Usuario
         public readonly string $moneda,
         public readonly string $rol,
         public readonly bool $activo,
+        public readonly bool $notifPresupuestos = false,
+        public readonly bool $notifResumenMensual = false,
     ) {
     }
 
@@ -32,13 +34,15 @@ final class Usuario
             (string) $row['moneda'],
             (string) $row['rol'],
             (bool) $row['activo'],
+            (bool) ($row['notif_presupuestos'] ?? false),
+            (bool) ($row['notif_resumen_mensual'] ?? false),
         );
     }
 
     /** El mismo usuario con otro hash de contraseña (tras un rehash). */
     public function conContrasenaHash(string $hash): self
     {
-        return new self($this->id, $this->nombre, $this->correo, $hash, $this->moneda, $this->rol, $this->activo);
+        return new self($this->id, $this->nombre, $this->correo, $hash, $this->moneda, $this->rol, $this->activo, $this->notifPresupuestos, $this->notifResumenMensual);
     }
 
     public function esAdmin(): bool

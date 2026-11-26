@@ -164,6 +164,7 @@ final class MovimientoController
                                 $avisos = [];
                                 if ($base['tipo'] === 'gasto') {
                                     foreach ($splitRes['partes'] as $p) {
+                                        $this->container->notificadorPresupuesto()->notificarGasto($user['id'], $p['id_categoria'], $base['fecha'], $espacioId);
                                         $av = $this->avisoPresupuesto($user['id'], $p['id_categoria'], $base['fecha'], $espacioId);
                                         if ($av !== null && !in_array($av, $avisos, true)) {
                                             $avisos[] = $av;
@@ -230,6 +231,9 @@ final class MovimientoController
                                     ? 'Se registró ' . ($data['tipo'] === 'ingreso' ? 'el ingreso' : 'el gasto') . ' de ' . Dinero::formatear($data['monto']) . " en «{$saved['cuenta']}»."
                                     : 'Se guardaron los cambios del movimiento.';
                                 // RF-17: si el gasto deja la categoría cerca o por encima de su presupuesto del mes, se avisa aquí mismo.
+                                if ($data['tipo'] === 'gasto') {
+                                    $this->container->notificadorPresupuesto()->notificarGasto($user['id'], $data['id_categoria'], $data['fecha'], $espacioId);
+                                }
                                 $aviso = $data['tipo'] === 'gasto' ? $this->avisoPresupuesto($user['id'], $data['id_categoria'], $data['fecha'], $espacioId) : null;
                                 Flash::set($aviso === null ? 'ok' : 'warn', $aviso === null ? $mensaje : "$mensaje $aviso");
                                 Response::redirect('/movimientos.php');

@@ -1529,4 +1529,124 @@ same('migración 011-adjuntos-comprobantes.sql es idempotente', true, (static fu
     return (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'transacciones' AND column_name = 'adjunto_ruta'")->fetchColumn() === 1;
 })());
 
+// ---- Fase 20: notificaciones por correo -------------------------------------------------------------------------------
+
+section('NotificadorPresupuesto y ResumenMensual (Fase 20)');
+$correos->enviados = [];
+$correos->fallar = false;
+$notif = $container->notificadorPresupuesto();
+$nUser = (int) $usuarios->create('Nora Notif', 'nora.notif@correo.com', 'x');
+$nOff = (int) $usuarios->create('Nico Sin Alertas', 'nico.off@correo.com', 'x');
+$usuarios->updateNotificaciones($nUser, true, true);
+same('las preferencias de notificación se guardan y se leen', [true, true, false, false], [
+    $usuarios->findById($nUser)?->notifPresupuestos,
+    $usuarios->findById($nUser)?->notifResumenMensual,
+    $usuarios->findById($nOff)?->notifPresupuestos,
+    $usuarios->findById($nOff)?->notifResumenMensual,
+]);
+$nCuenta = $cuentas->create($nUser, 'Banco Nora', 'bancaria', '1000000.00');
+$nCuentaOff = $cuentas->create($nOff, 'Banco Nico', 'bancaria', '1000000.00');
+$presupuestos->create($nUser, $catA, 11, 2026, '100000.00');
+$presupuestos->create($nOff, $catA, 11, 2026, '100000.00');
+$mov($nUser, $nCuenta, $catA, 'gasto', '70000.00', '2026-11-05');
+same('con el 70 % no se envía ninguna alerta', 0, $notif->notificarGasto($nUser, $catA, '2026-11-05'));
+$mov($nUser, $nCuenta, $catA, 'gasto', '15000.00', '2026-11-06');
+same('al llegar al 85 % se envía la alerta del 80 %', [1, 'nora.notif@correo.com', true], [
+    $notif->notificarGasto($nUser, $catA, '2026-11-06'),
+    $correos->enviados[0]['to'] ?? null,
+    str_contains($correos->enviados[0]['subject'] ?? '', '80 %'),
+]);
+same('repetir el mismo umbral no vuelve a enviar (deduplicado)', [0, 1], [$notif->notificarGasto($nUser, $catA, '2026-11-07'), count($correos->enviados)]);
+$mov($nUser, $nCuenta, $catA, 'gasto', '20000.00', '2026-11-08');
+same('al superar el 100 % se envía una segunda alerta distinta', [1, true], [
+    $notif->notificarGasto($nUser, $catA, '2026-11-08'),
+    str_contains($correos->enviados[1]['subject'] ?? '', '100 %'),
+]);
+same('y tampoco se repite el 100 %', [0, 2], [$notif->notificarGasto($nUser, $catA, '2026-11-09'), count($correos->enviados)]);
+$mov($nOff, $nCuentaOff, $catA, 'gasto', '150000.00', '2026-11-05');
+same('quien no activó las alertas no recibe correo', [0, 2], [$notif->notificarGasto($nOff, $catA, '2026-11-05'), count($correos->enviados)]);
+same('una categoría sin presupuesto no envía nada', 0, $notif->notificarGasto($nUser, $catB, '2026-11-05'));
+
+// Si el SMTP falla, no se rompe nada y el envío se reintenta luego (la clave se libera).
+$nUser2 = (int) $usuarios->create('Nelly Reintento', 'nelly.re@correo.com', 'x');
+$usuarios->updateNotificaciones($nUser2, true, false);
+$nCuenta2 = $cuentas->create($nUser2, 'Banco Nelly', 'bancaria', '1000000.00');
+$presupuestos->create($nUser2, $catA, 11, 2026, '100000.00');
+$mov($nUser2, $nCuenta2, $catA, 'gasto', '90000.00', '2026-11-05');
+$correos->fallar = true;
+$antes = count($correos->enviados);
+same('con el SMTP caído la alerta no lanza excepción ni cuenta como enviada', [0, false], [
+    $notif->notificarGasto($nUser2, $catA, '2026-11-05'),
+    $container->notificaciones()->existe(App\Notificaciones\NotificadorPresupuesto::clave($nUser2, null, $catA, 11, 2026, 80)),
+]);
+$correos->fallar = false;
+same('al volver el SMTP, el siguiente gasto sí envía la alerta pendiente', [1, $antes + 1], [$notif->notificarGasto($nUser2, $catA, '2026-11-05'), count($correos->enviados)]);
+
+// Espacio compartido: avisa a todos los miembros que lo activaron y nombra a quien registró el gasto.
+$correos->enviados = [];
+$f1 = (int) $usuarios->create('Ana Familia', 'ana.fam2@correo.com', 'x');
+$f2 = (int) $usuarios->create('Luis Familia', 'luis.fam2@correo.com', 'x');
+$f3 = (int) $usuarios->create('Intruso', 'intruso.fam2@correo.com', 'x');
+$usuarios->updateNotificaciones($f1, true, false);
+$usuarios->updateNotificaciones($f2, true, false);
+$usuarios->updateNotificaciones($f3, true, false);
+$espId = $container->gestionEspacios()->crear($f1, 'Hogar Ana y Luis', 'COP');
+$invF = $container->gestionEspacios()->invitar($f1, 'Ana Familia', $espId, 'luis.fam2@correo.com', 'editor');
+$container->gestionEspacios()->aceptarInvitacion($f2, 'luis.fam2@correo.com', null, $invF['token']);
+$cFam = $cuentas->create($f1, 'Fondo Alertas', 'bancaria', '1000000.00', $espId);
+$presupuestos->create($f1, $catC, 11, 2026, '200000.00', $espId);
+$correos->enviados = [];
+$pdo->prepare('INSERT INTO transacciones (id_usuario, id_espacio, id_cuenta, id_categoria, tipo, monto, fecha) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    ->execute([$f2, $espId, $cFam, $catC, 'gasto', '210000.00', '2026-11-10']);
+same('en un espacio compartido el gasto de Luis avisa a Ana y a Luis', [2, ['ana.fam2@correo.com', 'luis.fam2@correo.com']], (static function () use ($notif, $f2, $catC, $espId, $correos): array {
+    $n = $notif->notificarGasto($f2, $catC, '2026-11-10', $espId);
+    $para = array_map(static fn (array $m): string => $m['to'], $correos->enviados);
+    sort($para);
+
+    return [$n, $para];
+})());
+$paraAna = array_values(array_filter($correos->enviados, static fn (array $m): bool => $m['to'] === 'ana.fam2@correo.com'))[0] ?? ['body' => ''];
+same('el correo a Ana indica quién registró el gasto y el nombre del espacio', [true, true], [
+    str_contains($paraAna['body'], 'Luis Familia registró un gasto'),
+    str_contains($paraAna['body'], 'Hogar Ana y Luis'),
+]);
+same('el intruso (no miembro) no recibió nada', false, in_array('intruso.fam2@correo.com', array_column($correos->enviados, 'to'), true));
+
+// Resumen mensual
+$correos->enviados = [];
+$mov($nUser, $nCuenta, $catA, 'gasto', '5000.00', '2026-10-03');
+$mov($nUser, $nCuenta, $catB, 'ingreso', '3000000.00', '2026-10-01');
+$resumen = $container->resumenMensual();
+$nuevo = $usuarios->findById($nUser);
+$texto = $resumen->construir($nuevo, 10, 2026);
+same('el resumen incluye periodo, ingresos, gastos y balance en la moneda del usuario', [true, true, true, true], [
+    str_contains($texto['asunto'], 'Octubre 2026'),
+    str_contains($texto['cuerpo'], 'Ingresos: $3.000.000'),
+    str_contains($texto['cuerpo'], 'Gastos:   $5.000'),
+    str_contains($texto['cuerpo'], 'Balance:  $2.995.000'),
+]);
+same('el resumen lista las categorías con más gasto y metas en curso', [true, true], [
+    str_contains($texto['cuerpo'], 'Donde más gastaste:'),
+    str_contains($texto['cuerpo'], 'Metas de ahorro en curso:'),
+]);
+same('enviar el resumen del mes lo manda una sola vez', [true, false, 1], [$resumen->enviar($nuevo, 10, 2026), $resumen->enviar($nuevo, 10, 2026), count($correos->enviados)]);
+same('el resumen de prueba (forzado) siempre se envía', [true, 2], [$resumen->enviar($nuevo, 10, 2026, true), count($correos->enviados)]);
+same('solo los usuarios con el resumen activado son elegibles para el script', true, (static function () use ($usuarios, $nUser, $nOff): bool {
+    $ids = array_map(static fn ($u): int => $u->id, $usuarios->listWithResumenMensual());
+
+    return in_array($nUser, $ids, true) && !in_array($nOff, $ids, true);
+})());
+same('al eliminar la cuenta se borra su historial de notificaciones', 0, (static function () use ($borrar, $nUser, $pdo): int {
+    $borrar->eliminar($nUser);
+
+    return (int) $pdo->query("SELECT COUNT(*) FROM notificaciones_enviadas WHERE id_usuario = $nUser")->fetchColumn();
+})());
+same('migración 012-notificaciones-correo.sql es idempotente', true, (static function () use ($pdo): bool {
+    foreach (SqlScript::statements((string) file_get_contents(dirname(__DIR__, 2) . '/database/migrations/012-notificaciones-correo.sql')) as $s) {
+        $pdo->exec($s);
+    }
+
+    return (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'usuarios' AND column_name = 'notif_presupuestos'")->fetchColumn() === 1;
+})());
+
 finish();

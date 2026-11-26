@@ -64,6 +64,23 @@ $filasSesiones = array_map(static function (array $s) use ($sesionActualHash): a
     </form>
 <?= Ui::cardClose() ?>
 
+<?= Ui::cardOpen(['title' => 'Notificaciones por correo', 'subtitle' => 'Recibe avisos en ' . $usuario->correo, 'class' => 'form-card']) ?>
+    <form action="/perfil.php" method="post" novalidate>
+        <?= csrf_field() ?>
+        <input type="hidden" name="accion" value="notificaciones">
+        <label class="check-row">
+            <input type="checkbox" name="notif_presupuestos" value="1"<?= $usuario->notifPresupuestos ? ' checked' : '' ?>>
+            <span><strong>Alertas de presupuesto (80 % y 100 %)</strong><br><span class="muted">Incluye los gastos que registren otros miembros en tus espacios compartidos. Un correo por umbral, categoría y mes.</span></span>
+        </label>
+        <label class="check-row">
+            <input type="checkbox" name="notif_resumen_mensual" value="1"<?= $usuario->notifResumenMensual ? ' checked' : '' ?>>
+            <span><strong>Resumen financiero mensual</strong><br><span class="muted">El día 1 de cada mes: balance del mes anterior, categorías donde más gastaste y avance de tus metas.</span></span>
+        </label>
+        <div class="form-actions"><?= Ui::button('Guardar preferencias', ['type' => 'submit']) ?></div>
+    </form>
+    <?= Ui::postForm('/perfil.php', ['accion' => 'resumen_prueba'], Ui::button('Enviarme el resumen de prueba ahora', ['type' => 'submit', 'variant' => 'secondary'])) ?>
+<?= Ui::cardClose() ?>
+
 <?= Ui::cardOpen(['title' => 'Cambiar contraseña', 'class' => 'form-card']) ?>
     <form action="/perfil.php" method="post" novalidate>
         <?= csrf_field() ?>

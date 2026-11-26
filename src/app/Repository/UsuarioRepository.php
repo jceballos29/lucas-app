@@ -12,7 +12,7 @@ use PDOException;
 /** Único sitio con el SQL de `usuarios`. */
 final class UsuarioRepository implements CredentialSource
 {
-    private const COLUMNS = 'id_usuario, nombre, correo, contrasena_hash, moneda, rol, activo';
+    private const COLUMNS = 'id_usuario, nombre, correo, contrasena_hash, moneda, rol, activo, notif_presupuestos, notif_resumen_mensual';
 
     public function __construct(private readonly PDO $pdo)
     {
@@ -69,6 +69,24 @@ final class UsuarioRepository implements CredentialSource
     {
         $stmt = $this->pdo->prepare('UPDATE usuarios SET nombre = :n, moneda = :m WHERE id_usuario = :id');
         $stmt->execute(['n' => $nombre, 'm' => $moneda, 'id' => $id]);
+    }
+
+    public function updateNotificaciones(int $id, bool $presupuestos, bool $resumenMensual): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE usuarios SET notif_presupuestos = :p, notif_resumen_mensual = :r WHERE id_usuario = :id');
+        $stmt->execute(['p' => $presupuestos ? 1 : 0, 'r' => $resumenMensual ? 1 : 0, 'id' => $id]);
+    }
+
+    /**
+     * Usuarios activos con el resumen mensual activado (para el script de consola).
+     *
+     * @return list<Usuario>
+     */
+    public function listWithResumenMensual(): array
+    {
+        $stmt = $this->pdo->query('SELECT ' . self::COLUMNS . ' FROM usuarios WHERE activo = 1 AND notif_resumen_mensual = 1 ORDER BY id_usuario');
+
+        return array_map([Usuario::class, 'fromRow'], $stmt->fetchAll());
     }
 
     /**

@@ -8,6 +8,8 @@ use App\Container;
 use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Response;
+use App\Mail\MailException;
+use App\Support\Mes;
 use App\Usuarios\EliminarCuenta;
 use App\Validation\ClaveValidator;
 use App\Validation\PerfilValidator;
@@ -52,6 +54,29 @@ final class PerfilController
                             Response::redirect('/perfil.php');
                         }
                         break;
+
+                    case 'notificaciones':
+                        $this->container->usuarios()->updateNotificaciones(
+                            $usuario->id,
+                            ($_POST['notif_presupuestos'] ?? '') === '1',
+                            ($_POST['notif_resumen_mensual'] ?? '') === '1',
+                        );
+                        Flash::set('ok', 'Se guardaron tus preferencias de notificaciones por correo.');
+                        Response::redirect('/perfil.php');
+
+                    case 'resumen_prueba':
+                        $anterior = Mes::anterior((int) date('n'), (int) date('Y'));
+
+                        try {
+                            $enviado = $this->container->resumenMensual()->enviar($usuario, $anterior['mes'], $anterior['anio'], true);
+                        } catch (MailException) {
+                            $enviado = false;
+                        }
+
+                        Flash::set($enviado ? 'ok' : 'error', $enviado
+                            ? 'Te enviamos el resumen de ' . Mes::etiqueta($anterior['mes'], $anterior['anio']) . " a {$usuario->correo}."
+                            : 'No se pudo enviar el correo. Revisa la configuración de correo e inténtalo de nuevo.');
+                        Response::redirect('/perfil.php');
 
                     case 'clave':
                         $actual = self::field('clave_actual');

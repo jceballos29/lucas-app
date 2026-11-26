@@ -19,15 +19,19 @@ use App\Repository\CuentaRepository;
 use App\Repository\CuotaTarjetaRepository;
 use App\Repository\DeudaRepository;
 use App\Repository\EspacioRepository;
+use App\Mail\MailException;
 use App\Mail\Mailer;
 use App\Mail\SmtpMailer;
 use App\Metas\GestionMetas;
 use App\Movimientos\GestionMovimientos;
 use App\Movimientos\ImportadorCsv;
+use App\Notificaciones\NotificadorPresupuesto;
+use App\Notificaciones\ResumenMensual;
 use App\Presupuestos\ClonadorPresupuestos;
 use App\Recurrentes\GestionRecurrentes;
 use App\Repository\IntentoRepository;
 use App\Repository\MetaRepository;
+use App\Repository\NotificacionRepository;
 use App\Repository\MovimientoRepository;
 use App\Repository\PresupuestoRepository;
 use App\Repository\RecurrenteRepository;
@@ -163,7 +167,30 @@ final class Container
 
     public function gestionRecurrentes(): GestionRecurrentes
     {
-        return new GestionRecurrentes($this->pdo(), $this->recurrentes(), $this->movimientos(), $this->cuentas(), $this->categorias());
+        return new GestionRecurrentes($this->pdo(), $this->recurrentes(), $this->movimientos(), $this->cuentas(), $this->categorias(), $this->notificadorPresupuesto());
+    }
+
+    public function notificaciones(): NotificacionRepository
+    {
+        return new NotificacionRepository($this->pdo());
+    }
+
+    /** Alertas de presupuesto por correo (Fase 20). Si el correo no está configurado, no envía nada (sin romper la petición). */
+    public function notificadorPresupuesto(): NotificadorPresupuesto
+    {
+        try {
+            $mailer = $this->mailer();
+        } catch (MailException) {
+            $mailer = null;
+        }
+
+        return new NotificadorPresupuesto($this->presupuestos(), $this->tasasCambio(), $this->usuarios(), $this->espacios(), $this->notificaciones(), $mailer);
+    }
+
+    /** @throws MailException Si el correo no está configurado. */
+    public function resumenMensual(): ResumenMensual
+    {
+        return new ResumenMensual($this->reportes(), $this->presupuestos(), $this->metas(), $this->tasasCambio(), $this->notificaciones(), $this->mailer());
     }
 
     public function espacios(): EspacioRepository

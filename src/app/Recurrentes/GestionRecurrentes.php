@@ -6,6 +6,7 @@ namespace App\Recurrentes;
 
 use App\Database\Transaction;
 use App\Movimientos\ReglasMovimiento;
+use App\Notificaciones\NotificadorPresupuesto;
 use App\Repository\CategoriaRepository;
 use App\Repository\CuentaRepository;
 use App\Repository\MovimientoRepository;
@@ -27,6 +28,7 @@ final class GestionRecurrentes
         private readonly MovimientoRepository $movimientos,
         private readonly CuentaRepository $cuentas,
         private readonly CategoriaRepository $categorias,
+        private readonly ?NotificadorPresupuesto $notificador = null,
     ) {
     }
 
@@ -145,6 +147,7 @@ final class GestionRecurrentes
             $fechaCursor = $rec->proximaFecha;
 
             while ($fechaCursor <= $hoy && $iteraciones < self::MAX_PERIODOS_AUTO) {
+                $fechaAplicada = $fechaCursor;
                 $res = $this->aplicarAhora($userId, $rec->id, $espacioId);
 
                 if ($res['codigo'] !== ReglasMovimiento::OK) {
@@ -156,6 +159,11 @@ final class GestionRecurrentes
 
                 $aplicados++;
                 $iteraciones++;
+
+                if ($rec->tipo === 'gasto') {
+                    $this->notificador?->notificarGasto($userId, $rec->idCategoria, $fechaAplicada, $espacioId);
+                }
+
                 $fechaCursor = (string) $res['proximaFecha'];
             }
         }

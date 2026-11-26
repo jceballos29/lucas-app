@@ -6,6 +6,8 @@ CREATE TABLE usuarios (
   moneda          CHAR(3)      NOT NULL DEFAULT 'COP',
   rol             ENUM('usuario','admin') NOT NULL DEFAULT 'usuario',
   activo          BOOLEAN      NOT NULL DEFAULT TRUE,
+  notif_presupuestos    BOOLEAN NOT NULL DEFAULT FALSE,
+  notif_resumen_mensual BOOLEAN NOT NULL DEFAULT FALSE,
   creado_en       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_rol_activo (rol, activo)
 );
@@ -263,4 +265,16 @@ CREATE TABLE sesiones_usuario (
   ultimo_uso TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_ses_usuario_uso (id_usuario, ultimo_uso),
   FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+);
+
+-- Historial y deduplicación de correos proactivos (Fase 20): `clave_dedup` única = como máximo un correo por clave.
+CREATE TABLE notificaciones_enviadas (
+  id_notificacion INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario      INT NOT NULL,
+  id_espacio      INT NULL,
+  clave_dedup     VARCHAR(100) NOT NULL UNIQUE,
+  enviado_en      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_notif_usuario (id_usuario),
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+  FOREIGN KEY (id_espacio) REFERENCES espacios(id_espacio) ON DELETE CASCADE
 );
