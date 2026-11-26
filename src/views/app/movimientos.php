@@ -44,6 +44,9 @@ $rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompar
     if ($m->grupoSplit !== null) {
         $partesSub[] = 'Dividido';
     }
+    if ($m->tieneAdjunto()) {
+        $partesSub[] = '<a class="attachment-link" href="/adjunto.php?id=' . $m->id . '" target="_blank" rel="noopener">' . Ui::icon('paperclip') . 'Comprobante</a>';
+    }
     if ($m->numCuotas > 1) {
         $cuotaMes = \App\Tarjetas\PlanCuotas::primeraCuota($m->monto, $m->numCuotas, $m->conIntereses, $m->tasaMensualBps);
         $interesTot = \App\Tarjetas\PlanCuotas::interesTotalCompra($m->monto, $m->numCuotas, $m->conIntereses, $m->tasaMensualBps);

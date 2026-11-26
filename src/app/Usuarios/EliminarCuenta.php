@@ -8,6 +8,7 @@ use App\Auth\LimitadorIntentos;
 use App\Database\Transaction;
 use App\Repository\IntentoRepository;
 use App\Repository\UsuarioRepository;
+use App\Support\AlmacenAdjuntos;
 use PDO;
 
 /**
@@ -32,8 +33,9 @@ final class EliminarCuenta
     public function eliminar(int $userId): string
     {
         $correo = null;
+        $adjuntosABorrar = [];
 
-        $resultado = Transaction::run($this->pdo, function () use ($userId, &$correo): string {
+        $resultado = Transaction::run($this->pdo, function () use ($userId, &$correo, &$adjuntosABorrar): string {
             // Se bloquea la fila: nada nuevo puede colgarse del usuario mientras se borra.
             $usuario = $this->usuarios->lockById($userId);
 
@@ -46,14 +48,19 @@ final class EliminarCuenta
             }
 
             $correo = $usuario->correo;
-            $this->usuarios->deleteWithAllData($userId);
+            $adjuntosABorrar = $this->usuarios->deleteWithAllData($userId);
 
             return self::OK;
         });
 
-        // Los intentos de acceso guardan el hash del correo: tampoco debe quedar eso.
-        if ($resultado === self::OK && $correo !== null) {
-            $this->intentos->clearKey(LimitadorIntentos::claveCorreo($correo));
+        // Los intentos de acceso guardan el hash del correo y los adjuntos viven en disco: tampoco debe quedar eso (RNF-20).
+        if ($resultado === self::OK) {
+            if ($correo !== null) {
+                $this->intentos->clearKey(LimitadorIntentos::claveCorreo($correo));
+            }
+            foreach ($adjuntosABorrar as $ruta) {
+                AlmacenAdjuntos::eliminar($ruta);
+            }
         }
 
         return $resultado;

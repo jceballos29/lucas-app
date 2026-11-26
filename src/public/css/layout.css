@@ -160,3 +160,22 @@
   .grid-2 { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
   .cards-grid--3 { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ======================= Impresión / PDF (Fase 19) ======================= */
+@media print {
+  @page { margin: 14mm; }
+  body { background: #fff; color: #061A24; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sidebar, .app-header, .overlay, .fab, .no-print, .skip-link, .page-head__actions, .toolbar, .filters { display: none !important; }
+  .main, .sidebar ~ .main { margin-left: 0 !important; padding: 0 !important; }
+  .main__inner { max-width: none; }
+  .card, .print-section { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+  .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .donut { flex-direction: row; align-items: center; }
+  .table thead { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+  .table tbody tr { display: table-row; padding: 0; border: 0; break-inside: avoid; }
+  .table th { padding: 8px 10px; background: #f2f7fa; border-bottom: 1px solid #cbd5e1; font-size: 12px; text-align: left; }
+  .table th.is-end { text-align: right; }
+  .table td { display: table-cell; padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
+  .table td::before { content: none; }
+  .table td.is-end { text-align: right; }
+}

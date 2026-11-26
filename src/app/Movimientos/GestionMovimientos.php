@@ -9,6 +9,7 @@ use App\Repository\CategoriaRepository;
 use App\Repository\CuentaRepository;
 use App\Repository\CuotaTarjetaRepository;
 use App\Repository\MovimientoRepository;
+use App\Support\AlmacenAdjuntos;
 use App\Support\Dinero;
 use App\Tarjetas\PlanCuotas;
 use PDO;
@@ -218,16 +219,24 @@ final class GestionMovimientos
 
     public function eliminar(int $userId, int $movimientoId, ?int $espacioId = null): bool
     {
-        return Transaction::run($this->pdo, function () use ($userId, $movimientoId, $espacioId): bool {
+        $rutaAdjunto = null;
+        $eliminado = Transaction::run($this->pdo, function () use ($userId, $movimientoId, $espacioId, &$rutaAdjunto): bool {
             $movimiento = $this->movimientos->findOwned($userId, $movimientoId, $espacioId);
 
             if ($movimiento === null) {
                 return false;
             }
 
+            $rutaAdjunto = $movimiento->adjuntoRuta;
             $this->cuentas->lockForWrite($userId, $movimiento->idCuenta, $espacioId);
 
             return $this->movimientos->delete($userId, $movimientoId, $espacioId);
         });
+
+        if ($eliminado && $rutaAdjunto !== null) {
+            AlmacenAdjuntos::eliminar($rutaAdjunto);
+        }
+
+        return $eliminado;
     }
 }

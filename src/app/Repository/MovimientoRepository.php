@@ -17,6 +17,7 @@ final class MovimientoRepository
 {
     private const SELECT = 'SELECT t.id_transaccion, t.id_usuario, t.id_cuenta, t.id_categoria, t.tipo, t.monto, t.fecha, t.descripcion,
             t.etiqueta, t.grupo_split, t.num_cuotas, t.con_intereses, t.tasa_mensual_bps,
+            t.adjunto_ruta, t.adjunto_nombre, t.adjunto_mime,
             c.nombre AS cuenta_nombre, c.moneda AS cuenta_moneda, k.nombre AS categoria_nombre, k.color AS categoria_color, u.nombre AS autor_nombre
         FROM transacciones t
         JOIN cuentas c ON c.id_cuenta = t.id_cuenta
@@ -203,6 +204,29 @@ final class MovimientoRepository
             'cuotas' => max(1, min(36, $numCuotas)),
             'con_int' => $conIntereses ? 1 : 0,
             'tasa' => max(0, min(2000, $tasaMensualBps)),
+            'id' => $id,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public function actualizarAdjunto(
+        int $userId,
+        int $id,
+        ?string $ruta,
+        ?string $nombre,
+        ?string $mime,
+        ?int $espacioId = null,
+    ): bool {
+        [$scope, $params] = self::scope($userId, $espacioId);
+        $stmt = $this->pdo->prepare(
+            "UPDATE transacciones SET adjunto_ruta = :ruta, adjunto_nombre = :nombre, adjunto_mime = :mime
+             WHERE id_transaccion = :id AND $scope"
+        );
+        $stmt->execute($params + [
+            'ruta' => $ruta,
+            'nombre' => $nombre,
+            'mime' => $mime,
             'id' => $id,
         ]);
 

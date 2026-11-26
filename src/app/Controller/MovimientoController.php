@@ -11,6 +11,7 @@ use App\Http\Flash;
 use App\Http\Response;
 use App\Movimientos\Filtros;
 use App\Movimientos\ReglasMovimiento;
+use App\Support\AlmacenAdjuntos;
 use App\Support\Dinero;
 use App\Support\Mes;
 use App\Validation\MovimientoValidator;
@@ -107,6 +108,8 @@ final class MovimientoController
                 reject_foreign_origin();
                 require_csrf();
 
+                $subida = AlmacenAdjuntos::validarSubida(is_array($_FILES['comprobante'] ?? null) ? $_FILES['comprobante'] : null);
+
                 $catsSplit = is_array($_POST['split_categoria'] ?? null) ? $_POST['split_categoria'] : [];
                 $montosSplit = is_array($_POST['split_monto'] ?? null) ? $_POST['split_monto'] : [];
                 $descsSplit = is_array($_POST['split_descripcion'] ?? null) ? $_POST['split_descripcion'] : [];
@@ -125,6 +128,9 @@ final class MovimientoController
                 if ($movimiento === null && ($usaSplit || ($_POST['dividir'] ?? '') === '1')) {
                     $splitRes = (new MovimientoValidator())->validateSplit($_POST);
                     $errors = $splitRes['errors'];
+                    if (!$subida['ok'] && $subida['error'] !== null) {
+                        $errors['comprobante'] = $subida['error'];
+                    }
                     $old = [
                         'tipo' => $splitRes['base']['tipo'],
                         'monto' => is_string($_POST['monto'] ?? null) ? trim($_POST['monto']) : '',
@@ -147,6 +153,10 @@ final class MovimientoController
 
                         switch ($saved['codigo']) {
                             case ReglasMovimiento::OK:
+                                if (!$subida['vacio'] && $subida['tmp'] !== null && $subida['mime'] !== null && isset($saved['ids'][0])) {
+                                    $guardado = AlmacenAdjuntos::guardarDesdeArchivo($subida['tmp'], $subida['mime'], (string) $subida['nombre']);
+                                    $this->container->movimientos()->actualizarAdjunto($user['id'], (int) $saved['ids'][0], $guardado['ruta'], $guardado['nombre'], $guardado['mime'], $espacioId);
+                                }
                                 $base = $splitRes['base'];
                                 $nPartes = count($splitRes['partes']);
                                 $mensaje = 'Se registró ' . ($base['tipo'] === 'ingreso' ? 'el ingreso dividido' : 'el gasto dividido')
@@ -184,6 +194,9 @@ final class MovimientoController
                 } else {
                     $result = (new MovimientoValidator())->validate($_POST);
                     $errors = $result['errors'];
+                    if (!$subida['ok'] && $subida['error'] !== null) {
+                        $errors['comprobante'] = $subida['error'];
+                    }
                     $old = [
                         'tipo' => $result['data']['tipo'],
                         'monto' => is_string($_POST['monto'] ?? null) ? trim($_POST['monto']) : '',
@@ -201,6 +214,17 @@ final class MovimientoController
 
                         switch ($saved['codigo']) {
                             case ReglasMovimiento::OK:
+                                $movIdGuardado = (int) $saved['id'];
+                                if (!$subida['vacio'] && $subida['tmp'] !== null && $subida['mime'] !== null) {
+                                    $guardado = AlmacenAdjuntos::guardarDesdeArchivo($subida['tmp'], $subida['mime'], (string) $subida['nombre']);
+                                    $this->container->movimientos()->actualizarAdjunto($user['id'], $movIdGuardado, $guardado['ruta'], $guardado['nombre'], $guardado['mime'], $espacioId);
+                                    if ($movimiento !== null && $movimiento->adjuntoRuta !== null) {
+                                        AlmacenAdjuntos::eliminar($movimiento->adjuntoRuta);
+                                    }
+                                } elseif ($movimiento !== null && ($_POST['eliminar_adjunto'] ?? '') === '1' && $movimiento->adjuntoRuta !== null) {
+                                    $this->container->movimientos()->actualizarAdjunto($user['id'], $movIdGuardado, null, null, null, $espacioId);
+                                    AlmacenAdjuntos::eliminar($movimiento->adjuntoRuta);
+                                }
                                 $data = $result['data'];
                                 $mensaje = $movimiento === null
                                     ? 'Se registró ' . ($data['tipo'] === 'ingreso' ? 'el ingreso' : 'el gasto') . ' de ' . Dinero::formatear($data['monto']) . " en «{$saved['cuenta']}»."
@@ -249,6 +273,48 @@ final class MovimientoController
             'cuentas' => $cuentas,
             'categorias' => $categorias,
         ], $movimiento === null ? 'Nuevo movimiento' : 'Editar movimiento', $user, 'app', 'movimientos');
+    }
+
+    /** Descarga/visualización autenticada de un comprobante guardado fuera de `public/` (Fase 19). */
+    public function adjunto(): never
+    {
+        $user = require_login();
+        $espacioId = $user['espacio_id'] ?? null;
+        $raw = $_GET['id'] ?? '';
+        $id = is_string($raw) && ctype_digit($raw) && strlen($raw) < 10 ? (int) $raw : 0;
+
+        if ($id < 1) {
+            Response::plain(404, "No encontrado.\n");
+        }
+
+        try {
+            $mov = $this->container->movimientos()->findOwned($user['id'], $id, $espacioId);
+        } catch (RuntimeException $error) {
+            self::fail($error);
+        }
+
+        if ($mov === null || !$mov->tieneAdjunto()) {
+            Response::plain(404, "No encontrado.\n");
+        }
+
+        $abs = AlmacenAdjuntos::rutaAbsoluta($mov->adjuntoRuta);
+        if ($abs === null || !is_file($abs) || !is_readable($abs)) {
+            Response::plain(404, "No encontrado.\n");
+        }
+
+        $mime = $mov->adjuntoMime !== null && isset(AlmacenAdjuntos::MIMES_PERMITIDOS[$mov->adjuntoMime])
+            ? $mov->adjuntoMime
+            : 'application/octet-stream';
+        $descargar = ($_GET['descargar'] ?? '') === '1';
+        $nombreDescarga = AlmacenAdjuntos::nombreSeguroDescarga($mov->adjuntoNombre ?? 'comprobante', $mime);
+
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . (string) filesize($abs));
+        header('Content-Disposition: ' . ($descargar ? 'attachment' : 'inline') . '; filename="' . $nombreDescarga . '"');
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, no-store');
+        readfile($abs);
+        exit;
     }
 
     /** POST de eliminación desde el listado; vuelve a la misma página de resultados. */

@@ -1123,4 +1123,78 @@ same('TransferenciaValidator rechaza monto_destino y tasa_cambio inválidos', [t
     isset($tv18->validate(['id_cuenta_origen' => '1', 'id_cuenta_destino' => '2', 'monto' => '100', 'tasa_cambio' => 'xyz', 'fecha' => '2026-11-26'])['errors']['tasa_cambio']),
 ]);
 
+section('AlmacenAdjuntos: validación por firma binaria, nombres seguros y sin path traversal (Fase 19)');
+use App\Support\AlmacenAdjuntos as AA;
+$pngMinimo = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', true);
+$pdfMinimo = "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n";
+same('detectarMimePorFirma reconoce JPG, PNG, WebP y PDF y rechaza PHP/HTML/SVG', [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/pdf',
+    null,
+    null,
+    null,
+], [
+    AA::detectarMimePorFirma("\xFF\xD8\xFF\xE0\x00\x10JFIF"),
+    AA::detectarMimePorFirma((string) $pngMinimo),
+    AA::detectarMimePorFirma("RIFF\x24\x00\x00\x00WEBPVP8 "),
+    AA::detectarMimePorFirma($pdfMinimo),
+    AA::detectarMimePorFirma('<?php echo 1; ?>'),
+    AA::detectarMimePorFirma('<html><body>xss</body></html>'),
+    AA::detectarMimePorFirma('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+]);
+same('limpiarNombreOriginal quita rutas y caracteres peligrosos', [
+    'Factura Luz 2026.pdf',
+    'passwd',
+    'comprobante',
+], [
+    AA::limpiarNombreOriginal('../../Factura "Luz" 2026.pdf'),
+    AA::limpiarNombreOriginal('/etc/passwd'),
+    AA::limpiarNombreOriginal('...'),
+]);
+same('nombreSeguroDescarga fuerza la extensión canónica del MIME real', 'factura-enero.pdf', AA::nombreSeguroDescarga('factura enero.php.exe', 'application/pdf'));
+$rutaValida = '2026/11/' . str_repeat('a', 32) . '.pdf';
+same('rutaAbsoluta acepta patrón YYYY/MM/<32-hex>.<ext> y bloquea path traversal o .php', [
+    true,
+    null,
+    null,
+    null,
+], [
+    AA::rutaAbsoluta($rutaValida, '/tmp/adj') === '/tmp/adj/' . $rutaValida,
+    AA::rutaAbsoluta('../2026/11/' . str_repeat('a', 32) . '.pdf', '/tmp/adj'),
+    AA::rutaAbsoluta('2026/11/' . str_repeat('a', 32) . '.php', '/tmp/adj'),
+    AA::rutaAbsoluta('archivo.jpg', '/tmp/adj'),
+]);
+$tmpAdjDir = sys_get_temp_dir() . '/lucas_adj_unit_' . bin2hex(random_bytes(4));
+$tmpPng = sys_get_temp_dir() . '/lucas_png_' . bin2hex(random_bytes(4));
+$tmpPhp = sys_get_temp_dir() . '/lucas_php_' . bin2hex(random_bytes(4));
+file_put_contents($tmpPng, (string) $pngMinimo);
+file_put_contents($tmpPhp, '<?php echo "hola"; ?>');
+$valPng = AA::validarSubida(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmpPng, 'size' => strlen((string) $pngMinimo), 'name' => 'recibo.png']);
+$valPhpFalso = AA::validarSubida(['error' => UPLOAD_ERR_OK, 'tmp_name' => $tmpPhp, 'size' => 21, 'name' => 'foto_falsa.jpg']);
+$valGrande = AA::validarSubida(['error' => UPLOAD_ERR_INI_SIZE, 'tmp_name' => '', 'size' => 0, 'name' => 'enorme.pdf']);
+$valVacio = AA::validarSubida(['error' => UPLOAD_ERR_NO_FILE, 'tmp_name' => '', 'size' => 0, 'name' => '']);
+same('validarSubida acepta PNG real, rechaza PHP disfrazado de JPG, rechaza >5MB y acepta vacío', [
+    [true, false, 'image/png', 'png'],
+    false,
+    false,
+    [true, true],
+], [
+    [$valPng['ok'], $valPng['vacio'], $valPng['mime'], $valPng['ext']],
+    $valPhpFalso['ok'],
+    $valGrande['ok'],
+    [$valVacio['ok'], $valVacio['vacio']],
+]);
+$guardadoUnit = AA::guardarDesdeContenido($pdfMinimo, 'application/pdf', 'Recibo Marzo.pdf', $tmpAdjDir);
+$absGuardado = AA::rutaAbsoluta($guardadoUnit['ruta'], $tmpAdjDir);
+same('guardarDesdeContenido escribe el archivo fuera de public/ y eliminar lo borra del disco', [true, true, false], (static function () use ($guardadoUnit, $absGuardado, $tmpAdjDir): array {
+    $existeAntes = $absGuardado !== null && is_file($absGuardado);
+    AA::eliminar($guardadoUnit['ruta'], $tmpAdjDir);
+    $existeDespues = $absGuardado !== null && is_file($absGuardado);
+    return [$guardadoUnit['mime'] === 'application/pdf', $existeAntes, $existeDespues];
+})());
+@unlink($tmpPng);
+@unlink($tmpPhp);
+
 finish();

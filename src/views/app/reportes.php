@@ -24,6 +24,7 @@ $enlace = static fn (array $m, int $n): string => '/reportes.php?' . http_build_
 [$primerDia, $primerDiaSiguiente] = Mes::limites($mes, $anio);
 $ultimoDia = (new DateTimeImmutable($primerDiaSiguiente))->modify('-1 day')->format('Y-m-d');
 $csv = '/exportar.php?' . http_build_query(['desde' => $primerDia, 'hasta' => $ultimoDia]);
+$imprimir = '/reporte-imprimir.php?' . http_build_query(['mes' => $mes, 'anio' => $anio, 'meses' => $meses]);
 
 $monthNav = new Html('<div class="month-nav">'
     . Ui::iconButton('chevron-left', 'Mes anterior', ['href' => $enlace($anterior, $meses)])
@@ -58,7 +59,11 @@ $filasEvolucion = array_map(static fn (array $m): array => [
     'balance' => Ui::money(Dinero::sumar([$m['ingresos'], '-' . $m['gastos']])),
 ], array_reverse($evolucion));
 ?>
-<?= Ui::pageHead('Reportes', 'En qué se va tu dinero', Html::join([$monthNav, Ui::button('Exportar CSV', ['href' => $csv, 'variant' => 'secondary', 'icon' => 'download'])])) ?>
+<?= Ui::pageHead('Reportes', 'En qué se va tu dinero', Html::join([
+    $monthNav,
+    Ui::button('Imprimir / PDF', ['href' => $imprimir, 'variant' => 'secondary', 'icon' => 'printer', 'attrs' => ['target' => '_blank', 'rel' => 'noopener']]),
+    Ui::button('Exportar CSV', ['href' => $csv, 'variant' => 'secondary', 'icon' => 'download']),
+])) ?>
 
 <?= Ui::cardOpen(['title' => 'Gastos por categoría', 'subtitle' => Mes::etiqueta($mes, $anio)]) ?>
     <?php if ($slices === []): ?>

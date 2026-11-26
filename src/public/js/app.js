@@ -217,7 +217,12 @@
     syncCuotasTarjeta();
   }
 
-  /* 10. Registro del Service Worker para PWA instalable (Fase 16). */
+  /* 10. Botones de impresión / Guardar como PDF (Fase 19, sin onclick en línea para respetar la CSP). */
+  document.querySelectorAll('[data-print]').forEach(function (btn) {
+    btn.addEventListener('click', function () { window.print(); });
+  });
+
+  /* 11. Registro del Service Worker para PWA instalable (Fase 16). */
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});

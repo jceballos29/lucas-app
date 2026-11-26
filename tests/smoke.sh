@@ -1586,5 +1586,62 @@ contains "presupuestos muestra \$400.000 de \$500.000 convertidos al vuelo" '$40
 request "$JMU" GET "/reportes.php?mes=$MES_HOY&anio=$ANIO_HOY"
 contains "reportes muestra \$400.000 convertidos al vuelo" '$400.000' "$TMP/body"
 
+echo; echo "== Adjuntos de comprobantes fuera de public/ y reportes PDF imprimibles (Fase 19)"
+request "$J7" GET "/adjunto.php?id=1";       check "sin sesión, adjunto.php exige login" "302 /login.php" "$CODE $LOC"
+request "$J7" GET "/reporte-imprimir.php";   check "sin sesión, reporte-imprimir.php exige login" "302 /login.php" "$CODE $LOC"
+
+printf '%%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%%%EOF\n' > "$TMP/recibo_smoke.pdf"
+printf '<?php echo "malicioso"; ?>\n' > "$TMP/falso_smoke.jpg"
+
+# Subir un archivo PHP disfrazado de JPG: debe rechazarse por firma binaria real
+CSRF_ADJ="$(token "$JMU" /movimiento-form.php)"
+curl -sS -D "$TMP/hdr" -o "$TMP/body" -b "$JMU" -c "$JMU" -H "Origin: $ORIGIN" \
+  -F "csrf_token=$CSRF_ADJ" -F "tipo=gasto" -F "monto=25.000" -F "fecha=$HOY_APP" \
+  -F "id_cuenta=$CMU_COP" -F "id_categoria=$KG" -F "descripcion=Intento falso" \
+  -F "comprobante=@$TMP/falso_smoke.jpg;type=image/jpeg" \
+  "$BASE/movimiento-form.php"
+CODE="$(awk 'NR==1{print $2}' "$TMP/hdr")"
+check "subir un PHP disfrazado de JPG se rechaza (200 con error)" "200" "$CODE"
+contains "informa formato no permitido" "Formato no permitido" "$TMP/body"
+
+# Subir un PDF real como comprobante
+CSRF_ADJ="$(token "$JMU" /movimiento-form.php)"
+curl -sS -D "$TMP/hdr" -o "$TMP/body" -b "$JMU" -c "$JMU" -H "Origin: $ORIGIN" \
+  -F "csrf_token=$CSRF_ADJ" -F "tipo=gasto" -F "monto=50.000" -F "fecha=$HOY_APP" \
+  -F "id_cuenta=$CMU_COP" -F "id_categoria=$KG" -F "descripcion=Recibo servicios publicos" \
+  -F "comprobante=@$TMP/recibo_smoke.pdf;type=application/pdf" \
+  "$BASE/movimiento-form.php"
+CODE="$(awk 'NR==1{print $2}' "$TMP/hdr")"
+LOC="$(grep -i '^location:' "$TMP/hdr" | tr -d '\r' | cut -d' ' -f2- | head -n1)"
+check "subir movimiento con comprobante PDF redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
+MOV_ADJ_ID="$(sql "SELECT id_transaccion FROM transacciones WHERE id_usuario=$UMUID AND descripcion='Recibo servicios publicos'")"
+ADJ_RUTA="$(sql "SELECT adjunto_ruta FROM transacciones WHERE id_transaccion=$MOV_ADJ_ID")"
+check "la BD guardó adjunto_ruta y el archivo existe fuera de public/" "true" "$([ -n "$ADJ_RUTA" ] && [ -f "src/storage/adjuntos/$ADJ_RUTA" ] && echo true || echo false)"
+
+request "$JMU" GET /movimientos.php
+contains "el listado muestra el enlace al comprobante" "/adjunto.php?id=$MOV_ADJ_ID" "$TMP/body"
+
+request "$JMU" GET "/adjunto.php?id=$MOV_ADJ_ID"
+check "el dueño puede ver su comprobante (200)" "200" "$CODE"
+check "se sirve con Content-Type: application/pdf" "Content-Type: application/pdf" "$(grep -i '^content-type:' "$TMP/hdr" | tr -d '\r')"
+check "sin caché pública (Cache-Control: private, no-store)" "Cache-Control: private, no-store" "$(grep -i '^cache-control:' "$TMP/hdr" | tr -d '\r')"
+contains "y entrega el contenido real del PDF" "%PDF-1.4" "$TMP/body"
+
+request "$JSES1" GET "/adjunto.php?id=$MOV_ADJ_ID"
+check "otro usuario recibe 404 al intentar ver un comprobante ajeno (IDOR bloqueado)" "404" "$CODE"
+
+# Eliminar el movimiento limpia también el archivo en disco
+post_form "$JMU" /movimiento-eliminar.php /movimientos.php "id=$MOV_ADJ_ID" "volver="
+check "eliminar movimiento con comprobante borra el archivo físico" "false" "$([ -f "src/storage/adjuntos/$ADJ_RUTA" ] && echo true || echo false)"
+
+# Reporte PDF imprimible
+request "$JMU" GET "/reportes.php?mes=$MES_HOY&anio=$ANIO_HOY"
+contains "reportes.php incluye botón Imprimir / PDF" "/reporte-imprimir.php?mes=$MES_HOY&amp;anio=$ANIO_HOY" "$TMP/body"
+request "$JMU" GET "/reporte-imprimir.php?mes=$MES_HOY&anio=$ANIO_HOY"
+check "reporte-imprimir.php responde 200" "200" "$CODE"
+contains "muestra cabecera de Reporte financiero" "Reporte financiero" "$TMP/body"
+contains "incluye el botón Imprimir / Guardar PDF con data-print" 'data-print="1"' "$TMP/body"
+absent "no incluye el menú lateral (layout plain limpio para PDF)" 'class="sidebar"' "$TMP/body"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

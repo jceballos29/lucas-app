@@ -74,9 +74,12 @@ final class UsuarioRepository implements CredentialSource
     /**
      * Borra TODO lo del usuario y luego al usuario (RNF-20), en un ORDEN explícito: `transacciones` y `aportes_meta` referencian
      * `cuentas` sin cascada, así que no se puede confiar en el orden de los `ON DELETE CASCADE`. Solo dentro de una transacción.
+     *
+     * @return list<string> Rutas relativas de comprobantes adjuntos que deben eliminarse de disco tras confirmar la transacción.
      */
-    public function deleteWithAllData(int $id): void
+    public function deleteWithAllData(int $id): array
     {
+        $adjuntosABorrar = [];
         $stmt = $this->pdo->prepare("SELECT id_espacio FROM espacio_miembros WHERE id_usuario = :id AND rol = 'propietario'");
         $stmt->execute(['id' => $id]);
         $espaciosComoOwner = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
@@ -101,6 +104,13 @@ final class UsuarioRepository implements CredentialSource
                 $this->pdo->prepare('UPDATE espacios SET id_creador = :u WHERE id_espacio = :e AND id_creador = :id')
                     ->execute(['u' => $nuevoOwner, 'e' => $espacioId, 'id' => $id]);
             } else {
+                $stmtAdjEsp = $this->pdo->prepare('SELECT adjunto_ruta FROM transacciones WHERE id_espacio = :e AND adjunto_ruta IS NOT NULL');
+                $stmtAdjEsp->execute(['e' => $espacioId]);
+                foreach ($stmtAdjEsp->fetchAll(PDO::FETCH_COLUMN) as $ruta) {
+                    if (is_string($ruta) && $ruta !== '') {
+                        $adjuntosABorrar[] = $ruta;
+                    }
+                }
                 foreach ([
                     'DELETE FROM pagos_deuda WHERE id_deuda IN (SELECT id_deuda FROM deudas WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
                     'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
@@ -142,6 +152,14 @@ final class UsuarioRepository implements CredentialSource
              WHERE pd.id_usuario = :id AND d.id_espacio IS NOT NULL"
         )->execute(['id' => $id]);
 
+        $stmtAdjPers = $this->pdo->prepare('SELECT adjunto_ruta FROM transacciones WHERE id_usuario = :id AND id_espacio IS NULL AND adjunto_ruta IS NOT NULL');
+        $stmtAdjPers->execute(['id' => $id]);
+        foreach ($stmtAdjPers->fetchAll(PDO::FETCH_COLUMN) as $ruta) {
+            if (is_string($ruta) && $ruta !== '') {
+                $adjuntosABorrar[] = $ruta;
+            }
+        }
+
         foreach ([
             'DELETE FROM pagos_deuda WHERE id_deuda IN (SELECT id_deuda FROM deudas WHERE id_usuario = :id AND id_espacio IS NULL) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_usuario = :id2 AND id_espacio IS NULL)',
             'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario = :id AND id_espacio IS NULL) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_usuario = :id2 AND id_espacio IS NULL)',
@@ -162,6 +180,8 @@ final class UsuarioRepository implements CredentialSource
             $params = str_contains($sql, ':id2') ? ['id' => $id, 'id2' => $id] : ['id' => $id];
             $this->pdo->prepare($sql)->execute($params);
         }
+
+        return $adjuntosABorrar;
     }
 
     public function countActiveAdmins(): int

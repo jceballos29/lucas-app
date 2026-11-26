@@ -26,6 +26,9 @@ final class Movimiento
         public readonly bool $conIntereses = true,
         public readonly int $tasaMensualBps = 0,
         public readonly ?string $cuentaMoneda = null,
+        public readonly ?string $adjuntoRuta = null,
+        public readonly ?string $adjuntoNombre = null,
+        public readonly ?string $adjuntoMime = null,
     ) {
     }
 
@@ -51,7 +54,15 @@ final class Movimiento
             isset($row['con_intereses']) ? (bool) $row['con_intereses'] : true,
             isset($row['tasa_mensual_bps']) ? max(0, (int) $row['tasa_mensual_bps']) : 0,
             isset($row['cuenta_moneda']) && is_string($row['cuenta_moneda']) && $row['cuenta_moneda'] !== '' ? $row['cuenta_moneda'] : null,
+            isset($row['adjunto_ruta']) && is_string($row['adjunto_ruta']) && $row['adjunto_ruta'] !== '' ? $row['adjunto_ruta'] : null,
+            isset($row['adjunto_nombre']) && is_string($row['adjunto_nombre']) && $row['adjunto_nombre'] !== '' ? $row['adjunto_nombre'] : null,
+            isset($row['adjunto_mime']) && is_string($row['adjunto_mime']) && $row['adjunto_mime'] !== '' ? $row['adjunto_mime'] : null,
         );
+    }
+
+    public function tieneAdjunto(): bool
+    {
+        return $this->adjuntoRuta !== null && $this->adjuntoRuta !== '';
     }
 
     public function esIngreso(): bool

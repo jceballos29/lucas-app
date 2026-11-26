@@ -52,7 +52,7 @@ for ($q = 1; $q <= 36; $q++) {
     <?= Ui::cardClose() ?>
 <?php else: ?>
 <?= Ui::cardOpen(['class' => 'form-card']) ?>
-    <form action="/movimiento-form.php" method="post" novalidate>
+    <form action="/movimiento-form.php" method="post" enctype="multipart/form-data" novalidate>
         <?= csrf_field() ?>
         <?php if ($editando): ?><input type="hidden" name="id" value="<?= (int) $movimiento->id ?>"><?php endif; ?>
         <?= Ui::segmented(['name' => 'tipo', 'legend' => 'Tipo de movimiento', 'options' => ['gasto' => 'Gasto', 'ingreso' => 'Ingreso'], 'checked' => $old['tipo']]) ?>
@@ -84,6 +84,28 @@ for ($q = 1; $q <= 36; $q++) {
             <?= Ui::field(['id' => 'descripcion', 'label' => 'Descripción', 'value' => $old['descripcion'], 'placeholder' => 'Ej.: Almuerzo con compañeros', 'hint' => 'Opcional. Hasta 150 caracteres.', 'error' => $errors['descripcion'] ?? null, 'attrs' => ['maxlength' => '150']]) ?>
             <?= Ui::field(['id' => 'etiqueta', 'label' => 'Etiqueta / Proyecto (#tag)', 'value' => $old['etiqueta'] ?? '', 'placeholder' => 'Ej.: vacaciones-2026', 'hint' => 'Opcional. Agrupa gastos de un viaje, evento o proyecto.', 'error' => $errors['etiqueta'] ?? null, 'attrs' => ['maxlength' => '40']]) ?>
         </div>
+
+        <?= Ui::field([
+            'id' => 'comprobante',
+            'label' => 'Comprobante o recibo (opcional)',
+            'type' => 'file',
+            'hint' => 'JPG, PNG, WebP o PDF · máximo 5 MB. Se guarda en almacenamiento privado fuera de la web pública.',
+            'error' => $errors['comprobante'] ?? null,
+            'attrs' => ['accept' => 'image/jpeg,image/png,image/webp,application/pdf'],
+        ]) ?>
+        <?php if ($editando && $movimiento->tieneAdjunto()): ?>
+            <div class="attachment-box">
+                <div class="attachment-box__info">
+                    <?= Ui::icon('paperclip') ?>
+                    <span>Comprobante actual: <a href="/adjunto.php?id=<?= (int) $movimiento->id ?>" target="_blank" rel="noopener"><?= escape($movimiento->adjuntoNombre ?? 'Ver comprobante') ?></a></span>
+                    <a class="attachment-box__dl" href="/adjunto.php?id=<?= (int) $movimiento->id ?>&amp;descargar=1">Descargar</a>
+                </div>
+                <label class="attachment-check">
+                    <input type="checkbox" name="eliminar_adjunto" value="1">
+                    <span>Quitar comprobante actual al guardar</span>
+                </label>
+            </div>
+        <?php endif; ?>
 
         <?php if (!$editando): ?>
         <details class="split-panel"<?= $splitAbierto ? ' open' : '' ?>>

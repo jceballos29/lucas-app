@@ -1475,4 +1475,58 @@ same('migración 010-multimoneda-cuentas.sql es idempotente', true, (static func
     return (int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'tasas_cambio'")->fetchColumn() === 1;
 })());
 
+section('Adjuntos de comprobantes y limpieza en disco al borrar movimiento o usuario (Fase 19)');
+$aUser = (int) $usuarios->create('Andrea Adjuntos', 'andrea.adj@correo.com', 'x');
+$aOtro = (int) $usuarios->create('Otro Adjuntos', 'otro.adj@correo.com', 'x');
+$aCuenta = $cuentas->create($aUser, 'Banco Andrea', 'bancaria', '500000.00');
+$aMov1 = $gestion2->guardar($aUser, null, [
+    'tipo' => 'gasto',
+    'monto' => '50000.00',
+    'fecha' => '2026-11-26',
+    'id_cuenta' => $aCuenta,
+    'id_categoria' => $catA,
+    'descripcion' => 'Factura con recibo',
+]);
+$aMov1Id = (int) $aMov1['id'];
+$pdfBytes = "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n";
+$adj1 = App\Support\AlmacenAdjuntos::guardarDesdeContenido($pdfBytes, 'application/pdf', 'factura_luz.pdf');
+$movs->actualizarAdjunto($aUser, $aMov1Id, $adj1['ruta'], $adj1['nombre'], $adj1['mime']);
+$movLeido = $movs->findOwned($aUser, $aMov1Id);
+same('el movimiento conserva los metadatos del comprobante y otro usuario no lo ve', [true, 'factura_luz.pdf', 'application/pdf', null], [
+    $movLeido?->tieneAdjunto(),
+    $movLeido?->adjuntoNombre,
+    $movLeido?->adjuntoMime,
+    $movs->findOwned($aOtro, $aMov1Id),
+]);
+$absAdj1 = App\Support\AlmacenAdjuntos::rutaAbsoluta($adj1['ruta']);
+same('al eliminar el movimiento, también se borra el archivo físico del comprobante', [true, true, false], [
+    $absAdj1 !== null && is_file($absAdj1),
+    $gestion2->eliminar($aUser, $aMov1Id),
+    $absAdj1 !== null && is_file($absAdj1),
+]);
+
+// Al eliminar la cuenta de usuario (RNF-20), los comprobantes en disco también se borran.
+$aMov2 = $gestion2->guardar($aUser, null, [
+    'tipo' => 'gasto',
+    'monto' => '30000.00',
+    'fecha' => '2026-11-26',
+    'id_cuenta' => $aCuenta,
+    'id_categoria' => $catA,
+    'descripcion' => 'Recibo antes de borrar cuenta',
+]);
+$adj2 = App\Support\AlmacenAdjuntos::guardarDesdeContenido($pdfBytes, 'application/pdf', 'recibo_final.pdf');
+$movs->actualizarAdjunto($aUser, (int) $aMov2['id'], $adj2['ruta'], $adj2['nombre'], $adj2['mime']);
+$absAdj2 = App\Support\AlmacenAdjuntos::rutaAbsoluta($adj2['ruta']);
+same('al eliminar el usuario (EliminarCuenta), se eliminan también sus comprobantes en disco', [true, 'ok', false], [
+    $absAdj2 !== null && is_file($absAdj2),
+    $borrar->eliminar($aUser),
+    $absAdj2 !== null && is_file($absAdj2),
+]);
+same('migración 011-adjuntos-comprobantes.sql es idempotente', true, (static function () use ($pdo): bool {
+    foreach (SqlScript::statements((string) file_get_contents(dirname(__DIR__, 2) . '/database/migrations/011-adjuntos-comprobantes.sql')) as $s) {
+        $pdo->exec($s);
+    }
+    return (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'transacciones' AND column_name = 'adjunto_ruta'")->fetchColumn() === 1;
+})());
+
 finish();
