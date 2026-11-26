@@ -113,6 +113,8 @@
 .input[aria-invalid="true"], .select[aria-invalid="true"] { border-color: var(--danger); }
 .input[aria-invalid="true"]:focus, .select[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px rgba(179, 38, 30, .18); }
 .input--lg { height: 60px; font-size: 1.625rem; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.input--textarea { height: auto; min-height: 120px; padding: 12px 14px; line-height: 1.45; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--fs-sm); }
+input[type="file"].input { height: auto; padding: 10px 14px; font-size: var(--fs-sm); cursor: pointer; }
 .select { appearance: none; padding-right: 40px; cursor: pointer; }
 .field__chevron { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--muted); pointer-events: none; }
 .field__control .input { padding-right: 48px; }
@@ -164,13 +166,13 @@ input[type="date"].input { appearance: none; }
 .card--flush { padding: 0; }
 
 /* ---------- Indicador (KPI) ---------- */
-.stat { display: flex; flex-direction: column; gap: var(--s-2); }
+.stat { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
 .stat__top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .stat__label { font-size: var(--fs-sm); color: var(--muted); font-weight: 500; }
-.stat__icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--sky-tint); color: var(--navy); }
+.stat__icon { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--sky-tint); color: var(--navy); }
 .stat__icon--brand { background: var(--teal-tint); color: var(--teal-strong); }
 .stat__icon .icon { width: 18px; height: 18px; }
-.stat__value { font-size: var(--fs-2xl); font-weight: 650; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat__value { font-size: clamp(1.2rem, 4.2vw, var(--fs-2xl)); font-weight: 650; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .stat__hint { font-size: var(--fs-sm); color: var(--muted); }
 
 /* ---------- Fila de lista ---------- */

@@ -76,8 +76,8 @@ $activas = array_values(array_filter($deudas, static fn (Deuda $d): bool => $d->
                 <?= Ui::button('Simular plan', ['type' => 'submit', 'variant' => 'dark']) ?>
             </form>
 
-            <div class="grid-2">
-                <div class="space-block">
+            <div class="grid-2 debt-compare">
+                <div class="debt-method">
                     <div class="budget__head">
                         <h3 class="space-block__title">Método Bola de Nieve (victorias rápidas)</h3>
                         <?= Ui::badge($plan['bolaNieve']['meses'] . ($plan['bolaNieve']['meses'] === 1 ? ' mes' : ' meses'), 'neutral') ?>
@@ -91,7 +91,7 @@ $activas = array_values(array_filter($deudas, static fn (Deuda $d): bool => $d->
                     </dl>
                 </div>
 
-                <div class="space-block">
+                <div class="debt-method debt-method--optimal">
                     <div class="budget__head">
                         <h3 class="space-block__title">Método Avalancha (máximo ahorro)</h3>
                         <?= Ui::badge($plan['avalancha']['meses'] . ($plan['avalancha']['meses'] === 1 ? ' mes' : ' meses'), 'brand') ?>

@@ -66,12 +66,13 @@
 .page-head__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 
 /* ---------- Rejillas ---------- */
-.kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s-3); }
-.grid-2 { display: grid; gap: var(--s-4); }
-.cards-grid { display: grid; gap: var(--s-4); }
+.kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-3); }
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-4); }
+.cards-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-4); }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-3); margin-top: var(--s-4); }
+.toolbar + .cards-grid { margin-top: var(--s-3); }
 .form-card { max-width: 640px; }
-.form-grid { display: grid; gap: 0 var(--s-4); }
+.form-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 var(--s-4); }
 .form-actions { display: flex; flex-direction: column-reverse; gap: var(--s-2); margin-top: var(--s-2); }
 
 /* ---------- Pantalla de acceso (login, registro, recuperar) ---------- */
@@ -114,7 +115,7 @@
 /* ======================= ≥ 640px ======================= */
 @media (min-width: 640px) {
   .cards-grid { grid-template-columns: repeat(2, 1fr); }
-  .form-grid { grid-template-columns: 1fr 1fr; }
+  .form-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .form-actions { flex-direction: row-reverse; justify-content: flex-start; }
   .donut { flex-direction: row; align-items: center; }
   .donut__legend { flex: 1; }
@@ -125,7 +126,7 @@
   .main { padding: var(--s-8) var(--s-8) var(--s-10); }
   .page-head h1 { font-size: var(--fs-2xl); }
   .fab { display: none; }
-  .kpis { grid-template-columns: repeat(4, 1fr); gap: var(--s-4); }
+  .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-4); }
 
   /* Tabla clásica */
   .table thead { position: static; width: auto; height: auto; overflow: visible; clip: auto; }

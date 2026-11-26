@@ -243,24 +243,39 @@ final class Ui
         $hint = $o['hint'] ?? null;
 
         $describedBy = array_filter([$hint !== null ? "h-$id" : null, $error !== null ? "e-$id" : null]);
-        $attrs = [
-            'class' => 'input' . (($o['size'] ?? '') === 'lg' ? ' input--lg' : ''),
-            'type' => $type,
-            'id' => $id,
-            'name' => $o['name'] ?? $id,
-            'value' => $type === 'password' ? null : ($o['value'] ?? null),
-            'placeholder' => $o['placeholder'] ?? null,
-            'autocomplete' => $o['autocomplete'] ?? null,
-            'required' => !empty($o['required']),
-            'aria-invalid' => $error !== null ? 'true' : null,
-            'aria-describedby' => $describedBy !== [] ? implode(' ', $describedBy) : null,
-        ] + ($o['attrs'] ?? []);
 
-        $control = '<input' . self::attrs($attrs) . '>';
-        if ($type === 'password') {
-            $control = '<div class="field__control">' . $control
-                . '<button class="field__toggle" type="button" data-toggle-password="' . escape($id) . '" aria-pressed="false" aria-label="Mostrar contraseña">'
-                . self::icon('eye', 'field__toggle-show') . self::icon('eye-off', 'field__toggle-hide') . '</button></div>';
+        if ($type === 'textarea') {
+            $attrs = [
+                'class' => 'input input--textarea',
+                'id' => $id,
+                'name' => $o['name'] ?? $id,
+                'placeholder' => $o['placeholder'] ?? null,
+                'required' => !empty($o['required']),
+                'aria-invalid' => $error !== null ? 'true' : null,
+                'aria-describedby' => $describedBy !== [] ? implode(' ', $describedBy) : null,
+                'rows' => '5',
+            ] + ($o['attrs'] ?? []);
+            $control = '<textarea' . self::attrs($attrs) . '>' . escape((string) ($o['value'] ?? '')) . '</textarea>';
+        } else {
+            $attrs = [
+                'class' => 'input' . (($o['size'] ?? '') === 'lg' ? ' input--lg' : ''),
+                'type' => $type,
+                'id' => $id,
+                'name' => $o['name'] ?? $id,
+                'value' => $type === 'password' ? null : ($o['value'] ?? null),
+                'placeholder' => $o['placeholder'] ?? null,
+                'autocomplete' => $o['autocomplete'] ?? null,
+                'required' => !empty($o['required']),
+                'aria-invalid' => $error !== null ? 'true' : null,
+                'aria-describedby' => $describedBy !== [] ? implode(' ', $describedBy) : null,
+            ] + ($o['attrs'] ?? []);
+
+            $control = '<input' . self::attrs($attrs) . '>';
+            if ($type === 'password') {
+                $control = '<div class="field__control">' . $control
+                    . '<button class="field__toggle" type="button" data-toggle-password="' . escape($id) . '" aria-pressed="false" aria-label="Mostrar contraseña">'
+                    . self::icon('eye', 'field__toggle-show') . self::icon('eye-off', 'field__toggle-hide') . '</button></div>';
+            }
         }
 
         return new Html('<div class="field' . (!empty($o['flush']) ? ' field--flush' : '') . '">'

@@ -63,16 +63,16 @@ foreach ($categorias as $k) {
         </div>
 
         <?php if (!$editando): ?>
-        <details class="filters"<?= $splitAbierto ? ' open' : '' ?>>
-            <summary class="filters__summary">
+        <details class="split-panel"<?= $splitAbierto ? ' open' : '' ?>>
+            <summary class="split-panel__summary">
                 <span><?= Ui::icon('plus') ?>Dividir este movimiento en varias categorías (opcional)</span>
                 <?= Ui::icon('chevron-down', 'filters__chevron') ?>
             </summary>
-            <div class="card__body">
-                <p class="muted-note">Si una misma compra incluye varias categorías (por ejemplo, supermercado: Alimentación + Hogar), indica aquí las partes. La suma debe coincidir con el monto total.</p>
+            <div class="split-panel__body">
+                <p class="split-panel__intro">Si una misma compra incluye varias categorías (por ejemplo, supermercado: Alimentación + Hogar), indica aquí las partes. La suma debe coincidir con el monto total.</p>
                 <?php if (isset($errors['split'])): ?><?= Ui::notice($errors['split'], 'error') ?><?php endif; ?>
                 <?php for ($i = 0; $i < 4; $i++): ?>
-                <div class="form-grid">
+                <div class="split-row">
                     <?= Ui::select([
                         'id' => 'split_cat_' . $i,
                         'name' => 'split_categoria[]',

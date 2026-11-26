@@ -48,10 +48,11 @@ foreach ($categorias as $k) {
 
         <?= Ui::field([
             'id' => 'csv_texto',
+            'type' => 'textarea',
             'label' => 'Líneas CSV (Fecha;Descripción;Monto o Fecha;Tipo;Descripción;Monto)',
             'value' => $old['csv_texto'],
-            'placeholder' => '2026-11-25;Supermercado Éxito;-185000',
-            'hint' => 'Acepta fechas AAAA-MM-DD o DD/MM/AAAA, separadas por punto y coma (;) o coma (,). Un monto negativo (-185000) o tipo «gasto» se importa como gasto; un monto con «+» (+2500000) o tipo «ingreso», como ingreso.',
+            'placeholder' => "2026-11-25;Supermercado Éxito;-185.000\n2026-11-25;Reembolso nómina;+2.500.000",
+            'hint' => 'Una fila por línea. Acepta fechas AAAA-MM-DD o DD/MM/AAAA, separadas por punto y coma (;) o coma (,). Un monto negativo (-185000) o tipo «gasto» se importa como gasto; un monto con «+» (+2500000) o tipo «ingreso», como ingreso.',
             'error' => $errors['csv_texto'] ?? null,
         ]) ?>
 
