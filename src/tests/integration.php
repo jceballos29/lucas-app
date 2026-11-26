@@ -1206,4 +1206,48 @@ same('importar lote CSV de +50.000 y -20.000 deja el saldo en 205.000', ['ok', 2
     (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo,
 ]);
 
+section('División de movimientos (Splits) y etiquetas transversales #tags (Fase 14)');
+$sUser = (int) $usuarios->create('Sofía Splits', 'sofia.splits@correo.com', 'x');
+$sCuenta = $cuentas->create($sUser, 'Banco Sofía', 'bancaria', '500000.00');
+$resSplit = $gestion2->guardarDividido(
+    $sUser,
+    [
+        'tipo' => 'gasto',
+        'monto_total' => '300000.00',
+        'fecha' => '2026-11-25',
+        'id_cuenta' => $sCuenta,
+        'descripcion' => 'Compra grande',
+        'etiqueta' => 'vacaciones-2026',
+    ],
+    [
+        ['id_categoria' => $catA, 'monto' => '180000.00', 'descripcion' => 'Alimentación viaje'],
+        ['id_categoria' => $catB, 'monto' => '120000.00', 'descripcion' => 'Transporte viaje'],
+    ],
+);
+same('guardarDividido inserta las 2 partes con el mismo grupo_split y descuenta el total de la cuenta', ['ok', 2, true, '200000.00'], [
+    $resSplit['codigo'],
+    count($resSplit['ids']),
+    is_string($resSplit['grupo_split']) && strlen($resSplit['grupo_split']) === 16,
+    (string) $cuentas->findOwned($sUser, $sCuenta)?->saldo,
+]);
+same('si la suma de las partes supera el saldo disponible, no inserta ninguna parte', 'saldo_insuficiente', $gestion2->guardarDividido(
+    $sUser,
+    [
+        'tipo' => 'gasto',
+        'monto_total' => '250000.00',
+        'fecha' => '2026-11-25',
+        'id_cuenta' => $sCuenta,
+        'descripcion' => 'Exceso',
+        'etiqueta' => 'vacaciones-2026',
+    ],
+    [
+        ['id_categoria' => $catA, 'monto' => '150000.00', 'descripcion' => 'Parte 1'],
+        ['id_categoria' => $catB, 'monto' => '100000.00', 'descripcion' => 'Parte 2'],
+    ],
+)['codigo']);
+same('listEtiquetas devuelve las etiquetas usadas por el usuario', ['vacaciones-2026'], $movs->listEtiquetas($sUser));
+same('filtrar por etiqueta en MovimientoRepository trae las 2 partidas', 2, $movs->count($sUser, App\Movimientos\Filtros::desde(['etiqueta' => 'vacaciones-2026'])));
+$repTags = $reportes->gastosPorEtiqueta($sUser, 11, 2026);
+same('gastosPorEtiqueta suma el total gastado bajo #vacaciones-2026 en noviembre', [['etiqueta' => 'vacaciones-2026', 'total' => '300000.00', 'cantidad' => 2]], $repTags);
+
 finish();

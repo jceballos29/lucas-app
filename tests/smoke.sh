@@ -1423,5 +1423,23 @@ check "importar CSV redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
 request "$JTR" GET /movimientos.php
 contains "muestra el movimiento importado desde CSV" "Reembolso CSV" "$TMP/body"
 
+echo; echo "== División de movimientos (Splits) y etiquetas transversales #tags (Fase 14)"
+KT2="$(sql "SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND nombre='Transporte'")"
+post_form "$JTR" /movimiento-form.php /movimiento-form.php \
+  "tipo=gasto" "monto=120.000" "fecha=$HOY_APP" "id_cuenta=$CBANCO" \
+  "descripcion=Supermercado y taxi" "etiqueta=#viaje-fin-anio" \
+  "split_categoria[0]=$KG" "split_monto[0]=80.000" "split_descripcion[0]=Mercado viaje" \
+  "split_categoria[1]=$KT2" "split_monto[1]=40.000" "split_descripcion[1]=Taxi aeropuerto"
+check "registrar un movimiento dividido con etiqueta redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
+request "$JTR" GET /movimientos.php
+contains "avisa que se registró el gasto dividido en 2 categorías" "el gasto dividido (2 categorías) por \$120.000" "$TMP/body"
+contains "muestra la etiqueta normalizada #viaje-fin-anio" "#viaje-fin-anio" "$TMP/body"
+contains "muestra el indicador Dividido" "Dividido" "$TMP/body"
+request "$JTR" GET "/movimientos.php?etiqueta=viaje-fin-anio"
+contains "filtrar por etiqueta muestra los 2 movimientos del split" "2 movimientos" "$TMP/body"
+request "$JTR" GET /reportes.php
+contains "los reportes muestran la tarjeta de gastos por etiqueta" "Gastos por etiqueta" "$TMP/body"
+contains "con la etiqueta #viaje-fin-anio y su total de 120.000" "#viaje-fin-anio" "$TMP/body"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

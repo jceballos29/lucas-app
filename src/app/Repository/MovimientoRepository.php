@@ -14,6 +14,7 @@ use PDO;
 final class MovimientoRepository
 {
     private const SELECT = 'SELECT t.id_transaccion, t.id_usuario, t.id_cuenta, t.id_categoria, t.tipo, t.monto, t.fecha, t.descripcion,
+            t.etiqueta, t.grupo_split,
             c.nombre AS cuenta_nombre, k.nombre AS categoria_nombre, k.color AS categoria_color, u.nombre AS autor_nombre
         FROM transacciones t
         JOIN cuentas c ON c.id_cuenta = t.id_cuenta
@@ -107,11 +108,21 @@ final class MovimientoRepository
         return $row === false ? null : Movimiento::fromRow($row);
     }
 
-    public function insert(int $userId, int $cuentaId, int $categoriaId, string $tipo, string $monto, string $fecha, ?string $descripcion, ?int $espacioId = null): int
-    {
+    public function insert(
+        int $userId,
+        int $cuentaId,
+        int $categoriaId,
+        string $tipo,
+        string $monto,
+        string $fecha,
+        ?string $descripcion,
+        ?int $espacioId = null,
+        ?string $etiqueta = null,
+        ?string $grupoSplit = null,
+    ): int {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO transacciones (id_usuario, id_espacio, id_cuenta, id_categoria, tipo, monto, fecha, descripcion)
-             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :fecha, :desc)'
+            'INSERT INTO transacciones (id_usuario, id_espacio, id_cuenta, id_categoria, tipo, monto, fecha, descripcion, etiqueta, grupo_split)
+             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :fecha, :desc, :etiqueta, :split)'
         );
         $stmt->execute([
             'u' => $userId,
@@ -122,19 +133,40 @@ final class MovimientoRepository
             'monto' => $monto,
             'fecha' => $fecha,
             'desc' => $descripcion,
+            'etiqueta' => $etiqueta,
+            'split' => $grupoSplit,
         ]);
 
         return (int) $this->pdo->lastInsertId();
     }
 
-    public function update(int $userId, int $id, int $cuentaId, int $categoriaId, string $tipo, string $monto, string $fecha, ?string $descripcion, ?int $espacioId = null): bool
-    {
+    public function update(
+        int $userId,
+        int $id,
+        int $cuentaId,
+        int $categoriaId,
+        string $tipo,
+        string $monto,
+        string $fecha,
+        ?string $descripcion,
+        ?int $espacioId = null,
+        ?string $etiqueta = null,
+    ): bool {
         [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
-            "UPDATE transacciones SET id_cuenta = :cuenta, id_categoria = :cat, tipo = :tipo, monto = :monto, fecha = :fecha, descripcion = :desc
+            "UPDATE transacciones SET id_cuenta = :cuenta, id_categoria = :cat, tipo = :tipo, monto = :monto, fecha = :fecha, descripcion = :desc, etiqueta = :etiqueta
              WHERE id_transaccion = :id AND $scope"
         );
-        $stmt->execute($params + ['cuenta' => $cuentaId, 'cat' => $categoriaId, 'tipo' => $tipo, 'monto' => $monto, 'fecha' => $fecha, 'desc' => $descripcion, 'id' => $id]);
+        $stmt->execute($params + [
+            'cuenta' => $cuentaId,
+            'cat' => $categoriaId,
+            'tipo' => $tipo,
+            'monto' => $monto,
+            'fecha' => $fecha,
+            'desc' => $descripcion,
+            'etiqueta' => $etiqueta,
+            'id' => $id,
+        ]);
 
         return $stmt->rowCount() > 0;
     }
@@ -149,7 +181,23 @@ final class MovimientoRepository
     }
 
     /**
-     * @param array{desde: string, hasta: string, cuenta: int, categoria: int, tipo: string} $f
+     * Lista las etiquetas distintas usadas por el usuario o espacio compartido, ordenadas alfabéticamente.
+     *
+     * @return list<string>
+     */
+    public function listEtiquetas(int $userId, ?int $espacioId = null): array
+    {
+        [$scope, $params] = self::scope($userId, $espacioId);
+        $stmt = $this->pdo->prepare(
+            "SELECT DISTINCT etiqueta FROM transacciones WHERE $scope AND etiqueta IS NOT NULL AND etiqueta <> '' ORDER BY etiqueta"
+        );
+        $stmt->execute($params);
+
+        return array_map(static fn (array $r): string => (string) $r['etiqueta'], $stmt->fetchAll());
+    }
+
+    /**
+     * @param array{desde: string, hasta: string, cuenta: int, categoria: int, tipo: string, etiqueta?: string} $f
      * @return array{0: string, 1: array<string, string|int>}
      */
     private static function where(int $userId, array $f, ?int $espacioId = null): array
@@ -176,6 +224,10 @@ final class MovimientoRepository
         if ($f['tipo'] !== '') {
             $conditions[] = 't.tipo = :tipo';
             $params['tipo'] = $f['tipo'];
+        }
+        if (($f['etiqueta'] ?? '') !== '') {
+            $conditions[] = 't.etiqueta = :etiqueta';
+            $params['etiqueta'] = $f['etiqueta'];
         }
 
         return [' WHERE ' . implode(' AND ', $conditions), $params];

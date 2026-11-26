@@ -20,6 +20,8 @@ final class Movimiento
         public readonly string $categoriaNombre = '',
         public readonly string $categoriaColor = '#8DA0AB',
         public readonly string $autorNombre = '',
+        public readonly ?string $etiqueta = null,
+        public readonly ?string $grupoSplit = null,
     ) {
     }
 
@@ -39,6 +41,8 @@ final class Movimiento
             (string) ($row['categoria_nombre'] ?? ''),
             (string) ($row['categoria_color'] ?? '#8DA0AB'),
             (string) ($row['autor_nombre'] ?? ''),
+            isset($row['etiqueta']) && $row['etiqueta'] !== '' ? (string) $row['etiqueta'] : null,
+            isset($row['grupo_split']) && $row['grupo_split'] !== '' ? (string) $row['grupo_split'] : null,
         );
     }
 

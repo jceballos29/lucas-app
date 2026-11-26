@@ -38,6 +38,13 @@ $filasCategorias = array_map(static fn (array $i): array => [
     'porcentaje' => number_format($i['percent'], 1, ',', '') . ' %',
 ], $categorias['items']);
 
+$etiquetasMes = $etiquetasMes ?? [];
+$filasEtiquetas = array_map(static fn (array $e): array => [
+    'etiqueta' => new Html('<a href="/movimientos.php?etiqueta=' . urlencode($e['etiqueta']) . '">' . Ui::badge('#' . $e['etiqueta'], 'brand') . '</a>'),
+    'movimientos' => $e['cantidad'] . ($e['cantidad'] === 1 ? ' movimiento' : ' movimientos'),
+    'gasto' => Ui::money($e['total'], 'out'),
+], $etiquetasMes);
+
 $barras = array_map(static fn (array $m): array => [
     'label' => Fecha::mesCorto($m['mes']),
     'value' => Dinero::aCentavos($m['gastos']),
@@ -69,6 +76,20 @@ $filasEvolucion = array_map(static fn (array $m): array => [
         ]) ?>
     <?php endif; ?>
 <?= Ui::cardClose() ?>
+
+<?php if ($filasEtiquetas !== []): ?>
+<?= Ui::cardOpen(['title' => 'Gastos por etiqueta o proyecto (#tag)', 'subtitle' => Mes::etiqueta($mes, $anio)]) ?>
+    <?= Ui::table([
+        'caption' => 'Gastos por etiqueta de ' . Mes::etiqueta($mes, $anio),
+        'columns' => [
+            ['key' => 'etiqueta', 'label' => 'Etiqueta'],
+            ['key' => 'movimientos', 'label' => 'Movimientos'],
+            ['key' => 'gasto', 'label' => 'Total gastado', 'align' => 'end'],
+        ],
+        'rows' => $filasEtiquetas,
+    ]) ?>
+<?= Ui::cardClose() ?>
+<?php endif; ?>
 
 <?= Ui::cardOpen(['title' => 'Evolución de los gastos', 'subtitle' => 'Últimos ' . $meses . ' meses · Promedio mensual: ' . Dinero::formatear($promedio), 'action' => Ui::button($meses === 6 ? 'Ver 12 meses' : 'Ver 6 meses', ['href' => $enlace(['mes' => $mes, 'anio' => $anio], $meses === 6 ? 12 : 6), 'variant' => 'ghost', 'size' => 'sm'])]) ?>
     <?= Ui::bars($barras, 'Gráfico de barras de gastos mensuales de los últimos ' . $meses . ' meses hasta ' . Mes::etiqueta($mes, $anio)) ?>

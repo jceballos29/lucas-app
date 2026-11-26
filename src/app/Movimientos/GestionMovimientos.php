@@ -80,13 +80,104 @@ final class GestionMovimientos
             }
 
             if ($movimientoId === null) {
-                $id = $this->movimientos->insert($userId, $datos['id_cuenta'], $datos['id_categoria'], $datos['tipo'], $datos['monto'], $datos['fecha'], $datos['descripcion'], $espacioId);
+                $id = $this->movimientos->insert(
+                    $userId,
+                    $datos['id_cuenta'],
+                    $datos['id_categoria'],
+                    $datos['tipo'],
+                    $datos['monto'],
+                    $datos['fecha'],
+                    $datos['descripcion'],
+                    $espacioId,
+                    $datos['etiqueta'] ?? null,
+                );
             } else {
-                $this->movimientos->update($userId, $movimientoId, $datos['id_cuenta'], $datos['id_categoria'], $datos['tipo'], $datos['monto'], $datos['fecha'], $datos['descripcion'], $espacioId);
+                $this->movimientos->update(
+                    $userId,
+                    $movimientoId,
+                    $datos['id_cuenta'],
+                    $datos['id_categoria'],
+                    $datos['tipo'],
+                    $datos['monto'],
+                    $datos['fecha'],
+                    $datos['descripcion'],
+                    $espacioId,
+                    $datos['etiqueta'] ?? null,
+                );
                 $id = $movimientoId;
             }
 
             return ['codigo' => ReglasMovimiento::OK, 'id' => $id, 'cuenta' => $cuenta['nombre'] ?? null, 'saldo' => $saldoDisponible];
+        });
+    }
+
+    /**
+     * Registra un movimiento dividido en varias categorías en una sola transacción (Split Transactions · Fase 14).
+     *
+     * @param array{tipo: string, monto_total: string, fecha: string, id_cuenta: int, descripcion: string|null, etiqueta?: string|null} $base
+     * @param list<array{id_categoria: int, monto: string, descripcion: string|null}> $partes
+     * @return array{codigo: string, ids: list<int>, grupo_split: string|null, cuenta: string|null, saldo: string|null}
+     */
+    public function guardarDividido(int $userId, array $base, array $partes, ?int $espacioId = null): array
+    {
+        return Transaction::run($this->pdo, function () use ($userId, $base, $partes, $espacioId): array {
+            $cuenta = $this->cuentas->lockForWrite($userId, $base['id_cuenta'], $espacioId);
+            $saldoDisponible = $cuenta !== null
+                ? (string) ($this->cuentas->findOwned($userId, $base['id_cuenta'], $espacioId)?->saldo ?? '0.00')
+                : null;
+
+            $montos = array_map(static fn (array $p): string => $p['monto'], $partes);
+            $montoTotal = Dinero::sumar($montos);
+
+            foreach ($partes as $parte) {
+                $categoria = $this->categorias->findById($parte['id_categoria']);
+                $codigo = ReglasMovimiento::evaluar(
+                    $cuenta,
+                    $categoria,
+                    $userId,
+                    $base['tipo'],
+                    $saldoDisponible,
+                    $montoTotal,
+                    $espacioId,
+                );
+
+                if ($codigo !== ReglasMovimiento::OK) {
+                    return [
+                        'codigo' => $codigo,
+                        'ids' => [],
+                        'grupo_split' => null,
+                        'cuenta' => $cuenta['nombre'] ?? null,
+                        'saldo' => $saldoDisponible,
+                    ];
+                }
+            }
+
+            $grupoSplit = bin2hex(random_bytes(8));
+            $etiqueta = $base['etiqueta'] ?? null;
+            $ids = [];
+
+            foreach ($partes as $parte) {
+                $ids[] = $this->movimientos->insert(
+                    $userId,
+                    $base['id_cuenta'],
+                    $parte['id_categoria'],
+                    $base['tipo'],
+                    $parte['monto'],
+                    $base['fecha'],
+                    $parte['descripcion'],
+                    $espacioId,
+                    $etiqueta,
+                    $grupoSplit,
+                );
+            }
+
+            return [
+                'codigo' => ReglasMovimiento::OK,
+                'ids' => $ids,
+                'grupo_split' => $grupoSplit,
+                'cuenta' => $cuenta['nombre'] ?? null,
+                'saldo' => $saldoDisponible,
+            ];
         });
     }
 

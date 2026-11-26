@@ -53,6 +53,32 @@ final class ReporteRepository
     }
 
     /**
+     * Gastos del mes agrupados por etiqueta transversal (`#etiqueta`, Fase 14).
+     *
+     * @return list<array{etiqueta: string, total: string, cantidad: int}>
+     */
+    public function gastosPorEtiqueta(int $userId, int $mes, int $anio, ?int $espacioId = null): array
+    {
+        [$desde, $hasta] = Mes::limites($mes, $anio);
+        [$scope, $params] = self::scope($userId, $espacioId, 't');
+        $stmt = $this->pdo->prepare(
+            "SELECT t.etiqueta, SUM(t.monto) AS total, COUNT(*) AS cantidad
+             FROM transacciones t
+             WHERE $scope AND t.tipo = 'gasto' AND t.etiqueta IS NOT NULL AND t.etiqueta <> ''
+               AND t.fecha >= :desde AND t.fecha < :hasta
+             GROUP BY t.etiqueta
+             ORDER BY total DESC, t.etiqueta"
+        );
+        $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
+
+        return array_map(static fn (array $r): array => [
+            'etiqueta' => (string) $r['etiqueta'],
+            'total' => (string) $r['total'],
+            'cantidad' => (int) $r['cantidad'],
+        ], $stmt->fetchAll());
+    }
+
+    /**
      * @return list<array{mes: int, anio: int, ingresos: string, gastos: string}>
      */
     public function evolucion(int $userId, int $mes, int $anio, int $meses, ?int $espacioId = null): array

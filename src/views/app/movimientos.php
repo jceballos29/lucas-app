@@ -30,18 +30,29 @@ $hayFiltros = Filtros::hayAlguno($filtros);
 
 $enEspacioCompartido = is_array($currentUser ?? null) && ($currentUser['espacio_id'] ?? null) !== null;
 $puedeEscribir = \App\Espacios\ReglasEspacio::puedeEscribir($currentUser['espacio_rol'] ?? null);
+$etiquetas = $etiquetas ?? [];
 
 $rows = array_map(static function (Movimiento $m) use ($volver, $enEspacioCompartido, $puedeEscribir): array {
     $nombre = $m->descripcion ?? $m->categoriaNombre;
-    $autorSub = $enEspacioCompartido && $m->autorNombre !== ''
-        ? '<span class="cell-sub">Por ' . escape($m->autorNombre) . '</span>'
+    $partesSub = [];
+    if ($enEspacioCompartido && $m->autorNombre !== '') {
+        $partesSub[] = 'Por ' . escape($m->autorNombre);
+    }
+    if ($m->etiqueta !== null) {
+        $partesSub[] = '<a href="/movimientos.php?etiqueta=' . urlencode($m->etiqueta) . '">#' . escape($m->etiqueta) . '</a>';
+    }
+    if ($m->grupoSplit !== null) {
+        $partesSub[] = 'Dividido';
+    }
+    $metaSub = $partesSub !== []
+        ? '<span class="cell-sub">' . implode(' · ', $partesSub) . '</span>'
         : '';
 
     return [
         'fecha' => Fecha::simple($m->fecha),
         'descripcion' => $m->descripcion !== null
-            ? new Html('<span class="cell-title">' . escape($m->descripcion) . '</span>' . $autorSub)
-            : new Html('<span class="muted-note">Sin descripción</span>' . $autorSub),
+            ? new Html('<span class="cell-title">' . escape($m->descripcion) . '</span>' . $metaSub)
+            : new Html('<span class="muted-note">Sin descripción</span>' . $metaSub),
         'categoria' => Ui::badge($m->categoriaNombre),
         'cuenta' => $m->cuentaNombre,
         'monto' => Ui::money($m->monto, $m->esIngreso() ? 'in' : 'out'),
@@ -64,6 +75,13 @@ $opcionesCategoria = [];
 foreach ($categorias as $k) {
     $opcionesCategoria[(string) $k->id] = $k->nombre . ' · ' . ($k->tipo === 'gasto' ? 'gasto' : 'ingreso');
 }
+$opcionesEtiqueta = [];
+foreach ($etiquetas as $et) {
+    $opcionesEtiqueta[$et] = '#' . $et;
+}
+if (($filtros['etiqueta'] ?? '') !== '' && !isset($opcionesEtiqueta[$filtros['etiqueta']])) {
+    $opcionesEtiqueta[$filtros['etiqueta']] = '#' . $filtros['etiqueta'];
+}
 
 // Los enlaces de página conservan los filtros; el «%» se duplica porque el patrón pasa por sprintf().
 $base = Filtros::query($filtros);
@@ -85,6 +103,9 @@ $balance = Dinero::sumar([$totales['ingresos'], '-' . $totales['gastos']]);
         <?= Ui::select(['id' => 'f-cuenta', 'name' => 'cuenta', 'label' => 'Cuenta', 'blank' => 'Todas', 'options' => $opcionesCuenta, 'selected' => (string) $filtros['cuenta'], 'flush' => true]) ?>
         <?= Ui::select(['id' => 'f-cat', 'name' => 'categoria', 'label' => 'Categoría', 'blank' => 'Todas', 'options' => $opcionesCategoria, 'selected' => (string) $filtros['categoria'], 'flush' => true]) ?>
         <?= Ui::select(['id' => 'f-tipo', 'name' => 'tipo', 'label' => 'Tipo', 'blank' => 'Todos', 'options' => ['gasto' => 'Gasto', 'ingreso' => 'Ingreso'], 'selected' => $filtros['tipo'], 'flush' => true]) ?>
+        <?php if ($opcionesEtiqueta !== []): ?>
+            <?= Ui::select(['id' => 'f-etiqueta', 'name' => 'etiqueta', 'label' => 'Etiqueta', 'blank' => 'Todas', 'options' => $opcionesEtiqueta, 'selected' => $filtros['etiqueta'] ?? '', 'flush' => true]) ?>
+        <?php endif; ?>
         <?= Ui::button('Filtrar', ['type' => 'submit', 'variant' => 'dark']) ?>
     </form>
 </details>

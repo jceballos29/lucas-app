@@ -31,6 +31,7 @@ final class ReporteController
         try {
             $reportes = $this->container->reportes();
             $categorias = Categorias::agrupar($reportes->gastosPorCategoria($user['id'], $mes, $anio, $espacioId));
+            $etiquetasMes = $reportes->gastosPorEtiqueta($user['id'], $mes, $anio, $espacioId);
             $evolucion = $reportes->evolucion($user['id'], $mes, $anio, $meses, $espacioId);
         } catch (RuntimeException $error) {
             [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
@@ -46,6 +47,7 @@ final class ReporteController
             'siguiente' => Mes::siguiente($mes, $anio),
             'meses' => $meses,
             'categorias' => $categorias,
+            'etiquetasMes' => $etiquetasMes,
             'evolucion' => $evolucion,
             // Promedio mensual de gastos en la ventana, en centavos enteros.
             'promedio' => Dinero::deCentavos(intdiv(array_sum(array_map([Dinero::class, 'aCentavos'], $gastos)), max(1, count($gastos)))),

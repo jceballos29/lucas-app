@@ -14,12 +14,13 @@ use DateTimeImmutable;
 final class MovimientoValidator
 {
     public const DESCRIPCION_MAX = 150;
+    public const ETIQUETA_MAX = 40;
     public const ANIO_MIN = 2000;
     public const ANIO_MAX = 2100;
 
     /**
-     * @param array<string, mixed> $input Normalmente $_POST (tipo, monto, fecha, id_cuenta, id_categoria, descripcion).
-     * @return array{data: array{tipo: string, monto: string, fecha: string, id_cuenta: int, id_categoria: int, descripcion: string|null}, errors: array<string, string>}
+     * @param array<string, mixed> $input Normalmente $_POST (tipo, monto, fecha, id_cuenta, id_categoria, descripcion, etiqueta).
+     * @return array{data: array{tipo: string, monto: string, fecha: string, id_cuenta: int, id_categoria: int, descripcion: string|null, etiqueta: string|null}, errors: array<string, string>}
      */
     public function validate(array $input): array
     {
@@ -27,6 +28,7 @@ final class MovimientoValidator
         $montoTexto = trim(self::text($input['monto'] ?? ''));
         $fecha = trim(self::text($input['fecha'] ?? ''));
         $descripcion = trim(preg_replace('/\s+/u', ' ', self::text($input['descripcion'] ?? '')) ?? '');
+        $etiquetaRaw = trim(self::text($input['etiqueta'] ?? ''));
         $errors = [];
 
         if (!in_array($tipo, ['ingreso', 'gasto'], true)) {
@@ -58,6 +60,14 @@ final class MovimientoValidator
             $errors['descripcion'] = 'La descripción admite hasta ' . self::DESCRIPCION_MAX . ' caracteres.';
         }
 
+        $etiqueta = null;
+        if ($etiquetaRaw !== '') {
+            $etiqueta = self::normalizarEtiqueta($etiquetaRaw);
+            if ($etiqueta === null) {
+                $errors['etiqueta'] = 'La etiqueta solo admite letras, números y guiones (hasta ' . self::ETIQUETA_MAX . ' caracteres, ej. vacaciones-2026).';
+            }
+        }
+
         return [
             'data' => [
                 'tipo' => $tipo,
@@ -66,9 +76,152 @@ final class MovimientoValidator
                 'id_cuenta' => $idCuenta,
                 'id_categoria' => $idCategoria,
                 'descripcion' => $descripcion === '' ? null : $descripcion,
+                'etiqueta' => $etiqueta,
             ],
             'errors' => $errors,
         ];
+    }
+
+    /**
+     * Valida una división de movimiento en varias categorías (Split Transactions · Fase 14).
+     *
+     * @param array<string, mixed> $input $_POST con tipo, monto (opcional si suma partes), fecha, id_cuenta, descripcion, etiqueta, split_categoria[], split_monto[], split_descripcion[].
+     * @return array{
+     *   base: array{tipo: string, monto_total: string, fecha: string, id_cuenta: int, descripcion: string|null, etiqueta: string|null},
+     *   partes: list<array{id_categoria: int, monto: string, descripcion: string|null}>,
+     *   errors: array<string, string>
+     * }
+     */
+    public function validateSplit(array $input): array
+    {
+        $tipo = self::text($input['tipo'] ?? '');
+        $montoTotalTexto = trim(self::text($input['monto'] ?? ''));
+        $fecha = trim(self::text($input['fecha'] ?? ''));
+        $descripcionBase = trim(preg_replace('/\s+/u', ' ', self::text($input['descripcion'] ?? '')) ?? '');
+        $etiquetaRaw = trim(self::text($input['etiqueta'] ?? ''));
+        $errors = [];
+
+        if (!in_array($tipo, ['ingreso', 'gasto'], true)) {
+            $errors['tipo'] = 'Elige si es un ingreso o un gasto.';
+        }
+
+        if (!self::validDate($fecha)) {
+            $errors['fecha'] = 'Elige una fecha válida.';
+        }
+
+        $idCuenta = self::id($input['id_cuenta'] ?? '');
+        if ($idCuenta === 0) {
+            $errors['id_cuenta'] = 'Elige la cuenta.';
+        }
+
+        if (mb_strlen($descripcionBase) > self::DESCRIPCION_MAX) {
+            $errors['descripcion'] = 'La descripción admite hasta ' . self::DESCRIPCION_MAX . ' caracteres.';
+        }
+
+        $etiqueta = null;
+        if ($etiquetaRaw !== '') {
+            $etiqueta = self::normalizarEtiqueta($etiquetaRaw);
+            if ($etiqueta === null) {
+                $errors['etiqueta'] = 'La etiqueta solo admite letras, números y guiones (hasta ' . self::ETIQUETA_MAX . ' caracteres, ej. vacaciones-2026).';
+            }
+        }
+
+        $catsRaw = is_array($input['split_categoria'] ?? null) ? $input['split_categoria'] : [];
+        $montosRaw = is_array($input['split_monto'] ?? null) ? $input['split_monto'] : [];
+        $descsRaw = is_array($input['split_descripcion'] ?? null) ? $input['split_descripcion'] : [];
+
+        $partes = [];
+        $montosPartes = [];
+        $maxFilas = min(4, max(count($catsRaw), count($montosRaw)));
+
+        for ($i = 0; $i < $maxFilas; $i++) {
+            $catId = self::id($catsRaw[$i] ?? '');
+            $mTexto = trim(self::text($montosRaw[$i] ?? ''));
+            $dTexto = trim(preg_replace('/\s+/u', ' ', self::text($descsRaw[$i] ?? '')) ?? '');
+
+            if ($catId === 0 && $mTexto === '' && $dTexto === '') {
+                continue;
+            }
+
+            if ($catId === 0) {
+                $errors['split'] = 'Elige la categoría en cada parte de la división.';
+                break;
+            }
+
+            $m = Dinero::parse($mTexto);
+            if ($m === null || $m === '0.00' || str_starts_with($m, '-')) {
+                $errors['split'] = 'Escribe un monto mayor que cero en cada parte de la división.';
+                break;
+            }
+
+            $descFinal = $dTexto !== ''
+                ? $dTexto
+                : ($descripcionBase !== '' ? $descripcionBase : null);
+
+            if ($descFinal !== null && mb_strlen($descFinal) > self::DESCRIPCION_MAX) {
+                $descFinal = mb_substr($descFinal, 0, self::DESCRIPCION_MAX);
+            }
+
+            $partes[] = [
+                'id_categoria' => $catId,
+                'monto' => $m,
+                'descripcion' => $descFinal,
+            ];
+            $montosPartes[] = $m;
+        }
+
+        if (!isset($errors['split']) && count($partes) < 2) {
+            $errors['split'] = 'Para dividir un movimiento indica al menos 2 categorías con su monto.';
+        }
+
+        $sumaPartes = $montosPartes !== [] ? Dinero::sumar($montosPartes) : '0.00';
+
+        if ($montoTotalTexto !== '') {
+            $montoTotal = Dinero::parse($montoTotalTexto);
+            if ($montoTotal === null || $montoTotal === '0.00' || str_starts_with($montoTotal, '-')) {
+                $errors['monto'] = 'Escribe un monto total válido mayor que cero.';
+            } elseif (!isset($errors['split']) && $montoTotal !== $sumaPartes) {
+                $errors['split'] = 'La suma de las partes (' . Dinero::formatear($sumaPartes) . ') debe coincidir con el monto total (' . Dinero::formatear($montoTotal) . ').';
+            }
+        } else {
+            $montoTotal = $sumaPartes;
+        }
+
+        return [
+            'base' => [
+                'tipo' => $tipo,
+                'monto_total' => $montoTotal ?? '0.00',
+                'fecha' => $fecha,
+                'id_cuenta' => $idCuenta,
+                'descripcion' => $descripcionBase === '' ? null : $descripcionBase,
+                'etiqueta' => $etiqueta,
+            ],
+            'partes' => $partes,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Normaliza una etiqueta transversal (`#vacaciones 2026` → `vacaciones-2026`).
+     * Devuelve null si tras limpiar contiene caracteres no permitidos o supera ETIQUETA_MAX.
+     */
+    public static function normalizarEtiqueta(string $raw): ?string
+    {
+        $limpia = trim($raw);
+        $limpia = ltrim($limpia, "# \t");
+        $limpia = mb_strtolower($limpia);
+        $limpia = preg_replace('/\s+/u', '-', $limpia) ?? '';
+        $limpia = trim($limpia, '-_');
+
+        if ($limpia === '' || mb_strlen($limpia) > self::ETIQUETA_MAX) {
+            return null;
+        }
+
+        if (preg_match('/^[a-z0-9áéíóúñü_-]+$/u', $limpia) !== 1) {
+            return null;
+        }
+
+        return $limpia;
     }
 
     /** Una fecha `AAAA-MM-DD` real (no el 31 de febrero) dentro de un rango razonable. */

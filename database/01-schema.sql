@@ -74,12 +74,15 @@ CREATE TABLE transacciones (
   monto          DECIMAL(12,2) NOT NULL CHECK (monto > 0),
   fecha          DATE NOT NULL,
   descripcion    VARCHAR(150),
+  etiqueta       VARCHAR(40) NULL,
+  grupo_split    CHAR(16) NULL,
   creado_en      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (id_usuario)   REFERENCES usuarios(id_usuario)     ON DELETE CASCADE,
   FOREIGN KEY (id_espacio)   REFERENCES espacios(id_espacio)     ON DELETE CASCADE,
   FOREIGN KEY (id_cuenta)    REFERENCES cuentas(id_cuenta),
   FOREIGN KEY (id_categoria) REFERENCES categorias(id_categoria),
-  INDEX idx_usuario_fecha (id_usuario, fecha)
+  INDEX idx_usuario_fecha (id_usuario, fecha),
+  INDEX idx_trans_etiqueta (id_usuario, etiqueta)
 );
 
 CREATE TABLE presupuestos (

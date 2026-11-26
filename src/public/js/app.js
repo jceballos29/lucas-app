@@ -43,24 +43,32 @@
   });
 
   /* 4. Categorías según el tipo de movimiento (gasto / ingreso). El servidor pone TODAS las categorías en el <select>, cada
-        una con data-tipo; aquí se dejan solo las del tipo elegido. Sin JS se ven todas y el servidor rechaza la que no
-        corresponda (el tipo se comprueba siempre allí). */
+        una con data-tipo; aquí se dejan solo las del tipo elegido (tanto en #categoria como en las filas de división). Sin
+        JS se ven todas y el servidor rechaza la que no corresponda (el tipo se comprueba siempre allí). */
   var tipoRadios = document.querySelectorAll('input[name="tipo"]');
-  var categoria = document.getElementById('categoria');
-  if (tipoRadios.length && categoria && categoria.querySelector('option[data-tipo]')) {
-    var todas = Array.prototype.map.call(categoria.options, function (o) {
-      return { value: o.value, text: o.textContent, tipo: o.getAttribute('data-tipo') };
+  var selectoresCat = document.querySelectorAll('select#categoria, select[name="split_categoria[]"]');
+  if (tipoRadios.length && selectoresCat.length) {
+    var catalogos = Array.prototype.map.call(selectoresCat, function (sel) {
+      return {
+        sel: sel,
+        todas: Array.prototype.map.call(sel.options, function (o) {
+          return { value: o.value, text: o.textContent, tipo: o.getAttribute('data-tipo') };
+        })
+      };
     });
     var fill = function (tipo) {
-      var actual = categoria.value;
-      categoria.innerHTML = '';
-      todas.forEach(function (c) {
-        if (c.tipo !== null && c.tipo !== tipo) return;          // la opción en blanco no tiene tipo y se queda
-        var o = document.createElement('option');
-        o.value = c.value; o.textContent = c.text;
-        if (c.tipo !== null) o.setAttribute('data-tipo', c.tipo);
-        if (c.value === actual) o.selected = true;
-        categoria.appendChild(o);
+      catalogos.forEach(function (item) {
+        var sel = item.sel;
+        var actual = sel.value;
+        sel.innerHTML = '';
+        item.todas.forEach(function (c) {
+          if (c.tipo !== null && c.tipo !== tipo) return;
+          var o = document.createElement('option');
+          o.value = c.value; o.textContent = c.text;
+          if (c.tipo !== null) o.setAttribute('data-tipo', c.tipo);
+          if (c.value === actual) o.selected = true;
+          sel.appendChild(o);
+        });
       });
     };
     tipoRadios.forEach(function (r) { r.addEventListener('change', function () { fill(r.value); }); });

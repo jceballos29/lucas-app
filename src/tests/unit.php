@@ -331,8 +331,8 @@ same('lo ajeno se detecta antes que lo discordante (no se revela que existe)', R
 
 section('Filtros del listado');
 use App\Movimientos\Filtros as F;
-same('sin parámetros no hay filtros', ['desde' => '', 'hasta' => '', 'cuenta' => 0, 'categoria' => 0, 'tipo' => ''], F::desde([]));
-same('filtros válidos', ['desde' => '2026-11-01', 'hasta' => '2026-11-30', 'cuenta' => 3, 'categoria' => 8, 'tipo' => 'gasto'], F::desde(['desde' => '2026-11-01', 'hasta' => '2026-11-30', 'cuenta' => '3', 'categoria' => '8', 'tipo' => 'gasto']));
+same('sin parámetros no hay filtros', ['desde' => '', 'hasta' => '', 'cuenta' => 0, 'categoria' => 0, 'tipo' => '', 'etiqueta' => ''], F::desde([]));
+same('filtros válidos', ['desde' => '2026-11-01', 'hasta' => '2026-11-30', 'cuenta' => 3, 'categoria' => 8, 'tipo' => 'gasto', 'etiqueta' => ''], F::desde(['desde' => '2026-11-01', 'hasta' => '2026-11-30', 'cuenta' => '3', 'categoria' => '8', 'tipo' => 'gasto']));
 same('una fecha inválida se ignora', '', F::desde(['desde' => '2026-13-45'])['desde']);
 same('un tipo desconocido se ignora', '', F::desde(['tipo' => 'otro'])['tipo']);
 same('un id no numérico se ignora', 0, F::desde(['cuenta' => '1; DROP TABLE'])['cuenta']);
@@ -807,5 +807,69 @@ same('reconoce ingreso con signo + y fecha DD/MM/AAAA', ['2026-11-25', 'ingreso'
     $resCsv['filas'][1]['descripcion'],
 ]);
 same('una fecha inválida en CSV reporta la línea con error', 1, count(IC::parsearTexto("2026-02-31;Raro;-100")['errores']));
+
+section('MovimientoValidator: etiquetas transversales y división de movimientos (Fase 14)');
+$mv14 = new App\Validation\MovimientoValidator();
+same('normalizarEtiqueta quita #, pasa a minúsculas y cambia espacios por guiones', [
+    'vacaciones-2026',
+    'remodelación',
+    'impuestos_2026',
+    null,
+    null,
+], [
+    App\Validation\MovimientoValidator::normalizarEtiqueta(' #Vacaciones 2026 '),
+    App\Validation\MovimientoValidator::normalizarEtiqueta('#Remodelación'),
+    App\Validation\MovimientoValidator::normalizarEtiqueta('impuestos_2026'),
+    App\Validation\MovimientoValidator::normalizarEtiqueta('invalida/con/slash'),
+    App\Validation\MovimientoValidator::normalizarEtiqueta(str_repeat('a', 41)),
+]);
+$valTag = $mv14->validate([
+    'tipo' => 'gasto',
+    'monto' => '50.000',
+    'fecha' => '2026-11-25',
+    'id_cuenta' => '1',
+    'id_categoria' => '2',
+    'descripcion' => 'Hotel',
+    'etiqueta' => '#Viaje Cartagena',
+]);
+same('validate normaliza la etiqueta válida', [[], 'viaje-cartagena'], [$valTag['errors'], $valTag['data']['etiqueta']]);
+$valSplitOk = $mv14->validateSplit([
+    'tipo' => 'gasto',
+    'monto' => '300.000',
+    'fecha' => '2026-11-25',
+    'id_cuenta' => '1',
+    'descripcion' => 'Supermercado Éxito',
+    'etiqueta' => '#hogar-2026',
+    'split_categoria' => ['2', '3', '', ''],
+    'split_monto' => ['220.000', '80.000', '', ''],
+    'split_descripcion' => ['Mercado alimentos', '', '', ''],
+]);
+same('validateSplit con 2 partes cuya suma coincide con el total', [[], 2, '300000.00', 'hogar-2026', 'Mercado alimentos', 'Supermercado Éxito'], [
+    $valSplitOk['errors'],
+    count($valSplitOk['partes']),
+    $valSplitOk['base']['monto_total'],
+    $valSplitOk['base']['etiqueta'],
+    $valSplitOk['partes'][0]['descripcion'],
+    $valSplitOk['partes'][1]['descripcion'],
+]);
+$valSplitDescuadre = $mv14->validateSplit([
+    'tipo' => 'gasto',
+    'monto' => '300.000',
+    'fecha' => '2026-11-25',
+    'id_cuenta' => '1',
+    'split_categoria' => ['2', '3'],
+    'split_monto' => ['200.000', '50.000'],
+]);
+same('validateSplit rechaza cuando la suma de las partes no coincide con el monto total', true, isset($valSplitDescuadre['errors']['split']));
+$valSplitUnaSola = $mv14->validateSplit([
+    'tipo' => 'gasto',
+    'monto' => '200.000',
+    'fecha' => '2026-11-25',
+    'id_cuenta' => '1',
+    'split_categoria' => ['2', ''],
+    'split_monto' => ['200.000', ''],
+]);
+same('validateSplit exige al menos 2 partes', true, isset($valSplitUnaSola['errors']['split']));
+same('Filtros::desde incluye y normaliza la etiqueta', 'vacaciones-2026', App\Movimientos\Filtros::desde(['etiqueta' => '#Vacaciones 2026'])['etiqueta']);
 
 finish();
