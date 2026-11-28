@@ -163,12 +163,6 @@ parameters:
 			path: src/app/View/Html.php
 
 		-
-			message: '#^Method App\\View\\Ui\:\:actions\(\) has parameter \$items with no value type specified in iterable type array\.$#'
-			identifier: missingType.iterableValue
-			count: 1
-			path: src/app/View/Ui.php
-
-		-
 			message: '#^Offset ''editor''\|''lector'' on array\{propietario\: ''Propietario'', editor\: ''Editor'', lector\: ''Lector \(solo…''\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
