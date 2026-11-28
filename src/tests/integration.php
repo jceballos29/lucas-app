@@ -1445,6 +1445,29 @@ same('eliminarOtrasDeUsuario cierra todas menos la sesión actual h1', [1, true,
     $sesRepo->validarYRenovar($sesUser, $h2),
 ]);
 
+// M5: tope de sesiones, vida máxima y escritura de ultimo_uso limitada.
+$sesRepo->eliminarOtrasDeUsuario($sesUser, $h1);
+$pdo->exec("UPDATE sesiones_usuario SET ultimo_uso = NOW() - INTERVAL 5 MINUTE WHERE id_sesion = " . $pdo->quote($h1));
+$sesRepo->validarYRenovar($sesUser, $h1);
+same('M5: una sesión sin tocar más de 1 min refresca ultimo_uso', true, (int) $pdo->query("SELECT ultimo_uso > NOW() - INTERVAL 30 SECOND FROM sesiones_usuario WHERE id_sesion = " . $pdo->quote($h1))->fetchColumn() === 1);
+$pdo->exec("UPDATE sesiones_usuario SET ultimo_uso = NOW() - INTERVAL 20 SECOND WHERE id_sesion = " . $pdo->quote($h1));
+$sesRepo->validarYRenovar($sesUser, $h1);
+same('M5: dentro del minuto NO se escribe de nuevo (sin escritura por petición)', true, (int) $pdo->query("SELECT ultimo_uso < NOW() - INTERVAL 10 SECOND FROM sesiones_usuario WHERE id_sesion = " . $pdo->quote($h1))->fetchColumn() === 1);
+$pdo->exec("UPDATE sesiones_usuario SET creado_en = NOW() - INTERVAL 13 HOUR WHERE id_sesion = " . $pdo->quote($h1));
+same('M5: pasada la vida máxima (12 h) la sesión deja de valer aunque esté activa', false, $sesRepo->validarYRenovar($sesUser, $h1));
+same('M5: y se borra de la tabla', 0, (int) $pdo->query("SELECT COUNT(*) FROM sesiones_usuario WHERE id_sesion = " . $pdo->quote($h1))->fetchColumn());
+$primera = App\Repository\SesionRepository::hashId('tope-0');
+for ($i = 0; $i < App\Repository\SesionRepository::MAX_SESIONES + 4; $i++) {
+    $hh = App\Repository\SesionRepository::hashId("tope-$i");
+    $sesRepo->registrar($sesUser, $hh, '10.0.0.' . $i, 'Navegador ' . $i);
+    $pdo->exec("UPDATE sesiones_usuario SET ultimo_uso = NOW() - INTERVAL " . (100 - $i) . " SECOND WHERE id_sesion = " . $pdo->quote($hh));
+}
+$ultima = App\Repository\SesionRepository::hashId('tope-' . (App\Repository\SesionRepository::MAX_SESIONES + 3));
+same('M5: nunca hay más de 10 sesiones por usuario', App\Repository\SesionRepository::MAX_SESIONES, count($sesRepo->listByUser($sesUser)));
+same('M5: la sesión recién abierta sigue válida y la más antigua se cerró', [true, false], [$sesRepo->validarYRenovar($sesUser, $ultima), $sesRepo->validarYRenovar($sesUser, $primera)]);
+same('M5: el tope de un usuario no toca las sesiones de otro', true, $sesRepo->validarYRenovar($sesOtro, $hOtro));
+
+
 section('Multimoneda por cuenta, transferencias multimoneda y conversión en reportes/presupuestos (Fase 18)');
 $mUser = (int) $usuarios->create('Mateo Multimoneda', 'mateo.multi@correo.com', 'x');
 $tasasRepo = $container->tasasCambio();

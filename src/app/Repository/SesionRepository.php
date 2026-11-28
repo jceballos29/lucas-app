@@ -14,6 +14,13 @@ use PDO;
  */
 final class SesionRepository
 {
+    /** M5: sesiones simultáneas por usuario; al abrir una más se cierra la menos usada. */
+    public const MAX_SESIONES = 10;
+    /** M5: vida máxima de una sesión aunque haya actividad continua (hay que volver a iniciar sesión). */
+    public const VIDA_MAXIMA_SEGUNDOS = 43200;
+    /** M5: `ultimo_uso` se escribe como máximo una vez por este intervalo, no en cada petición. */
+    public const REFRESCO_SEGUNDOS = 60;
+
     public function __construct(private readonly PDO $pdo)
     {
     }
@@ -44,24 +51,60 @@ final class SesionRepository
             'ip' => $ipLimpia,
             'ua' => $uaLimpio,
         ]);
+
+        $this->limitarSesiones($userId, $sessionHash);
+    }
+
+    /** Deja como máximo MAX_SESIONES sesiones del usuario: cierra las menos usadas (nunca la que acaba de abrirse). */
+    private function limitarSesiones(int $userId, string $actualHash): void
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT id_sesion FROM sesiones_usuario WHERE id_usuario = :u AND id_sesion <> :actual
+             ORDER BY ultimo_uso DESC, creado_en DESC LIMIT 18446744073709551615 OFFSET ' . (self::MAX_SESIONES - 1)
+        );
+        $stmt->execute(['u' => $userId, 'actual' => $actualHash]);
+        $sobran = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if ($sobran === []) {
+            return;
+        }
+
+        $marcas = implode(',', array_fill(0, count($sobran), '?'));
+        $this->pdo->prepare("DELETE FROM sesiones_usuario WHERE id_usuario = ? AND id_sesion IN ($marcas)")
+            ->execute([$userId, ...$sobran]);
     }
 
     /**
-     * Comprueba si la sesión sigue activa en la tabla para ese usuario. Si existe, actualiza `ultimo_uso`.
+     * Comprueba si la sesión sigue activa en la tabla para ese usuario y no superó su vida máxima (M5).
+     * Una consulta por petición; `ultimo_uso` solo se escribe si pasó más de REFRESCO_SEGUNDOS desde la última vez.
      */
     public function validarYRenovar(int $userId, string $sessionHash): bool
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id_sesion FROM sesiones_usuario WHERE id_sesion = :id AND id_usuario = :u'
+            'SELECT creado_en > DATE_SUB(CURRENT_TIMESTAMP, INTERVAL :vida SECOND) AS vigente,
+                    ultimo_uso < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL :refresco SECOND) AS refrescar
+             FROM sesiones_usuario WHERE id_sesion = :id AND id_usuario = :u'
         );
-        $stmt->execute(['id' => $sessionHash, 'u' => $userId]);
-        if ($stmt->fetch() === false) {
+        $stmt->bindValue('vida', self::VIDA_MAXIMA_SEGUNDOS, PDO::PARAM_INT);
+        $stmt->bindValue('refresco', self::REFRESCO_SEGUNDOS, PDO::PARAM_INT);
+        $stmt->bindValue('id', $sessionHash);
+        $stmt->bindValue('u', $userId, PDO::PARAM_INT);
+        $stmt->execute();
+        $fila = $stmt->fetch();
+        if ($fila === false) {
             return false;
         }
 
-        $this->pdo->prepare(
-            'UPDATE sesiones_usuario SET ultimo_uso = CURRENT_TIMESTAMP WHERE id_sesion = :id AND id_usuario = :u'
-        )->execute(['id' => $sessionHash, 'u' => $userId]);
+        if ((int) $fila['vigente'] !== 1) {
+            $this->eliminarPorHash($sessionHash);
+
+            return false;
+        }
+
+        if ((int) $fila['refrescar'] === 1) {
+            $this->pdo->prepare(
+                'UPDATE sesiones_usuario SET ultimo_uso = CURRENT_TIMESTAMP WHERE id_sesion = :id AND id_usuario = :u'
+            )->execute(['id' => $sessionHash, 'u' => $userId]);
+        }
 
         return true;
     }
