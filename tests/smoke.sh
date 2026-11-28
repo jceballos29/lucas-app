@@ -1805,7 +1805,8 @@ contains "U1: …se oculta con un campo enfocado" "body:has(input:focus, select:
 request "$JMU" GET /js/app.js
 contains "U2: el foco pasa al primer campo con error al volver el formulario" '[aria-invalid="true"]' "$TMP/body"
 request "$JMU" GET /sw.js
-contains "los recursos estáticos cambiaron: la caché del service worker se renovó (v6)" "lucas-static-v6" "$TMP/body"
+contains "E5: el service worker borra las versiones viejas de un mismo archivo al guardar la nueva (la caché no crece)" "borrarVersionesViejas" "$TMP/body"
+contains "E5: y cachea también la fuente (/fonts)" "icons|fonts" "$TMP/body"
 post_form "$JMU" /perfil.php /perfil.php "accion=clave" "clave_actual=incorrecta" "clave_nueva=abc" "clave_nueva2=x"
 contains "U2: el campo con error queda marcado aria-invalid y enlazado a su mensaje" 'aria-invalid="true" aria-describedby="e-clave_actual"' "$TMP/body"
 

@@ -7,7 +7,10 @@
  */
 'use strict';
 
-var CACHE_NAME = 'lucas-static-v6';
+// E5: este nombre YA NO hay que subirlo al cambiar CSS o JS. Las páginas piden los activos con `?v=<fecha del archivo>` (una URL nueva = una
+// petición nueva a la red) y cada vez que se guarda una versión se borran las antiguas de la misma ruta (borrarVersionesViejas). Solo habría que
+// cambiarlo para vaciar la caché entera por otro motivo.
+var CACHE_NAME = 'lucas-static-v7';
 var PRECACHE_ASSETS = [
   '/offline.html',
   '/favicon.svg',
@@ -48,9 +51,19 @@ self.addEventListener('activate', function (event) {
   );
 });
 
+// Antes de guardar `/css/pages.css?v=2`, quita `/css/pages.css?v=1` (y cualquier otra versión de la misma ruta): la caché no crece con cada cambio.
+function borrarVersionesViejas(cache, url) {
+  return cache.keys().then(function (claves) {
+    return Promise.all(claves.filter(function (c) {
+      var u = new URL(c.url);
+      return u.pathname === url.pathname && u.search !== url.search;
+    }).map(function (c) { return cache.delete(c); }));
+  });
+}
+
 function isStaticAsset(url) {
   if (url.origin !== self.location.origin) return false;
-  return /^\/(css|js|icons)\//.test(url.pathname) ||
+  return /^\/(css|js|icons|fonts)\//.test(url.pathname) ||
          url.pathname === '/favicon.svg' ||
          url.pathname === '/manifest.webmanifest' ||
          url.pathname === '/offline.html';
@@ -79,7 +92,8 @@ self.addEventListener('fetch', function (event) {
         return cache.match(req).then(function (cached) {
           var fetched = fetch(req).then(function (networkRes) {
             if (networkRes && networkRes.status === 200) {
-              cache.put(req, networkRes.clone());
+              var copia = networkRes.clone();
+              borrarVersionesViejas(cache, url).then(function () { return cache.put(req, copia); });
             }
             return networkRes;
           }).catch(function () {
