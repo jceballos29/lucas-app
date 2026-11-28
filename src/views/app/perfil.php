@@ -68,6 +68,7 @@ $filasSesiones = array_map(static function (array $s) use ($sesionActualHash): a
     <form action="/perfil.php" method="post" novalidate>
         <?= csrf_field() ?>
         <input type="hidden" name="accion" value="notificaciones">
+        <?php if (!$usuario->correoVerificado): ?><p class="muted">Primero verifica tu correo (arriba): hasta entonces no se pueden activar estos avisos.</p><?php endif; ?>
         <label class="check-row">
             <input type="checkbox" name="notif_presupuestos" value="1"<?= $usuario->notifPresupuestos ? ' checked' : '' ?>>
             <span><strong>Alertas de presupuesto (80 % y 100 %)</strong><br><span class="muted">Incluye los gastos que registren otros miembros en tus espacios compartidos. Un correo por umbral, categoría y mes.</span></span>

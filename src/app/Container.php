@@ -264,6 +264,16 @@ final class Container
         return new SesionRepository($this->pdo());
     }
 
+    public function verificacionesCorreo(): \App\Repository\VerificacionCorreoRepository
+    {
+        return new \App\Repository\VerificacionCorreoRepository($this->pdo());
+    }
+
+    public function verificacionCorreo(): \App\Auth\VerificacionCorreo
+    {
+        return new \App\Auth\VerificacionCorreo($this->pdo(), $this->usuarios(), $this->verificacionesCorreo(), $this->notificaciones(), $this->mailer(), \App\Config\Environment::get('APP_ORIGIN'));
+    }
+
     public function recuperacion(): RecuperacionClave
     {
         return new RecuperacionClave($this->pdo(), $this->usuarios(), $this->restablecimientos(), $this->mailer(), \App\Config\Environment::get('APP_ORIGIN'));

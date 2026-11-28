@@ -109,6 +109,11 @@ final class ResumenMensual
      */
     public function enviar(Usuario $usuario, int $mes, int $anio, bool $forzar = false): bool
     {
+        // A1: Lucas no escribe a direcciones que no demostraron ser del usuario (ni siquiera con el resumen de prueba).
+        if (!$usuario->correoVerificado) {
+            return false;
+        }
+
         $clave = self::clave($usuario->id, $mes, $anio);
 
         if (!$forzar && !$this->notificaciones->reservar($usuario->id, null, $clave)) {

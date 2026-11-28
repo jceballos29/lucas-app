@@ -278,3 +278,17 @@ CREATE TABLE notificaciones_enviadas (
   FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
   FOREIGN KEY (id_espacio) REFERENCES espacios(id_espacio) ON DELETE CASCADE
 );
+
+-- Verificación del correo (A1): solo se guarda el HASH del token; vale 48 horas y se usa una sola vez.
+CREATE TABLE verificaciones_correo (
+  id_verificacion INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario      INT NOT NULL,
+  correo          VARCHAR(120) NOT NULL,
+  token_hash      CHAR(64) NOT NULL UNIQUE,
+  creado_en       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expira_en       DATETIME NOT NULL,
+  usado_en        DATETIME NULL DEFAULT NULL,
+  INDEX idx_verif_usuario (id_usuario),
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+);
+

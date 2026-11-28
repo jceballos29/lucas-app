@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Auth\VerificacionCorreo;
 use App\Container;
 use App\Http\Failure;
 use App\Http\Flash;
@@ -56,15 +57,25 @@ final class PerfilController
                         break;
 
                     case 'notificaciones':
-                        $this->container->usuarios()->updateNotificaciones(
-                            $usuario->id,
-                            ($_POST['notif_presupuestos'] ?? '') === '1',
-                            ($_POST['notif_resumen_mensual'] ?? '') === '1',
-                        );
+                        $quierePresupuestos = ($_POST['notif_presupuestos'] ?? '') === '1';
+                        $quiereResumen = ($_POST['notif_resumen_mensual'] ?? '') === '1';
+
+                        // A1: no se activan avisos por correo hacia una dirección que aún no demostró ser del usuario (desactivarlos sí se puede).
+                        if (!$usuario->correoVerificado && (($quierePresupuestos && !$usuario->notifPresupuestos) || ($quiereResumen && !$usuario->notifResumenMensual))) {
+                            Flash::set('error', 'Verifica tu correo antes de activar los avisos: abre el enlace que te enviamos o pide otro más abajo.');
+                            Response::redirect('/perfil.php#correo');
+                        }
+
+                        $this->container->usuarios()->updateNotificaciones($usuario->id, $quierePresupuestos, $quiereResumen);
                         Flash::set('ok', 'Se guardaron tus preferencias de notificaciones por correo.');
                         Response::redirect('/perfil.php');
 
                     case 'resumen_prueba':
+                        if (!$usuario->correoVerificado) {
+                            Flash::set('error', 'Verifica tu correo antes de pedir el resumen de prueba.');
+                            Response::redirect('/perfil.php#correo');
+                        }
+
                         // Límite anti-abuso del correo: un resumen de prueba por usuario y hora.
                         $claveTope = sprintf('resumen-prueba:u%d:%s', $usuario->id, gmdate('YmdH'));
 

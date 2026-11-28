@@ -99,6 +99,8 @@ final class RecuperacionClave
             }
 
             $this->usuarios->updatePasswordHash($usuario->id, password_hash($nuevaClave, PASSWORD_DEFAULT));
+            // Abrir el enlace que llegó al buzón demuestra que el correo es suyo (A1): queda verificado.
+            $this->usuarios->marcarCorreoVerificado($usuario->id);
             $this->tokens->markUsed($fila['id']);
             $this->tokens->deleteOthers($usuario->id, $fila['id']);
 

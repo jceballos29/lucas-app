@@ -112,6 +112,18 @@ No tiene relaciones: es una tabla de apoyo, sin FK, que se purga sola.
 | creado_en · expira_en | TIMESTAMP | | Vigencia de 30 minutos |
 | usado_en | TIMESTAMP NULL | | Se llena al usarlo: un enlace sirve una sola vez |
 
+**verificaciones_correo** (verificar el correo del registro, A1)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_verificacion | INT AUTO_INCREMENT | PK | Identificador |
+| id_usuario | INT | FK → usuarios (CASCADE), INDEX | A quién pertenece el enlace |
+| correo | VARCHAR(120) | | El correo que se verifica: si la cuenta cambia de correo, el enlace deja de valer |
+| token_hash | CHAR(64) | UNIQUE | SHA-256 del token: el token en sí **nunca** se guarda |
+| creado_en · expira_en | TIMESTAMP · DATETIME | | Vigencia de 48 horas |
+| usado_en | DATETIME NULL | | Se llena al usarlo: un enlace sirve una sola vez |
+
+`usuarios.correo_verificado_en` (DATETIME NULL) guarda **cuándo** se verificó el correo; `NULL` = sin verificar. Sin verificar, la cuenta funciona, pero no recibe correo de Lucas y no puede enviar ni aceptar invitaciones a espacios (RNF-25). Restablecer la contraseña con el enlace del correo también lo verifica.
+
 **cuentas**
 | Campo | Tipo | Clave | Descripción |
 |---|---|---|---|

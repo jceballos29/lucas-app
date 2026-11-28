@@ -74,7 +74,7 @@ server {
     }
 
     # Páginas que verifican contraseñas o tokens: tasa limitada (ráfaga de 10) y 429 al pasarse.
-    location ~ ^/(login|registro|recuperar|restablecer|perfil)\.php$ {
+    location ~ ^/(login|registro|recuperar|restablecer|perfil|espacios|verificar)\.php$ {
         try_files $uri =404;
         limit_req zone=acceso burst=10 nodelay;
         limit_req_status 429;

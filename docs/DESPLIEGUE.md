@@ -99,6 +99,14 @@ docker compose -f docker-compose.prod.yml exec db bash /docker-entrypoint-initdb
 
 Haz una copia (`bin/backup-db`) **antes** de actualizar.
 
+**Al actualizar desde una versión sin verificación de correo (migración 013):** las cuentas existentes quedan con el correo **sin verificar**
+(los administradores sí se marcan verificados). Verán un aviso en cada página y podrán pedir el enlace desde *Mi perfil*; hasta entonces no
+reciben alertas por correo ni pueden enviar/aceptar invitaciones a espacios. Es lo más seguro, porque Lucas no puede saber cuáles de las
+cuentas actuales registraron el correo de otra persona. Si confías en todas ellas, márcalas como verificadas:
+`docker compose -f docker-compose.prod.yml exec db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" lucas -e "UPDATE usuarios SET correo_verificado_en = creado_en WHERE correo_verificado_en IS NULL"'`.
+La migración añade la tabla `verificaciones_correo`: ejecuta `03-users.sh` para dar permisos a la aplicación (arriba). Los correos de
+verificación salen por el SMTP de producción: pruébalo registrando una cuenta.
+
 ## 6. Copias de seguridad (RNF-15)
 
 `bin/backup-db` genera un volcado comprimido y consistente (no bloquea la aplicación), comprueba que se pueda leer, le pone permisos `600`

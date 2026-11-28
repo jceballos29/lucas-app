@@ -43,10 +43,11 @@ final class UsuarioRepository implements CredentialSource
      * @return int|null El id nuevo, o null si el correo ya existe (la clave UNIQUE decide, también ante dos
      *                  registros simultáneos con el mismo correo).
      */
-    public function create(string $nombre, string $correo, string $hash, string $rol = Usuario::ROL_USUARIO): ?int
+    public function create(string $nombre, string $correo, string $hash, string $rol = Usuario::ROL_USUARIO, bool $verificado = false): ?int
     {
         try {
-            $stmt = $this->pdo->prepare('INSERT INTO usuarios (nombre, correo, contrasena_hash, rol) VALUES (:nombre, :correo, :hash, :rol)');
+            // El registro público crea cuentas SIN verificar (A1); los administradores que crea la consola van verificados.
+            $stmt = $this->pdo->prepare('INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, correo_verificado_en) VALUES (:nombre, :correo, :hash, :rol, ' . ($verificado ? 'NOW()' : 'NULL') . ')');
             $stmt->execute(['nombre' => $nombre, 'correo' => $correo, 'hash' => $hash, 'rol' => $rol]);
         } catch (PDOException $e) {
             if ($e->getCode() === '23000') {
@@ -57,6 +58,12 @@ final class UsuarioRepository implements CredentialSource
         }
 
         return (int) $this->pdo->lastInsertId();
+    }
+
+    /** Marca el correo como verificado (si ya lo estaba, conserva la fecha original). */
+    public function marcarCorreoVerificado(int $id): void
+    {
+        $this->pdo->prepare('UPDATE usuarios SET correo_verificado_en = COALESCE(correo_verificado_en, NOW()) WHERE id_usuario = :id')->execute(['id' => $id]);
     }
 
     public function updatePasswordHash(int $id, string $hash): void
@@ -78,13 +85,13 @@ final class UsuarioRepository implements CredentialSource
     }
 
     /**
-     * Usuarios activos con el resumen mensual activado (para el script de consola).
+     * Usuarios activos, con el correo verificado, que activaron el resumen mensual (para el script de consola).
      *
      * @return list<Usuario>
      */
     public function listWithResumenMensual(): array
     {
-        $stmt = $this->pdo->query('SELECT ' . self::COLUMNS . ' FROM usuarios WHERE activo = 1 AND notif_resumen_mensual = 1 ORDER BY id_usuario');
+        $stmt = $this->pdo->query('SELECT ' . self::COLUMNS . ' FROM usuarios WHERE activo = 1 AND notif_resumen_mensual = 1 AND correo_verificado_en IS NOT NULL ORDER BY id_usuario');
 
         return array_map([Usuario::class, 'fromRow'], $stmt->fetchAll());
     }

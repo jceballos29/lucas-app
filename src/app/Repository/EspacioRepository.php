@@ -208,6 +208,47 @@ final class EspacioRepository
 
     // ---- Invitaciones ----------------------------------------------------------------------------------------------
 
+    /** Invitaciones vigentes (sin aceptar ni caducar) del espacio. */
+    public function contarInvitacionesPendientes(int $espacioId): int
+    {
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM espacio_invitaciones WHERE id_espacio = :e AND expira_en > CURRENT_TIMESTAMP');
+        $stmt->execute(['e' => $espacioId]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    /** ¿Hay ya una invitación vigente de este espacio para ese correo? (al reinvitar se reemplaza, no suma una pendiente más). */
+    public function tieneInvitacionPendiente(int $espacioId, string $correo): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM espacio_invitaciones WHERE id_espacio = :e AND correo = :c AND expira_en > CURRENT_TIMESTAMP');
+        $stmt->execute(['e' => $espacioId, 'c' => $correo]);
+
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Bloquea la fila del usuario (`FOR UPDATE`): dos invitaciones simultáneas del mismo usuario se atienden de una en una. Solo dentro
+     * de una transacción.
+     *
+     * @return bool ¿Tiene el correo verificado? (A1)
+     */
+    public function bloquearUsuario(int $userId): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT correo_verificado_en IS NOT NULL FROM usuarios WHERE id_usuario = :u FOR UPDATE');
+        $stmt->execute(['u' => $userId]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /** ¿Tiene el usuario el correo verificado? (A1) */
+    public function correoVerificado(int $userId): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT correo_verificado_en IS NOT NULL FROM usuarios WHERE id_usuario = :u');
+        $stmt->execute(['u' => $userId]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
     public function createInvitation(int $espacioId, string $correo, string $rol, string $tokenHash, int $ttlSeconds = 172800): int
     {
         $this->pdo->prepare('DELETE FROM espacio_invitaciones WHERE id_espacio = :e AND correo = :c')

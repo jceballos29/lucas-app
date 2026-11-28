@@ -16,6 +16,16 @@ final class ReglasEspacio
     public const ULTIMO_PROPIETARIO = 'ultimo_propietario';
     public const YA_ES_MIEMBRO = 'ya_es_miembro';
     public const ROL_INVALIDO = 'rol_invalido';
+    public const CORREO_NO_VERIFICADO = 'correo_no_verificado';
+    public const LIMITE_USUARIO = 'limite_usuario';
+    public const LIMITE_DESTINO = 'limite_destino';
+    public const LIMITE_PENDIENTES = 'limite_pendientes';
+
+    /** Límites anti-abuso de las invitaciones por correo (A2 de docs/AUDITORIA.md): ventana móvil de 24 horas. */
+    public const INVITACIONES_POR_USUARIO = 10;
+    public const INVITACIONES_POR_DESTINO = 3;
+    public const INVITACIONES_PENDIENTES_POR_ESPACIO = 20;
+    public const VENTANA_INVITACIONES = 86400;
 
     /**
      * ¿Puede un miembro con `$rolActor` escribir datos financieros (cuentas, movimientos, presupuestos, metas...) en el espacio?

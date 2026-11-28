@@ -49,6 +49,8 @@ final class EspacioController
                 if ($acepta['codigo'] === ReglasEspacio::OK && $acepta['id_espacio'] !== null) {
                     set_active_espacio($acepta['id_espacio']);
                     Flash::set('ok', "Te uniste al espacio compartido «{$acepta['nombre']}» y ya está activo.");
+                } elseif ($acepta['codigo'] === ReglasEspacio::CORREO_NO_VERIFICADO) {
+                    Flash::set('error', 'Primero verifica tu correo (en Mi perfil) y vuelve a abrir el enlace de la invitación: solo se puede aceptar con un correo verificado.');
                 } else {
                     Flash::set('error', 'El enlace de invitación no es válido, ya caducó o fue enviado a otro correo electrónico.');
                 }
@@ -129,6 +131,25 @@ final class EspacioController
                                     $errorsInvitar['correo'] = 'Esa persona ya es miembro de este espacio compartido.';
                                     break;
 
+                                case ReglasEspacio::CORREO_NO_VERIFICADO:
+                                    $errorsInvitar['correo'] = 'Verifica tu correo (en Mi perfil) antes de invitar a otras personas.';
+                                    break;
+
+                                case ReglasEspacio::LIMITE_USUARIO:
+                                    http_response_code(429);
+                                    $errorsInvitar['correo'] = 'Alcanzaste el límite de invitaciones de hoy (' . ReglasEspacio::INVITACIONES_POR_USUARIO . ' cada 24 horas). Inténtalo más tarde.';
+                                    break;
+
+                                case ReglasEspacio::LIMITE_DESTINO:
+                                    http_response_code(429);
+                                    $errorsInvitar['correo'] = 'Esa dirección ya recibió varias invitaciones hoy. Espera 24 horas antes de volver a invitarla.';
+                                    break;
+
+                                case ReglasEspacio::LIMITE_PENDIENTES:
+                                    http_response_code(429);
+                                    $errorsInvitar['correo'] = 'Este espacio ya tiene ' . ReglasEspacio::INVITACIONES_PENDIENTES_POR_ESPACIO . ' invitaciones pendientes. Cancela alguna o espera a que caduquen.';
+                                    break;
+
                                 case ReglasEspacio::SIN_PERMISO:
                                     Response::plain(403, "Solo un propietario puede invitar personas al espacio.\n");
 
@@ -160,6 +181,10 @@ final class EspacioController
                             Response::plain(400, "Solicitud no válida.\n");
                         }
                         $acepta = $gestion->aceptarInvitacion($user['id'], $user['email'], $invitacionId, null);
+                        if ($acepta['codigo'] === ReglasEspacio::CORREO_NO_VERIFICADO) {
+                            Flash::set('error', 'Primero verifica tu correo (en Mi perfil): solo se puede aceptar una invitación con un correo verificado.');
+                            Response::redirect('/espacios.php');
+                        }
                         if ($acepta['codigo'] !== ReglasEspacio::OK || $acepta['id_espacio'] === null) {
                             Response::plain(404, "No encontrado.\n");
                         }
@@ -242,7 +267,9 @@ final class EspacioController
             // Recargar sesión tras posibles cambios
             $user = current_user() ?? $user;
             $espacios = $repo->listByUser($user['id']);
-            $invitacionesRecibidas = $repo->listInvitationsForEmail($user['email']);
+            // A1: sin correo verificado no se listan las invitaciones dirigidas a esa dirección (revelarían nombres de espacios ajenos a quien solo
+            // la registró).
+            $invitacionesRecibidas = ($user['verified'] ?? false) ? $repo->listInvitationsForEmail($user['email']) : [];
 
             $detallesEspacios = [];
             foreach ($espacios as $e) {

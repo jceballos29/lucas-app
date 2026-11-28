@@ -67,6 +67,12 @@ final class View
 
         self::render('layout/head', ['pageTitle' => $title]);
         self::render("layout/$layout-open", ['currentUser' => $user, 'nav' => $nav]);
+
+        // A1: mientras el correo no esté verificado se recuerda en todas las páginas del usuario (no en las del administrador).
+        if ($layout === 'app' && ($user['verified'] ?? true) === false) {
+            self::render('partials/aviso-verificacion', ['esPerfil' => $nav === 'perfil']);
+        }
+
         self::render($name, $data + ['currentUser' => $user]);
         self::render("layout/$layout-close");
     }

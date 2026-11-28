@@ -92,7 +92,14 @@ mail_clear() { curl -s -X DELETE "$MAILPIT/api/v1/messages" >/dev/null; }
 mail_ids() { curl -s -G "$MAILPIT/api/v1/search" --data-urlencode "query=to:$1" | grep -o '"ID":"[^"]*"' | cut -d'"' -f4; }
 mail_count() { mail_ids "$1" | wc -l | tr -d ' '; }
 wait_mail() { local i; for i in $(seq 1 40); do [ "$(mail_count "$1")" -ge "${2:-1}" ] && return 0; sleep 0.25; done; return 1; }
-mail_token() { local id; id="$(mail_ids "$1" | head -n1)"; [ -n "$id" ] && curl -s "$MAILPIT/api/v1/message/$id" | grep -o 'restablecer\.php?token=[a-f0-9]\{64\}' | head -n1 | cut -d= -f2; }
+mail_find() { # correo patrón -> el token (64 hex) del PRIMER mensaje de ese correo que contenga el patrón (el registro también envía el de verificación)
+    local id t; for id in $(mail_ids "$1"); do
+        t="$(curl -s "$MAILPIT/api/v1/message/$id" | grep -o "$2"'[a-f0-9]\{64\}' | head -n1 | cut -d= -f2)"
+        [ -n "$t" ] && { echo "$t"; return; }
+    done
+}
+mail_token() { mail_find "$1" 'restablecer\.php?token='; }
+mail_verif_token() { mail_find "$1" 'verificar\.php?token='; }
 curl -s -o /dev/null "$BASE/login.php" || { echo "No responde $BASE: ¿está en marcha docker compose up?"; exit 2; }
 sql "DELETE FROM intentos_acceso" >/dev/null
 
@@ -1057,7 +1064,7 @@ check "con el mismo código de respuesta" "200" "$CODE"
 post_form "$J8" /recuperar.php /recuperar.php "correo=esto-no-es-un-correo"
 check "un texto que ni es un correo también" "200" "$CODE"; contains "con el mismo aviso" "Si ese correo está registrado" "$TMP/body"
 wait_mail "$UC1" 1 || true
-check "al correo registrado le llegó UN mensaje" "1" "$(mail_count "$UC1")"
+check "al correo registrado le llegaron DOS mensajes: la verificación del registro y la recuperación" "2" "$(mail_count "$UC1")"
 check "y al que no existe no se envió nada" "0" "$(mail_count "nadie_${RUN}@correo.com")"
 TOK1="$(mail_token "$UC1")"
 check "el mensaje trae un enlace con un token de 64 hexadecimales" "64" "${#TOK1}"
@@ -1350,6 +1357,14 @@ post_form "$JTR" /espacios.php /espacios.php "accion=invitar" "id_espacio=$ESPID
 check "invitar al segundo miembro redirige a espacios" "302 /espacios.php" "$CODE $LOC"
 INVID="$(sql "SELECT id_invitacion FROM espacio_invitaciones WHERE id_espacio=$ESPID AND correo='$UF2'")"
 
+request "$JF2" GET /espacios.php
+absent "sin verificar su correo, el segundo usuario NO ve las invitaciones dirigidas a esa dirección" "Hogar Familia Smoke" "$TMP/body"
+post_form "$JF2" /espacios.php /espacios.php "accion=aceptar_invitacion" "id_invitacion=$INVID"
+check "y tampoco puede aceptarla (la cuenta pudo registrarla otra persona)" "302 /espacios.php" "$CODE $LOC"
+request "$JF2" GET /espacios.php; contains "con un aviso que pide verificar el correo" "verifica tu correo" "$TMP/body"
+check "no entró al espacio" "0" "$(sql "SELECT COUNT(*) FROM espacio_miembros WHERE id_espacio=$ESPID AND id_usuario=$UF2ID")"
+check "ni se gastó la invitación" "1" "$(sql "SELECT COUNT(*) FROM espacio_invitaciones WHERE id_invitacion=$INVID")"
+sql "UPDATE usuarios SET correo_verificado_en = NOW() WHERE id_usuario=$UF2ID" >/dev/null
 request "$JF2" GET /espacios.php
 contains "el segundo usuario ve la invitación pendiente" "Hogar Familia Smoke" "$TMP/body"
 post_form "$JF2" /espacios.php /espacios.php "accion=aceptar_invitacion" "id_invitacion=$INVID"

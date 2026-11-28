@@ -94,6 +94,24 @@ final class GestionEspacios
                 return ['codigo' => ReglasEspacio::YA_ES_MIEMBRO, 'espacioNombre' => $espacio->nombre];
             }
 
+            // Límites anti-abuso (A2). Se bloquea la fila del usuario para que peticiones simultáneas no se salten el tope.
+            // A1: quien no demostró que su correo es suyo no puede enviar invitaciones (sería una forma de usar a Lucas como emisor de correo).
+            if (!$this->espacios->bloquearUsuario($actorId)) {
+                return ['codigo' => ReglasEspacio::CORREO_NO_VERIFICADO, 'espacioNombre' => $espacio->nombre];
+            }
+
+            $prefijoDestino = 'invitacion-destino:' . substr(hash('sha256', $correo), 0, 32) . ':';
+            $limite = ReglasEspacio::evaluarLimitesInvitacion(
+                $this->notificaciones->contarPorPrefijo('invitacion:u' . $actorId . ':', ReglasEspacio::VENTANA_INVITACIONES, $actorId),
+                $this->notificaciones->contarPorPrefijo($prefijoDestino, ReglasEspacio::VENTANA_INVITACIONES),
+                $this->espacios->contarInvitacionesPendientes($espacioId),
+                $this->espacios->tieneInvitacionPendiente($espacioId, $correo),
+            );
+
+            if ($limite !== ReglasEspacio::OK) {
+                return ['codigo' => $limite, 'espacioNombre' => $espacio->nombre];
+            }
+
             $this->espacios->createInvitation($espacioId, $correo, $rol, $tokenHash, self::INVITACION_TTL);
 
             // Se anota SIN espacio (id_espacio NULL): así borrar el espacio no reinicia los contadores.
@@ -113,7 +131,8 @@ final class GestionEspacios
             . "{$actorNombre} te invitó a unirte al espacio compartido «{$resultado['espacioNombre']}» en Lucas como {$rolEtiqueta}.\r\n\r\n"
             . "Para aceptar la invitación, entra en:\r\n{$enlace}\r\n\r\n"
             . "También puedes iniciar sesión con tu cuenta ({$correo}) y aceptarla directamente en la sección «Espacios».\r\n"
-            . "Este enlace caduca en 48 horas.\r\n";
+            . "Este enlace caduca en 48 horas.\r\n\r\n"
+            . "Este mensaje lo envió Lucas porque un usuario escribió tu correo; Lucas no verifica quién es esa persona. Si no la conoces o no esperabas esta invitación, ignóralo: no pasará nada y el enlace caducará solo.\r\n";
 
         try {
             $this->mailer->send($correo, "Invitación a «{$resultado['espacioNombre']}» en Lucas", $cuerpo);
@@ -132,6 +151,12 @@ final class GestionEspacios
     public function aceptarInvitacion(int $userId, string $correoUsuario, ?int $invitacionId = null, ?string $token = null): array
     {
         return Transaction::run($this->pdo, function () use ($userId, $correoUsuario, $invitacionId, $token): array {
+            // A1: una invitación va dirigida a un CORREO; solo quien demostró que lo controla puede aceptarla. Se comprueba antes de tocar
+            // la invitación, para que no se gaste ni se revele nada.
+            if (!$this->espacios->correoVerificado($userId)) {
+                return ['codigo' => ReglasEspacio::CORREO_NO_VERIFICADO, 'id_espacio' => null, 'nombre' => null];
+            }
+
             $inv = null;
             if ($token !== null && RecuperacionClave::formaValida($token)) {
                 $inv = $this->espacios->lockInvitationByToken(RecuperacionClave::hashToken($token), $correoUsuario);

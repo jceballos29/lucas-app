@@ -20,6 +20,8 @@ final class Usuario
         public readonly bool $activo,
         public readonly bool $notifPresupuestos = false,
         public readonly bool $notifResumenMensual = false,
+        /** ¿Demostró que controla su correo (A1)? Sin esto no recibe correo de Lucas ni puede enviar/aceptar invitaciones. */
+        public readonly bool $correoVerificado = false,
     ) {
     }
 
@@ -36,6 +38,7 @@ final class Usuario
             (bool) $row['activo'],
             (bool) ($row['notif_presupuestos'] ?? false),
             (bool) ($row['notif_resumen_mensual'] ?? false),
+            ($row['correo_verificado_en'] ?? null) !== null,
         );
     }
 

@@ -51,7 +51,7 @@ if ($result['errors'] !== []) {
 }
 
 ['nombre' => $nombre, 'correo' => $correo] = $result['data'];
-$id = Container::shared()->usuarios()->create($nombre, $correo, password_hash($clave, PASSWORD_DEFAULT), Usuario::ROL_ADMIN);
+$id = Container::shared()->usuarios()->create($nombre, $correo, password_hash($clave, PASSWORD_DEFAULT), Usuario::ROL_ADMIN, true);
 
 if ($id === null) {
     fwrite(STDERR, "Ya existe un usuario con el correo $correo.\n");

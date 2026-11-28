@@ -425,7 +425,7 @@ final class Ui
                 . (isset($o['action']) ? Html::of($o['action']) : '') . '</div>';
         }
 
-        return new Html('<' . $tag . ' class="card' . (isset($o['class']) ? ' ' . escape($o['class']) : '') . '">' . $head);
+        return new Html('<' . $tag . (isset($o['id']) ? ' id="' . escape($o['id']) . '"' : '') . ' class="card' . (isset($o['class']) ? ' ' . escape($o['class']) : '') . '">' . $head);
     }
 
     /** Cierra la tarjeta abierta con cardOpen() (mismo `tag`). */

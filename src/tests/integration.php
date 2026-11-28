@@ -1084,7 +1084,9 @@ section('GestionEspacios: espacios compartidos y cuenta familiar (Fase 10)');
 $ge = $container->gestionEspacios();
 $espRepo = $container->espacios();
 $f1 = (int) $usuarios->create('Ana Familia', 'ana.fam@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($f1);
 $f2 = (int) $usuarios->create('Luis Familia', 'luis.fam@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($f2);
 $f3 = (int) $usuarios->create('Intruso', 'intruso.fam@correo.com', 'x');
 
 $espId = $ge->crear($f1, 'Hogar Ana y Luis', 'COP');
@@ -1128,6 +1130,64 @@ same('si Ana elimina su cuenta de usuario, Luis es promovido a propietario y el 
     $espRepo->findForMember($f2, $espId)?->rolUsuario,
     (string) $cuentas->findOwned($f2, $cFamiliar, $espId)?->saldo,
 ]);
+
+section('Invitaciones: límites anti-abuso (A2)');
+$lo = (int) $usuarios->create('Lola Limites', 'lola.lim@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($lo);
+$eL = $ge->crear($lo, 'Espacio límites', 'COP');
+$res = [];
+for ($i = 1; $i <= 10; $i++) {
+    $res[] = $ge->invitar($lo, 'Lola Limites', $eL, "inv$i@ejemplo.org", 'lector')['codigo'];
+}
+same('las primeras 10 invitaciones del día salen', array_fill(0, 10, 'ok'), $res);
+same('la 11.ª la rechaza el límite por usuario (y no crea invitación ni envía correo)', ['limite_usuario', 10], [
+    $ge->invitar($lo, 'Lola Limites', $eL, 'inv11@ejemplo.org', 'lector')['codigo'],
+    $espRepo->contarInvitacionesPendientes($eL),
+]);
+$ge->eliminarEspacio($lo, $eL);
+$eL2 = $ge->crear($lo, 'Otro espacio', 'COP');
+same('borrar el espacio y crear otro NO reinicia el contador del usuario', 'limite_usuario', $ge->invitar($lo, 'Lola Limites', $eL2, 'inv12@ejemplo.org', 'lector')['codigo']);
+
+$d1 = (int) $usuarios->create('Dani Destino', 'dani.dest@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($d1);
+$d2 = (int) $usuarios->create('Eli Destino', 'eli.dest@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($d2);
+$eD1 = $ge->crear($d1, 'Espacio de Dani', 'COP');
+$eD2 = $ge->crear($d2, 'Espacio de Eli', 'COP');
+$res = [];
+for ($i = 1; $i <= 3; $i++) {
+    $res[] = $ge->invitar($d1, 'Dani Destino', $eD1, 'victima.spam@ejemplo.org', 'lector')['codigo'];
+}
+same('una misma dirección puede recibir 3 invitaciones al día (reinvitar sustituye la anterior)', [['ok', 'ok', 'ok'], 1], [$res, $espRepo->contarInvitacionesPendientes($eD1)]);
+same('la 4.ª al mismo correo la rechaza el límite por destinatario', 'limite_destino', $ge->invitar($d1, 'Dani Destino', $eD1, 'victima.spam@ejemplo.org', 'lector')['codigo']);
+same('y también si la envía OTRO usuario (el límite es por dirección, no por invitador)', 'limite_destino', $ge->invitar($d2, 'Eli Destino', $eD2, 'victima.spam@ejemplo.org', 'lector')['codigo']);
+same('mayúsculas en el correo no esquivan el límite', 'limite_destino', $ge->invitar($d2, 'Eli Destino', $eD2, 'VICTIMA.Spam@Ejemplo.org', 'lector')['codigo']);
+same('otra dirección distinta sí puede invitarse', 'ok', $ge->invitar($d2, 'Eli Destino', $eD2, 'otra.persona@ejemplo.org', 'lector')['codigo']);
+
+$p1 = (int) $usuarios->create('Pepa Pendientes', 'pepa.pend@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($p1);
+$eP = $ge->crear($p1, 'Espacio de Pepa', 'COP');
+for ($i = 0; $i < 20; $i++) {
+    $espRepo->createInvitation($eP, "p$i@ejemplo.org", 'lector', hash('sha256', "token-pendiente-$i"), 172800);
+}
+same('con 20 invitaciones vigentes, una nueva dirección se rechaza', ['limite_pendientes', 20], [
+    $ge->invitar($p1, 'Pepa Pendientes', $eP, 'p-nueva@ejemplo.org', 'lector')['codigo'],
+    $espRepo->contarInvitacionesPendientes($eP),
+]);
+same('pero reinvitar a una dirección que ya tiene invitación vigente sí se permite (la sustituye)', ['ok', 20], [
+    $ge->invitar($p1, 'Pepa Pendientes', $eP, 'p0@ejemplo.org', 'lector')['codigo'],
+    $espRepo->contarInvitacionesPendientes($eP),
+]);
+$pdo->exec("UPDATE espacio_invitaciones SET expira_en = TIMESTAMPADD(SECOND, -60, CURRENT_TIMESTAMP) WHERE id_espacio = $eP AND correo LIKE 'p1_@ejemplo.org'");
+same('las invitaciones caducadas no cuentan como pendientes', ['ok', 10], [
+    $ge->invitar($p1, 'Pepa Pendientes', $eP, 'p-nueva2@ejemplo.org', 'lector')['codigo'],
+    $espRepo->contarInvitacionesPendientes($eP) - 1,
+]);
+$pdo->exec("UPDATE notificaciones_enviadas SET enviado_en = TIMESTAMPADD(HOUR, -25, CURRENT_TIMESTAMP) WHERE id_usuario = $lo");
+same('pasadas 24 horas el contador vuelve a permitir invitar', 'ok', $ge->invitar($lo, 'Lola Limites', $eL2, 'inv13@ejemplo.org', 'lector')['codigo']);
+$espRepo->addMember($eP, $d1, 'lector');
+same('un lector del espacio sigue recibiendo «sin permiso» (el control de permisos va antes que los límites)', 'sin_permiso', $ge->invitar($d1, 'Dani Destino', $eP, 'x1@ejemplo.org', 'lector')['codigo']);
+same('y un no miembro recibe «no existe»', 'no_existe', $ge->invitar($d1, 'Dani Destino', $eL2, 'x2@ejemplo.org', 'lector')['codigo']);
 
 section('GestionDeudas: préstamos, desglose capital/interés y liquidación (Fase 11)');
 $gd = $container->gestionDeudas();
@@ -1523,6 +1583,42 @@ same('al eliminar el usuario (EliminarCuenta), se eliminan también sus comproba
     $borrar->eliminar($aUser),
     $absAdj2 !== null && is_file($absAdj2),
 ]);
+// Al eliminar un ESPACIO compartido (M3 de docs/AUDITORIA.md), los comprobantes de sus movimientos también salen del disco.
+$esProp = (int) $usuarios->create('Propietaria Espacio Adj', 'prop.espadj@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($esProp);
+$esEdit = (int) $usuarios->create('Editor Espacio Adj', 'edit.espadj@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($esEdit);
+$eaA = $ge->crear($esProp, 'Hogar con comprobantes', 'COP');
+$eaB = $ge->crear($esProp, 'Otro hogar con comprobantes', 'COP');
+$espRepo->addMember($eaA, $esEdit, 'editor');
+$eaCuentaA = $cuentas->create($esProp, 'Caja hogar A', 'bancaria', '500000.00', $eaA);
+$eaCuentaB = $cuentas->create($esProp, 'Caja hogar B', 'bancaria', '500000.00', $eaB);
+$eaMov = static function (int $user, int $cuenta, int $espacio, string $desc) use ($gestion2, $movs, $catA, $pdfBytes): array {
+    $m = $gestion2->guardar($user, null, ['tipo' => 'gasto', 'monto' => '1000.00', 'fecha' => '2026-11-26', 'id_cuenta' => $cuenta, 'id_categoria' => $catA, 'descripcion' => $desc], $espacio);
+    $adj = App\Support\AlmacenAdjuntos::guardarDesdeContenido($pdfBytes, 'application/pdf', $desc . '.pdf');
+    $movs->actualizarAdjunto($user, (int) $m['id'], $adj['ruta'], $adj['nombre'], $adj['mime'], $espacio);
+    return [$adj['ruta'], App\Support\AlmacenAdjuntos::rutaAbsoluta($adj['ruta'])];
+};
+[, $eaAbs1] = $eaMov($esProp, $eaCuentaA, $eaA, 'comprobante propietaria');
+[, $eaAbs2] = $eaMov($esEdit, $eaCuentaA, $eaA, 'comprobante editor');
+[, $eaAbsB] = $eaMov($esProp, $eaCuentaB, $eaB, 'comprobante otro espacio');
+same('los 3 comprobantes existen en disco antes de borrar', [true, true, true], [is_file((string) $eaAbs1), is_file((string) $eaAbs2), is_file((string) $eaAbsB)]);
+same('un editor no puede eliminar el espacio y sus comprobantes siguen en disco', ['sin_permiso', true, true], [$ge->eliminarEspacio($esEdit, $eaA), is_file((string) $eaAbs1), is_file((string) $eaAbs2)]);
+same('al eliminar el espacio se borran de disco los comprobantes de TODOS sus miembros', ['ok', false, false], [$ge->eliminarEspacio($esProp, $eaA), is_file((string) $eaAbs1), is_file((string) $eaAbs2)]);
+same('y los de otro espacio no se tocan', true, is_file((string) $eaAbsB));
+same('un espacio que no existe responde no_existe y no borra nada', ['no_existe', true], [$ge->eliminarEspacio($esProp, $eaA), is_file((string) $eaAbsB)]);
+same('sin huérfanos tras borrar el espacio (los archivos del otro espacio tienen fila)', [], array_values(array_filter(
+    App\Support\HuerfanosAdjuntos::huerfanos($movs->todasLasRutasAdjuntos(), 0),
+    static fn (string $r): bool => str_ends_with((string) $eaAbs1, $r) || str_ends_with((string) $eaAbs2, $r)
+)));
+same('el detector sí marca como huérfano un archivo sin fila', true, (static function () use ($pdfBytes, $movs): bool {
+    $solo = App\Support\AlmacenAdjuntos::guardarDesdeContenido($pdfBytes, 'application/pdf', 'suelto.pdf');
+    $marcado = in_array($solo['ruta'], App\Support\HuerfanosAdjuntos::huerfanos($movs->todasLasRutasAdjuntos(), 0), true);
+    App\Support\AlmacenAdjuntos::eliminar($solo['ruta']);
+    return $marcado;
+})());
+$ge->eliminarEspacio($esProp, $eaB);
+same('al limpiar, el comprobante del segundo espacio también se borra', false, is_file((string) $eaAbsB));
 same('migración 011-adjuntos-comprobantes.sql es idempotente', true, (static function () use ($pdo): bool {
     foreach (SqlScript::statements((string) file_get_contents(dirname(__DIR__, 2) . '/database/migrations/011-adjuntos-comprobantes.sql')) as $s) {
         $pdo->exec($s);
@@ -1537,7 +1633,9 @@ $correos->enviados = [];
 $correos->fallar = false;
 $notif = $container->notificadorPresupuesto();
 $nUser = (int) $usuarios->create('Nora Notif', 'nora.notif@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($nUser);
 $nOff = (int) $usuarios->create('Nico Sin Alertas', 'nico.off@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($nOff);
 $usuarios->updateNotificaciones($nUser, true, true);
 same('las preferencias de notificación se guardan y se leen', [true, true, false, false], [
     $usuarios->findById($nUser)?->notifPresupuestos,
@@ -1570,6 +1668,7 @@ same('una categoría sin presupuesto no envía nada', 0, $notif->notificarGasto(
 
 // Si el SMTP falla, no se rompe nada y el envío se reintenta luego (la clave se libera).
 $nUser2 = (int) $usuarios->create('Nelly Reintento', 'nelly.re@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($nUser2);
 $usuarios->updateNotificaciones($nUser2, true, false);
 $nCuenta2 = $cuentas->create($nUser2, 'Banco Nelly', 'bancaria', '1000000.00');
 $presupuestos->create($nUser2, $catA, 11, 2026, '100000.00');
@@ -1586,7 +1685,9 @@ same('al volver el SMTP, el siguiente gasto sí envía la alerta pendiente', [1,
 // Espacio compartido: avisa a todos los miembros que lo activaron y nombra a quien registró el gasto.
 $correos->enviados = [];
 $f1 = (int) $usuarios->create('Ana Familia', 'ana.fam2@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($f1);
 $f2 = (int) $usuarios->create('Luis Familia', 'luis.fam2@correo.com', 'x');
+$usuarios->marcarCorreoVerificado($f2);
 $f3 = (int) $usuarios->create('Intruso', 'intruso.fam2@correo.com', 'x');
 $usuarios->updateNotificaciones($f1, true, false);
 $usuarios->updateNotificaciones($f2, true, false);
@@ -1648,6 +1749,107 @@ same('migración 012-notificaciones-correo.sql es idempotente', true, (static fu
     }
 
     return (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'usuarios' AND column_name = 'notif_presupuestos'")->fetchColumn() === 1;
+})());
+
+// ---- A1: verificación del correo ------------------------------------------------------------------------------------
+
+section('VerificacionCorreo: el correo debe demostrarse (A1)');
+$vc = $container->verificacionCorreo();
+$vTokenDe = static function (array $mail): string {
+    preg_match('/verificar\.php\?token=([a-f0-9]{64})/', $mail['body'], $m);
+    return $m[1] ?? '';
+};
+$vOk = (int) $usuarios->create('Valeria Verifica', 'valeria.ver@correo.com', 'x');
+$vYa = (int) $usuarios->create('Vera Confiable', 'vera.ver@correo.com', 'x', 'usuario', true);
+same('un usuario creado por el registro público nace SIN verificar', false, $usuarios->findById($vOk)?->correoVerificado);
+same('create(..., verificado: true) (administradores de consola) nace verificado', true, $usuarios->findById($vYa)?->correoVerificado);
+$correos->enviados = [];
+same('enviar a una cuenta ya verificada no hace nada', ['ya_verificado', 0], [$vc->enviar($usuarios->findById($vYa)), count($correos->enviados)]);
+same('enviar a una cuenta sin verificar manda un correo', ['ok', 1], [$vc->enviar($usuarios->findById($vOk)), count($correos->enviados)]);
+$vMail = $correos->enviados[0];
+$vTok1 = $vTokenDe($vMail);
+same('el correo va a su dirección, con enlace de 64 hex hacia el origen y avisa de las 48 horas', true,
+    $vMail['to'] === 'valeria.ver@correo.com' && strlen($vTok1) === 64 && str_contains($vMail['body'], '/verificar.php?token=') && str_contains($vMail['body'], '48 horas') && str_contains($vMail['body'], 'Hola Valeria'));
+same('en la BD solo está el HASH del token, no el token', [0, 1], [
+    (int) $pdo->query("SELECT COUNT(*) FROM verificaciones_correo WHERE token_hash = '$vTok1'")->fetchColumn(),
+    (int) $pdo->query('SELECT COUNT(*) FROM verificaciones_correo WHERE token_hash = ' . $pdo->quote(hash('sha256', $vTok1)))->fetchColumn(),
+]);
+same('el enlace vale y todavía NO verifica nada (solo confirmar lo hace)', [true, false], [$vc->esValido($vTok1), $usuarios->findById($vOk)?->correoVerificado]);
+same('un token mal formado no sirve (ni se consulta)', [false, false], [$vc->esValido('abc'), $vc->confirmar(str_repeat('z', 64))]);
+$vc->enviar($usuarios->findById($vOk));
+$vTok2 = $vTokenDe($correos->enviados[1]);
+same('pedir otro enlace anula el anterior', [false, true], [$vc->esValido($vTok1), $vc->esValido($vTok2)]);
+same('un enlace anulado no verifica', [false, false], [$vc->confirmar($vTok1), $usuarios->findById($vOk)?->correoVerificado]);
+same('el tercer envío de la hora aún sale y el cuarto topa con el límite (3 por hora)', ['ok', 'limite', 3], (static function () use ($vc, $usuarios, $vOk, $correos): array {
+    return [$vc->enviar($usuarios->findById($vOk)), $vc->enviar($usuarios->findById($vOk)), count($correos->enviados)];
+})());
+$vTok3 = $vTokenDe($correos->enviados[2]);
+$pdo->exec("UPDATE verificaciones_correo SET expira_en = TIMESTAMPADD(SECOND, -60, NOW()) WHERE id_usuario = $vOk");
+same('un enlace caducado no sirve', [false, false], [$vc->esValido($vTok3), $vc->confirmar($vTok3)]);
+$pdo->exec("UPDATE verificaciones_correo SET expira_en = TIMESTAMPADD(HOUR, 48, NOW()) WHERE id_usuario = $vOk");
+$pdo->exec("UPDATE usuarios SET correo = 'otro.correo.ver@correo.com' WHERE id_usuario = $vOk");
+same('si la cuenta cambió de correo desde el envío, el enlace ya no vale', [false, false], [$vc->confirmar($vTok3), $usuarios->findById($vOk)?->correoVerificado]);
+$pdo->exec("UPDATE usuarios SET correo = 'valeria.ver@correo.com' WHERE id_usuario = $vOk");
+$pdo->exec("UPDATE usuarios SET activo = 0 WHERE id_usuario = $vOk");
+same('una cuenta desactivada no puede verificarse', false, $vc->confirmar($vTok3));
+$pdo->exec("UPDATE usuarios SET activo = 1 WHERE id_usuario = $vOk");
+same('con el enlace vigente el correo queda verificado', [true, true], [$vc->confirmar($vTok3), $usuarios->findById($vOk)?->correoVerificado]);
+same('el enlace es de un solo uso', false, $vc->confirmar($vTok3));
+
+$vRec = (int) $usuarios->create('Rita Recupera', 'rita.rec@correo.com', password_hash('clave-vieja-1', PASSWORD_DEFAULT));
+same('Rita nace sin verificar', false, $usuarios->findById($vRec)?->correoVerificado);
+$correos->enviados = [];
+$recup->solicitar('rita.rec@correo.com');
+same('restablecer la contraseña con el enlace que llegó a su buzón verifica el correo', [true, true], [
+    $recup->restablecer($tokenDe($correos->enviados[0]), 'clave-nueva-123'),
+    $usuarios->findById($vRec)?->correoVerificado,
+]);
+
+section('Invitaciones a espacios exigen correo verificado (A1)');
+$aOwner = (int) $usuarios->create('Olivia Dueña', 'olivia.dueña@correo.com', 'x', 'usuario', true);
+$aSquat = (int) $usuarios->create('Intrusa Registrada', 'victima.real@correo.com', 'x');   // se registró con el correo de otra persona
+$aOtra = (int) $usuarios->create('Nadie Verificada', 'nadie.ver@correo.com', 'x');
+$eA1 = ($ge->crear($aOwner, 'Hogar de Olivia', 'COP'));
+$invS = $ge->invitar($aOwner, 'Olivia Dueña', $eA1, 'victima.real@correo.com', 'editor');
+same('una persona verificada puede invitar', 'ok', $invS['codigo']);
+same('la cuenta registrada con el correo de la víctima NO puede aceptar por token', ['correo_no_verificado', null], (static function () use ($ge, $aSquat, $invS): array {
+    $r = $ge->aceptarInvitacion($aSquat, 'victima.real@correo.com', null, $invS['token']);
+    return [$r['codigo'], $r['id_espacio']];
+})());
+$invId = $espRepo->listInvitationsForEmail('victima.real@correo.com')[0]['id_invitacion'] ?? 0;
+same('ni por id de invitación', 'correo_no_verificado', $ge->aceptarInvitacion($aSquat, 'victima.real@correo.com', $invId, null)['codigo']);
+same('y no entró al espacio ni gastó la invitación', [null, 1], [$espRepo->findForMember($aSquat, $eA1), count($espRepo->listInvitationsForEmail('victima.real@correo.com'))]);
+same('quien no verificó su correo tampoco puede INVITAR a otros', 'correo_no_verificado', $ge->invitar($aOtra, 'Nadie Verificada', $ge->crear($aOtra, 'Espacio sin verificar', 'COP'), 'alguien@ejemplo.org', 'lector')['codigo']);
+same('tras verificar el correo, la dueña real sí acepta la misma invitación', ['ok', 'editor'], (static function () use ($ge, $usuarios, $aSquat, $invS, $espRepo, $eA1): array {
+    $usuarios->marcarCorreoVerificado($aSquat);
+    $r = $ge->aceptarInvitacion($aSquat, 'victima.real@correo.com', null, $invS['token']);
+    return [$r['codigo'], $espRepo->findForMember($aSquat, $eA1)?->rolUsuario];
+})());
+same('un usuario verificado con un token inventado recibe no_existe', 'no_existe', $ge->aceptarInvitacion($vYa, 'vera.ver@correo.com', null, str_repeat('a', 64))['codigo']);
+
+section('Notificaciones por correo solo a correos verificados (A1)');
+$nuVer = (int) $usuarios->create('Ursula Sinverificar', 'ursula.sv@correo.com', 'x');
+$usuarios->updateNotificaciones($nuVer, true, true);
+$nuCuenta = $cuentas->create($nuVer, 'Banco Ursula', 'bancaria', '1000000.00');
+$presupuestos->create($nuVer, $catA, 11, 2026, '100000.00');
+$mov($nuVer, $nuCuenta, $catA, 'gasto', '95000.00', '2026-11-05');
+$correos->enviados = [];
+same('con las alertas activadas pero sin verificar, un gasto al 95 % NO envía correo', [0, 0], [$notif->notificarGasto($nuVer, $catA, '2026-11-05'), count($correos->enviados)]);
+same('tampoco el resumen mensual (ni el de prueba forzado)', [false, false, 0], [
+    $container->resumenMensual()->enviar($usuarios->findById($nuVer), 10, 2026),
+    $container->resumenMensual()->enviar($usuarios->findById($nuVer), 10, 2026, true),
+    count($correos->enviados),
+]);
+same('el script del resumen mensual no la incluye entre los elegibles', false, in_array($nuVer, array_map(static fn ($u) => $u->id, $usuarios->listWithResumenMensual()), true));
+$usuarios->marcarCorreoVerificado($nuVer);
+same('al verificar el correo, la alerta pendiente sí sale', [1, 1], [$notif->notificarGasto($nuVer, $catA, '2026-11-05'), count($correos->enviados)]);
+same('y ahora sí es elegible para el resumen mensual', true, in_array($nuVer, array_map(static fn ($u) => $u->id, $usuarios->listWithResumenMensual()), true));
+same('migración 013-verificacion-correo.sql es idempotente y verifica a los administradores', true, (static function () use ($pdo): bool {
+    foreach (SqlScript::statements((string) file_get_contents(dirname(__DIR__, 2) . '/database/migrations/013-verificacion-correo.sql')) as $st) {
+        $pdo->exec($st);
+    }
+    return (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'usuarios' AND column_name = 'correo_verificado_en'")->fetchColumn() === 1
+        && (int) $pdo->query("SELECT COUNT(*) FROM usuarios WHERE rol = 'admin' AND correo_verificado_en IS NULL")->fetchColumn() === 0;
 })());
 
 finish();

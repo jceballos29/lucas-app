@@ -129,7 +129,7 @@ final class NotificadorPresupuesto
             : "va en el {$progreso['percent']} % de";
 
         foreach ($destinatarios as $usuario) {
-            if (!$usuario->activo || !$usuario->notifPresupuestos) {
+            if (!$usuario->activo || !$usuario->notifPresupuestos || !$usuario->correoVerificado) {
                 continue;
             }
 

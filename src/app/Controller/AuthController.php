@@ -8,6 +8,7 @@ use App\Container;
 use App\Domain\Usuario;
 use App\Http\Failure;
 use App\Http\Response;
+use App\Logging\Logger;
 use App\Validation\RegistroValidator;
 use App\View\View;
 use RuntimeException;
@@ -107,8 +108,9 @@ final class AuthController
                     // D2: el registro sí avisa que el correo existe (no hay correo transaccional para ocultarlo).
                     $errors['correo'] = 'Este correo ya está registrado. ¿Quieres iniciar sesión?';
                 } else {
-                    self::startSession(new Usuario($id, $data['nombre'], $data['correo'], $hash, 'COP', Usuario::ROL_USUARIO, true));
-                    Response::redirect('/panel.php');
+                    $nuevo = new Usuario($id, $data['nombre'], $data['correo'], $hash, 'COP', Usuario::ROL_USUARIO, true);
+                    self::startSession($nuevo);
+                    $this->redirigirYEnviarVerificacion('/panel.php', $nuevo);
                 }
             }
         } catch (RuntimeException $error) {
@@ -116,6 +118,28 @@ final class AuthController
         }
 
         View::page('auth/registro', ['old' => $old, 'errors' => $errors], 'Crear cuenta', null, 'auth');
+    }
+
+    /**
+     * Redirige YA al usuario recién registrado y, después de enviar la respuesta, le manda el enlace para verificar su correo (A1): así el
+     * registro no espera al servidor de correo. Si el envío falla se registra; puede pedir otro enlace desde Mi perfil.
+     */
+    private function redirigirYEnviarVerificacion(string $url, Usuario $usuario): never
+    {
+        header('Location: ' . $url);
+        session_write_close();
+
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+
+        try {
+            $this->container->verificacionCorreo()->enviar($usuario);
+        } catch (\Throwable $error) {
+            Logger::exception('verificacion-correo', $error);
+        }
+
+        exit;
     }
 
     public function logout(): never

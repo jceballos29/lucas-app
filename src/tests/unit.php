@@ -166,6 +166,19 @@ same('02-seed.sql (que también corre en producción) NO crea ningún usuario ni
 same('el admin de desarrollo está fuera del primer nivel de database/ (initdb no lo ejecuta solo)', true, !is_file(dirname(__DIR__, 2) . '/database/admin.sql') && is_file(dirname(__DIR__, 2) . '/database/04-dev-admin.sh'));
 same('04-dev-admin.sh solo actúa con APP_ENV=local', true, str_contains((string) file_get_contents(dirname(__DIR__, 2) . '/database/04-dev-admin.sh'), '"${APP_ENV:-}" != "local"'));
 
+section('Verificación de correo (A1)');
+$filaU = ['id_usuario' => 7, 'nombre' => 'U', 'correo' => 'u@x.com', 'contrasena_hash' => 'h', 'moneda' => 'COP', 'rol' => 'usuario', 'activo' => 1];
+same('Usuario::fromRow: sin correo_verificado_en el correo NO está verificado', false, App\Domain\Usuario::fromRow($filaU)->correoVerificado);
+same('Usuario::fromRow: con fecha en correo_verificado_en sí lo está', true, App\Domain\Usuario::fromRow($filaU + ['correo_verificado_en' => '2026-11-27 10:00:00'])->correoVerificado);
+same('conContrasenaHash conserva el estado de verificación', true, App\Domain\Usuario::fromRow($filaU + ['correo_verificado_en' => '2026-11-27 10:00:00'])->conContrasenaHash('otro')->correoVerificado);
+same('un token de verificación válido son 64 hexadecimales', [true, false, false, false], [
+    App\Auth\VerificacionCorreo::formaValida(str_repeat('a1', 32)),
+    App\Auth\VerificacionCorreo::formaValida(str_repeat('A1', 32)),
+    App\Auth\VerificacionCorreo::formaValida('abc'),
+    App\Auth\VerificacionCorreo::formaValida(str_repeat('g', 64)),
+]);
+same('hasta 3 envíos por hora y enlaces de 48 h', [3, 3600, 48], [App\Auth\VerificacionCorreo::MAX_ENVIOS, App\Auth\VerificacionCorreo::VENTANA_ENVIOS, App\Auth\VerificacionCorreo::VIGENCIA_HORAS]);
+
 section('AdminSemilla (C1)');
 use App\Security\AdminSemilla as Semilla;
 $semilla = static fn (string $hash = Semilla::HASH_PUBLICO, bool $activo = true, string $rol = 'admin'): App\Domain\Usuario => new App\Domain\Usuario(1, 'Administrador', Semilla::CORREO, $hash, 'COP', $rol, $activo);
