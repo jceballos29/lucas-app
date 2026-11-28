@@ -222,7 +222,9 @@ final class GestionEspacios
 
     public function eliminarEspacio(int $actorId, int $espacioId): string
     {
-        return Transaction::run($this->pdo, function () use ($actorId, $espacioId): string {
+        $adjuntosABorrar = [];
+
+        $codigo = Transaction::run($this->pdo, function () use ($actorId, $espacioId, &$adjuntosABorrar): string {
             $espacio = $this->espacios->lockForMember($actorId, $espacioId);
 
             if ($espacio === null) {
@@ -233,9 +235,19 @@ final class GestionEspacios
                 return ReglasEspacio::SIN_PERMISO;
             }
 
-            $this->espacios->deleteWithAllData($espacioId);
+            $adjuntosABorrar = $this->espacios->deleteWithAllData($espacioId);
 
             return ReglasEspacio::OK;
         });
+
+        // Los comprobantes viven en disco: solo se borran cuando la transacción ya se confirmó (si hubiera fallado, no se pierde nada).
+        // Es lo mismo que hace EliminarCuenta con los de una cuenta personal (RNF-20, M3 de docs/AUDITORIA.md).
+        if ($codigo === ReglasEspacio::OK) {
+            foreach ($adjuntosABorrar as $ruta) {
+                AlmacenAdjuntos::eliminar($ruta);
+            }
+        }
+
+        return $codigo;
     }
 }

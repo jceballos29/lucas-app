@@ -177,6 +177,28 @@ same('si está desactivado, no está expuesto', false, Semilla::expuesto($semill
 same('si ya no es admin, no está expuesto', false, Semilla::expuesto($semilla(Semilla::HASH_PUBLICO, true, 'usuario'), 'production'));
 same('si no existe el usuario, no está expuesto', false, Semilla::expuesto(null, 'production'));
 
+section('HuerfanosAdjuntos (M3)');
+use App\Support\HuerfanosAdjuntos as Huerf;
+$hBase = sys_get_temp_dir() . '/lucas-huerfanos-' . bin2hex(random_bytes(4));
+mkdir($hBase . '/2026/11', 0775, true);
+$hViejo = '2026/11/' . str_repeat('a', 32) . '.png';
+$hUsado = '2026/11/' . str_repeat('b', 32) . '.pdf';
+$hNuevo = '2026/11/' . str_repeat('c', 32) . '.jpg';
+foreach ([$hViejo, $hUsado, $hNuevo, '2026/11/evil.php', '2026/11/' . str_repeat('d', 32) . '.php', '2026/11/' . str_repeat('E', 32) . '.png'] as $f) {
+    file_put_contents($hBase . '/' . $f, 'x');
+}
+touch($hBase . '/' . $hViejo, time() - 3 * 86400);
+touch($hBase . '/' . $hUsado, time() - 3 * 86400);
+file_put_contents($hBase . '/.gitkeep', '');
+same('enDisco solo lista los nombres canónicos (ni .php, ni mayúsculas, ni archivos sueltos)', [$hViejo, $hUsado, $hNuevo], Huerf::enDisco($hBase));
+same('huérfano = en disco, sin fila y de más de 24 h (el usado y el recién subido se respetan)', [$hViejo], Huerf::huerfanos([$hUsado], 86400, $hBase));
+same('con edad mínima 0 también cuenta el recién subido', [$hViejo, $hNuevo], Huerf::huerfanos([$hUsado], 0, $hBase));
+same('si todos tienen fila, no hay huérfanos', [], Huerf::huerfanos([$hViejo, $hUsado, $hNuevo], 0, $hBase));
+same('faltantes: filas que apuntan a un archivo inexistente', ['2026/11/' . str_repeat('f', 32) . '.png'], Huerf::faltantes([$hUsado, '2026/11/' . str_repeat('f', 32) . '.png'], $hBase));
+foreach (array_merge(glob($hBase . '/2026/11/*') ?: [], [$hBase . '/.gitkeep']) as $f) {
+    @unlink($f);
+}
+@rmdir($hBase . '/2026/11'); @rmdir($hBase . '/2026'); @rmdir($hBase);
 
 section('ReglasAdmin (RF-33)');
 use App\Admin\ReglasAdmin as R;

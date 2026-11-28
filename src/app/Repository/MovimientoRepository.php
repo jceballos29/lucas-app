@@ -210,6 +210,19 @@ final class MovimientoRepository
         return $stmt->rowCount() > 0;
     }
 
+    /**
+     * Todas las rutas de comprobantes guardadas (de cualquier usuario): solo para el script de mantenimiento que busca huérfanos.
+     *
+     * @return list<string>
+     */
+    public function todasLasRutasAdjuntos(): array
+    {
+        return array_values(array_filter(
+            $this->pdo->query('SELECT adjunto_ruta FROM transacciones WHERE adjunto_ruta IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN),
+            static fn (mixed $ruta): bool => is_string($ruta) && $ruta !== ''
+        ));
+    }
+
     public function actualizarAdjunto(
         int $userId,
         int $id,

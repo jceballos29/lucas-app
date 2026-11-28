@@ -114,6 +114,13 @@ y conserva las últimas 8. Programa una por semana:
   la carga en una base temporal `lucas_test_restore` y se niega a pisar datos existentes. `tests/backup.sh` automatiza esa comprobación
   (copia, restaura y compara el número de filas de cada tabla).
 - **Recuperación tras un desastre:** los pasos están en la cabecera de `bin/restore-db`.
+- **Los comprobantes NO van en el volcado.** Los archivos adjuntos (facturas, recibos) viven en `src/storage/adjuntos/` del servidor,
+  fuera de la base de datos y de `public/`. Cópialos junto con la base, por ejemplo:
+  `rsync -a /ruta/a/lucas-app/src/storage/adjuntos/ /var/backups/lucas/adjuntos/` (contienen datos financieros: protégelos igual que el volcado).
+  Una restauración de la base sin esos archivos deja movimientos con «comprobante» que ya no se puede abrir.
+- **Comprobantes huérfanos** (archivos sin ningún movimiento, p. ej. tras un borrado interrumpido). Al eliminar una cuenta, un movimiento o un
+  espacio compartido Lucas borra sus archivos; para detectar restos: `docker compose -f docker-compose.prod.yml exec -T php php scripts/huerfanos-adjuntos.php`
+  (solo informa; con `--borrar` los elimina; ignora lo más reciente de 24 h). También avisa de movimientos cuyo archivo falta.
 
 ## 7. Monitorización (RNF-14)
 

@@ -91,9 +91,19 @@ final class EspacioRepository
     /**
      * Elimina un espacio compartido y todos sus datos financieros asociados en el orden requerido por las claves foráneas.
      * Solo dentro de una transacción.
+     *
+     * @return list<string> Rutas relativas de los comprobantes adjuntos del espacio: los archivos viven en disco y hay que borrarlos
+     *                      DESPUÉS de confirmar la transacción (M3 de docs/AUDITORIA.md; igual que UsuarioRepository::deleteWithAllData).
      */
-    public function deleteWithAllData(int $espacioId): void
+    public function deleteWithAllData(int $espacioId): array
     {
+        $stmtAdj = $this->pdo->prepare('SELECT adjunto_ruta FROM transacciones WHERE id_espacio = :e AND adjunto_ruta IS NOT NULL');
+        $stmtAdj->execute(['e' => $espacioId]);
+        $adjuntosABorrar = array_values(array_filter(
+            $stmtAdj->fetchAll(PDO::FETCH_COLUMN),
+            static fn (mixed $ruta): bool => is_string($ruta) && $ruta !== ''
+        ));
+
         foreach ([
             'DELETE FROM pagos_deuda WHERE id_deuda IN (SELECT id_deuda FROM deudas WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
             'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
@@ -112,6 +122,8 @@ final class EspacioRepository
             $params = str_contains($sql, ':e2') ? ['e' => $espacioId, 'e2' => $espacioId] : ['e' => $espacioId];
             $this->pdo->prepare($sql)->execute($params);
         }
+
+        return $adjuntosABorrar;
     }
 
     public function addMember(int $espacioId, int $userId, string $rol): void
