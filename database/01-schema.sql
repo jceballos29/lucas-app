@@ -99,6 +99,7 @@ CREATE TABLE transacciones (
   FOREIGN KEY (id_cuenta)    REFERENCES cuentas(id_cuenta),
   FOREIGN KEY (id_categoria) REFERENCES categorias(id_categoria),
   INDEX idx_usuario_fecha (id_usuario, fecha),
+  INDEX idx_trans_espacio_fecha (id_espacio, fecha),
   INDEX idx_trans_etiqueta (id_usuario, etiqueta)
 );
 
@@ -200,7 +201,8 @@ CREATE TABLE transferencias (
   FOREIGN KEY (id_espacio)        REFERENCES espacios(id_espacio) ON DELETE CASCADE,
   FOREIGN KEY (id_cuenta_origen)  REFERENCES cuentas(id_cuenta),
   FOREIGN KEY (id_cuenta_destino) REFERENCES cuentas(id_cuenta),
-  INDEX idx_transf_usuario_fecha (id_usuario, fecha)
+  INDEX idx_transf_usuario_fecha (id_usuario, fecha),
+  INDEX idx_transf_espacio_fecha (id_espacio, fecha)
 );
 
 CREATE TABLE tasas_cambio (
@@ -235,7 +237,8 @@ CREATE TABLE movimientos_recurrentes (
   FOREIGN KEY (id_espacio)   REFERENCES espacios(id_espacio) ON DELETE CASCADE,
   FOREIGN KEY (id_cuenta)    REFERENCES cuentas(id_cuenta),
   FOREIGN KEY (id_categoria) REFERENCES categorias(id_categoria),
-  INDEX idx_rec_usuario_proxima (id_usuario, activo, proxima_fecha)
+  INDEX idx_rec_usuario_proxima (id_usuario, activo, proxima_fecha),
+  INDEX idx_rec_espacio_proxima (id_espacio, activo, proxima_fecha)
 );
 
 -- Intentos de acceso para limitar la fuerza bruta (RNF-24). `clave` no guarda el correo en claro:

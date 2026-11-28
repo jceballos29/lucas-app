@@ -1650,6 +1650,19 @@ $cascada = $pdo->query("SELECT k.table_name FROM information_schema.key_column_u
 same('las tablas POR_CASCADA con id_usuario/id_espacio tienen de verdad FK ON DELETE CASCADE', [], array_values(array_diff(array_intersect(Esquema::POR_CASCADA, array_merge($conColumna('id_usuario'), $conColumna('id_espacio'))), $cascada)));
 same('ninguna tabla aparece en dos listas de tratamiento', [], array_values(array_diff_key(array_count_values($tratadas), array_filter(array_count_values($tratadas), static fn (int $n): bool => $n === 1))));
 
+section('Índices de los espacios compartidos (R9)');
+$indices = static function (string $tabla) use ($pdo): array {
+    $q = $pdo->prepare('SELECT index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = :t GROUP BY index_name');
+    $q->execute(['t' => $tabla]);
+    return $q->fetchAll(PDO::FETCH_KEY_PAIR);
+};
+same('transacciones tiene el índice (id_espacio, fecha)', 'id_espacio,fecha', $indices('transacciones')['idx_trans_espacio_fecha'] ?? null);
+same('transferencias tiene el índice (id_espacio, fecha)', 'id_espacio,fecha', $indices('transferencias')['idx_transf_espacio_fecha'] ?? null);
+same('movimientos_recurrentes tiene el índice (id_espacio, activo, proxima_fecha)', 'id_espacio,activo,proxima_fecha', $indices('movimientos_recurrentes')['idx_rec_espacio_proxima'] ?? null);
+$explain = static fn (string $sql): string => implode(' | ', array_map(static fn (array $f): string => (string) ($f['key'] ?? '') . ':' . (string) ($f['Extra'] ?? ''), $pdo->query('EXPLAIN ' . $sql)->fetchAll()));
+$planTrans = $explain('SELECT * FROM transacciones t WHERE t.id_espacio = 1 ORDER BY t.fecha DESC, t.id_transaccion DESC LIMIT 20');
+same('el listado de un espacio usa el índice y no ordena en memoria (sin «Using filesort»)', [true, false], [str_contains($planTrans, 'idx_trans_espacio_fecha'), str_contains($planTrans, 'filesort')]);
+
 section('Multimoneda por cuenta, transferencias multimoneda y conversión en reportes/presupuestos (Fase 18)');
 $mUser = (int) $usuarios->create('Mateo Multimoneda', 'mateo.multi@correo.com', 'x');
 $tasasRepo = $container->tasasCambio();

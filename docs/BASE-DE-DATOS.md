@@ -122,6 +122,8 @@ No tiene relaciones: es una tabla de apoyo, sin FK, que se purga sola.
 | creado_en · expira_en | TIMESTAMP · DATETIME | | Vigencia de 48 horas |
 | usado_en | DATETIME NULL | | Se llena al usarlo: un enlace sirve una sola vez |
 
+Índices de los espacios compartidos (R9): `transacciones (id_espacio, fecha)`, `transferencias (id_espacio, fecha)` y `movimientos_recurrentes (id_espacio, activo, proxima_fecha)`, para que los listados de un espacio salgan ordenados del propio índice.
+
 `usuarios.correo_verificado_en` (DATETIME NULL) guarda **cuándo** se verificó el correo; `NULL` = sin verificar. Sin verificar, la cuenta funciona, pero no recibe correo de Lucas y no puede enviar ni aceptar invitaciones a espacios (RNF-25). Restablecer la contraseña con el enlace del correo también lo verifica.
 
 **codigos_recuperacion** (códigos de respaldo del 2FA, M7)
