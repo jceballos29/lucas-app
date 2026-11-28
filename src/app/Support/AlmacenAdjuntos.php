@@ -19,6 +19,8 @@ final class AlmacenAdjuntos
     /** Límite máximo de un comprobante: 5 MiB. */
     public const MAX_BYTES = 5_242_880;
 
+    private const MENSAJE_DEMASIADO_GRANDE = 'El comprobante supera el tamaño máximo permitido (5 MB).';
+
     /** Tipos MIME reales admitidos y su extensión canónica en disco. */
     public const MIMES_PERMITIDOS = [
         'image/jpeg' => 'jpg',
@@ -85,38 +87,37 @@ final class AlmacenAdjuntos
     }
 
     /**
-     * Valida una entrada de `$_FILES`. Si el usuario no adjuntó archivo devuelve `['ok' => true, 'vacio' => true]`.
+     * Valida una entrada de `$_FILES`. Si el usuario no adjuntó archivo devuelve {@see ResultadoSubida::vacio()} (no es un error).
      *
      * @param array<string, mixed>|null $file
-     * @return array{ok: bool, vacio: bool, error: string|null, tmp: string|null, mime: string|null, ext: string|null, nombre: string|null}
      */
-    public static function validarSubida(?array $file): array
+    public static function validarSubida(?array $file): ResultadoSubida
     {
         if ($file === null || !isset($file['error'])) {
-            return ['ok' => true, 'vacio' => true, 'error' => null, 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+            return ResultadoSubida::vacio();
         }
 
         $codigoError = is_int($file['error']) ? $file['error'] : UPLOAD_ERR_NO_FILE;
         if ($codigoError === UPLOAD_ERR_NO_FILE) {
-            return ['ok' => true, 'vacio' => true, 'error' => null, 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+            return ResultadoSubida::vacio();
         }
 
         if ($codigoError === UPLOAD_ERR_INI_SIZE || $codigoError === UPLOAD_ERR_FORM_SIZE) {
-            return ['ok' => false, 'vacio' => false, 'error' => 'El comprobante supera el tamaño máximo permitido (5 MB).', 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+            return ResultadoSubida::rechazado(self::MENSAJE_DEMASIADO_GRANDE);
         }
 
         if ($codigoError !== UPLOAD_ERR_OK) {
-            return ['ok' => false, 'vacio' => false, 'error' => 'No se pudo subir el comprobante. Inténtalo de nuevo.', 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+            return ResultadoSubida::rechazado('No se pudo subir el comprobante. Inténtalo de nuevo.');
         }
 
         $tmp = is_string($file['tmp_name'] ?? null) ? $file['tmp_name'] : '';
         $size = is_int($file['size'] ?? null) ? $file['size'] : 0;
         if ($tmp === '' || !is_file($tmp) || !is_readable($tmp) || $size <= 0) {
-            return ['ok' => false, 'vacio' => false, 'error' => 'El archivo subido está vacío o no se pudo leer.', 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+            return ResultadoSubida::rechazado('El archivo subido está vacío o no se pudo leer.');
         }
 
         if ($size > self::MAX_BYTES) {
-            return ['ok' => false, 'vacio' => false, 'error' => 'El comprobante supera el tamaño máximo permitido (5 MB).', 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+            return ResultadoSubida::rechazado(self::MENSAJE_DEMASIADO_GRANDE);
         }
 
         $fh = fopen($tmp, 'rb');
@@ -127,28 +128,22 @@ final class AlmacenAdjuntos
 
         $mimeFirma = self::detectarMimePorFirma($cabecera);
         if ($mimeFirma === null) {
-            return ['ok' => false, 'vacio' => false, 'error' => 'Formato no permitido. Adjunta solo imágenes JPG, PNG, WebP o documentos PDF.', 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+            return ResultadoSubida::rechazado('Formato no permitido. Adjunta solo imágenes JPG, PNG, WebP o documentos PDF.');
         }
 
         if (class_exists(finfo::class)) {
-            $fi = new finfo(FILEINFO_MIME_TYPE);
-            $mimeFinfo = $fi->file($tmp);
+            $mimeFinfo = (new finfo(FILEINFO_MIME_TYPE))->file($tmp);
             if ($mimeFinfo !== false && $mimeFinfo !== $mimeFirma) {
-                return ['ok' => false, 'vacio' => false, 'error' => 'El contenido del archivo no coincide con un formato permitido (JPG, PNG, WebP o PDF).', 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+                return ResultadoSubida::rechazado('El contenido del archivo no coincide con un formato permitido (JPG, PNG, WebP o PDF).');
             }
         }
 
-        $nombreOriginal = self::limpiarNombreOriginal(is_string($file['name'] ?? null) ? $file['name'] : '');
-
-        return [
-            'ok' => true,
-            'vacio' => false,
-            'error' => null,
-            'tmp' => $tmp,
-            'mime' => $mimeFirma,
-            'ext' => self::MIMES_PERMITIDOS[$mimeFirma],
-            'nombre' => $nombreOriginal,
-        ];
+        return ResultadoSubida::valido(
+            $tmp,
+            $mimeFirma,
+            self::MIMES_PERMITIDOS[$mimeFirma],
+            self::limpiarNombreOriginal(is_string($file['name'] ?? null) ? $file['name'] : ''),
+        );
     }
 
     /**
@@ -162,16 +157,7 @@ final class AlmacenAdjuntos
             throw new RuntimeException('Tipo MIME no permitido.');
         }
 
-        $ext = self::MIMES_PERMITIDOS[$mime];
-        $subDir = date('Y/m');
-        $nombreArchivo = bin2hex(random_bytes(16)) . '.' . $ext;
-        $relativa = $subDir . '/' . $nombreArchivo;
-        $destinoDir = self::directorioBase($baseDir) . '/' . $subDir;
-        $destino = $destinoDir . '/' . $nombreArchivo;
-
-        if (!is_dir($destinoDir) && !@mkdir($destinoDir, 0750, true) && !is_dir($destinoDir)) {
-            throw new RuntimeException('No se pudo preparar el directorio de comprobantes.');
-        }
+        ['relativa' => $relativa, 'destino' => $destino] = self::rutaNueva($mime, $baseDir);
 
         $ok = is_uploaded_file($tmpPath) ? @move_uploaded_file($tmpPath, $destino) : @copy($tmpPath, $destino);
         if (!$ok) {
@@ -180,11 +166,7 @@ final class AlmacenAdjuntos
 
         @chmod($destino, 0640);
 
-        return [
-            'ruta' => $relativa,
-            'nombre' => self::limpiarNombreOriginal($nombreOriginal),
-            'mime' => $mime,
-        ];
+        return ['ruta' => $relativa, 'nombre' => self::limpiarNombreOriginal($nombreOriginal), 'mime' => $mime];
     }
 
     /**
@@ -198,16 +180,7 @@ final class AlmacenAdjuntos
             throw new RuntimeException('Contenido o tipo MIME de comprobante no válido.');
         }
 
-        $ext = self::MIMES_PERMITIDOS[$mime];
-        $subDir = date('Y/m');
-        $nombreArchivo = bin2hex(random_bytes(16)) . '.' . $ext;
-        $relativa = $subDir . '/' . $nombreArchivo;
-        $destinoDir = self::directorioBase($baseDir) . '/' . $subDir;
-        $destino = $destinoDir . '/' . $nombreArchivo;
-
-        if (!is_dir($destinoDir) && !@mkdir($destinoDir, 0750, true) && !is_dir($destinoDir)) {
-            throw new RuntimeException('No se pudo preparar el directorio de comprobantes.');
-        }
+        ['relativa' => $relativa, 'destino' => $destino] = self::rutaNueva($mime, $baseDir);
 
         if (@file_put_contents($destino, $bytes, LOCK_EX) === false) {
             throw new RuntimeException('No se pudo escribir el comprobante en disco.');
@@ -215,11 +188,25 @@ final class AlmacenAdjuntos
 
         @chmod($destino, 0640);
 
-        return [
-            'ruta' => $relativa,
-            'nombre' => self::limpiarNombreOriginal($nombreOriginal),
-            'mime' => $mime,
-        ];
+        return ['ruta' => $relativa, 'nombre' => self::limpiarNombreOriginal($nombreOriginal), 'mime' => $mime];
+    }
+
+    /**
+     * Elige el sitio de un comprobante nuevo (`YYYY/MM/<32 hex>.<ext>`) y prepara su carpeta. Común a las dos formas de guardar.
+     *
+     * @return array{relativa: string, destino: string}
+     */
+    private static function rutaNueva(string $mime, ?string $baseDir): array
+    {
+        $subDir = date('Y/m');
+        $relativa = $subDir . '/' . bin2hex(random_bytes(16)) . '.' . self::MIMES_PERMITIDOS[$mime];
+        $destinoDir = self::directorioBase($baseDir) . '/' . $subDir;
+
+        if (!is_dir($destinoDir) && !@mkdir($destinoDir, 0750, true) && !is_dir($destinoDir)) {
+            throw new RuntimeException('No se pudo preparar el directorio de comprobantes.');
+        }
+
+        return ['relativa' => $relativa, 'destino' => self::directorioBase($baseDir) . '/' . $relativa];
     }
 
     /**

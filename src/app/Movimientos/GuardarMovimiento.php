@@ -9,6 +9,7 @@ use App\Notificaciones\NotificadorPresupuesto;
 use App\Repository\MovimientoRepository;
 use App\Support\AlmacenAdjuntos;
 use App\Support\Dinero;
+use App\Support\ResultadoSubida;
 
 /**
  * Aplica un {@see EnvioMovimiento} ya validado (R1 de docs/AUDITORIA.md): guarda el movimiento (normal o dividido) con
@@ -41,7 +42,7 @@ final class GuardarMovimiento
         switch ($saved['codigo']) {
             case ReglasMovimiento::OK:
                 $movId = (int) $saved['id'];
-                if (!$subida['vacio'] && $subida['tmp'] !== null && $subida['mime'] !== null) {
+                if ($subida->hayArchivo()) {
                     $this->adjuntar($userId, $movId, $subida, $espacioId);
                     if ($existente !== null && $existente->adjuntoRuta !== null) {
                         AlmacenAdjuntos::eliminar($existente->adjuntoRuta);
@@ -89,7 +90,7 @@ final class GuardarMovimiento
 
         switch ($saved['codigo']) {
             case ReglasMovimiento::OK:
-                if (!$subida['vacio'] && $subida['tmp'] !== null && $subida['mime'] !== null && isset($saved['ids'][0])) {
+                if ($subida->hayArchivo() && isset($saved['ids'][0])) {
                     $this->adjuntar($userId, (int) $saved['ids'][0], $subida, $espacioId);
                 }
 
@@ -125,14 +126,10 @@ final class GuardarMovimiento
         }
     }
 
-    /**
-     * Guarda el archivo subido y lo asocia al movimiento.
-     *
-     * @param array{tmp: string|null, mime: string|null, nombre: string|null} $subida
-     */
-    private function adjuntar(int $userId, int $movimientoId, array $subida, ?int $espacioId): void
+    /** Guarda el archivo subido y lo asocia al movimiento. */
+    private function adjuntar(int $userId, int $movimientoId, ResultadoSubida $subida, ?int $espacioId): void
     {
-        $guardado = AlmacenAdjuntos::guardarDesdeArchivo((string) $subida['tmp'], (string) $subida['mime'], (string) $subida['nombre']);
+        $guardado = AlmacenAdjuntos::guardarDesdeArchivo((string) $subida->tmp, (string) $subida->mime, (string) $subida->nombre);
         $this->movimientos->actualizarAdjunto($userId, $movimientoId, $guardado['ruta'], $guardado['nombre'], $guardado['mime'], $espacioId);
     }
 

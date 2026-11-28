@@ -7,6 +7,7 @@ namespace App\Movimientos;
 use App\Domain\Movimiento;
 use App\Support\AlmacenAdjuntos;
 use App\Support\Dinero;
+use App\Support\ResultadoSubida;
 use App\Validation\MovimientoValidator;
 
 /**
@@ -124,13 +125,12 @@ final class FormularioMovimiento
 
     /**
      * @param array<string, string> $errors
-     * @param array{ok: bool, error: string|null} $subida
      * @return array<string, string>
      */
-    private static function conErrorDeSubida(array $errors, array $subida): array
+    private static function conErrorDeSubida(array $errors, ResultadoSubida $subida): array
     {
-        if (!$subida['ok'] && $subida['error'] !== null) {
-            $errors['comprobante'] = $subida['error'];
+        if (!$subida->ok && $subida->error !== null) {
+            $errors['comprobante'] = $subida->error;
         }
 
         return $errors;

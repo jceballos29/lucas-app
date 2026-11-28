@@ -1301,7 +1301,7 @@ same('vista previa sin filas: null', null, $importador->vistaPrevia($cUser, $cCu
 
 // R1: GuardarMovimiento (aplica un envío ya validado) y AvisoPresupuesto.
 $gm = $container->guardarMovimiento();
-$subVacia = ['ok' => true, 'vacio' => true, 'error' => null, 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+$subVacia = App\Support\ResultadoSubida::vacio();
 $envNormal = static fn (array $over = []): App\Movimientos\EnvioMovimiento => new App\Movimientos\EnvioMovimiento(false, $over + ['tipo' => 'gasto', 'monto' => '1000.00', 'fecha' => '2026-11-26', 'id_cuenta' => $cCuenta, 'id_categoria' => $rCatGasto, 'descripcion' => 'Prueba R1', 'etiqueta' => null, 'num_cuotas' => 1], [], [], [], [], $subVacia);
 $saldoR1 = (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo;
 $r1 = $gm->guardar($cUser, null, $envNormal());

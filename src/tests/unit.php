@@ -1338,10 +1338,20 @@ same('validarSubida acepta PNG real, rechaza PHP disfrazado de JPG, rechaza >5MB
     false,
     [true, true],
 ], [
-    [$valPng['ok'], $valPng['vacio'], $valPng['mime'], $valPng['ext']],
-    $valPhpFalso['ok'],
-    $valGrande['ok'],
-    [$valVacio['ok'], $valVacio['vacio']],
+    [$valPng->ok, $valPng->vacio, $valPng->mime, $valPng->ext],
+    $valPhpFalso->ok,
+    $valGrande->ok,
+    [$valVacio->ok, $valVacio->vacio],
+]);
+same('ResultadoSubida (R3): vacío es válido sin archivo; rechazado trae el motivo; válido trae los datos y hayArchivo()', [[true, false], [false, true, false], [true, true]], [
+    [$valVacio->ok && !$valVacio->hayArchivo(), $valVacio->hayArchivo()],
+    [$valGrande->ok, str_contains((string) $valGrande->error, '5 MB'), $valGrande->hayArchivo()],
+    [$valPng->hayArchivo(), $valPng->tmp === $tmpPng],
+]);
+same('los rechazos distintos dan motivos distintos (formato, contenido disfrazado, sin archivo legible)', [true, true, true], [
+    str_contains((string) $valPhpFalso->error, 'Formato no permitido'),
+    str_contains((string) AA::validarSubida(['error' => UPLOAD_ERR_PARTIAL, 'tmp_name' => '', 'size' => 0, 'name' => 'x.png'])->error, 'No se pudo subir'),
+    str_contains((string) AA::validarSubida(['error' => UPLOAD_ERR_OK, 'tmp_name' => '/no/existe', 'size' => 10, 'name' => 'x.png'])->error, 'vacío o no se pudo leer'),
 ]);
 $guardadoUnit = AA::guardarDesdeContenido($pdfMinimo, 'application/pdf', 'Recibo Marzo.pdf', $tmpAdjDir);
 $absGuardado = AA::rutaAbsoluta($guardadoUnit['ruta'], $tmpAdjDir);
