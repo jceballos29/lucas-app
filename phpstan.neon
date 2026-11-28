@@ -10,7 +10,7 @@ parameters:
         - src/scripts
         - src/views
     excludePaths:
-        - src/storage
+        - src/storage (?)
     bootstrapFiles:
         - src/app/Security/session.php
         - src/app/Security/csrf.php

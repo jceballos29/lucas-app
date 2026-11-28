@@ -59,7 +59,9 @@ jobs:
           bash -n tests/run-all.sh tests/smoke.sh tests/backup.sh tests/imagen-produccion.sh database/03-users.sh database/04-dev-admin.sh
 
       - name: Instalar herramientas de análisis
-        run: composer install --no-interaction --no-progress --prefer-dist
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist
+          composer install --working-dir=src --no-interaction --no-progress --prefer-dist
 
       - name: Auditoría de seguridad de dependencias (composer audit)
         run: composer audit --no-interaction
@@ -71,7 +73,7 @@ jobs:
         run: vendor/bin/php-cs-fixer fix --dry-run --diff
 
       - name: Resumen de calidad
-        if: always()
+        if: success()
         run: |
           {
             echo "### Calidad de código y análisis estático"
@@ -93,6 +95,7 @@ jobs:
 
       - name: Preparar entorno de desarrollo (.env)
         run: |
+          mkdir -p src/storage/adjuntos certs certbot-webroot
           cp .env.example .env
           echo "HOST_UID=$(id -u)" >> .env
           echo "HOST_GID=$(id -g)" >> .env

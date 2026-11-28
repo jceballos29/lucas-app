@@ -6,7 +6,7 @@
 # Adminer ni Mailpit, sin puertos de la base de datos y con reinicio automático. Variables obligatorias en .env: ver docs/DESPLIEGUE.md.
 services:
   php:
-    image: ${APP_IMAGE:-ghcr.io/jceballos29/lucas-app:latest}
+    image: ${APP_IMAGE:-lucas-app-php-prod:latest}
     build:
       # El contexto es la RAÍZ: el código se copia DENTRO de la imagen (B1 de docs/AUDITORIA.md). Sin Xdebug, git, Composer ni unzip
       # (M2/B1); ver docker/php/Dockerfile.prod.
