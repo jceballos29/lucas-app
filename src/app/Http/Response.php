@@ -82,8 +82,14 @@ final class Response
         $ref = parse_url((string) ($_SERVER['HTTP_REFERER'] ?? ''));
         $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
 
-        if (is_array($ref) && ($ref['host'] ?? '') !== '' && isset($ref['host']) && ($ref['host'] . (isset($ref['port']) ? ':' . $ref['port'] : '')) === $host) {
-            return ($ref['path'] ?? '/') . (isset($ref['query']) ? '?' . $ref['query'] : '');
+        if (is_array($ref) && ($ref['host'] ?? '') !== '' && ($ref['host'] . (isset($ref['port']) ? ':' . $ref['port'] : '')) === $host) {
+            $ruta = ($ref['path'] ?? '/') . (isset($ref['query']) ? '?' . $ref['query'] : '');
+
+            // Solo una ruta de ESTE sitio: una sola «/» inicial y a continuación nada de «/» ni «\» (`//otro.com` o `/\otro.com` serían una
+            // redirección abierta: el navegador los toma por un sitio ajeno).
+            if (preg_match('#^/(?![/\\\\])#', $ruta) === 1) {
+                return $ruta;
+            }
         }
 
         return '/';

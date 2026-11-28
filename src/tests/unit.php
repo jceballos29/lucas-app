@@ -620,6 +620,18 @@ same('el 33,3 % de un tercio', 33.3, K::agrupar([$fila('A', '1'), $fila('B', '1'
 same('sin gastos', ['items' => [], 'total' => '0.00'], K::agrupar([]));
 same('con total cero no divide por cero', 0.0, K::agrupar([$fila('A', '0.00')])['items'][0]['percent']);
 
+section('Response: «Volver» de la página de error no es una redirección abierta');
+$volverDe = static function (string $referer, string $host = 'lucas.ejemplo.com'): string {
+    $_SERVER['HTTP_REFERER'] = $referer; $_SERVER['HTTP_HOST'] = $host;
+    $m = new ReflectionMethod(App\Http\Response::class, 'paginaAnterior');
+    $r = $m->invoke(null);
+    unset($_SERVER['HTTP_REFERER'], $_SERVER['HTTP_HOST']);
+    return $r;
+};
+same('una página del mismo sitio vuelve a ella (con su consulta)', ['/movimientos.php?pagina=2', '/'], [$volverDe('https://lucas.ejemplo.com/movimientos.php?pagina=2'), $volverDe('https://lucas.ejemplo.com')]);
+same('otro sitio, sin Referer o un valor raro vuelve al inicio', ['/', '/', '/'], [$volverDe('https://evil.example/x'), $volverDe(''), $volverDe('esto no es una url')]);
+same('rutas que el navegador tomaría por otro sitio (//evil.com, /\\evil.com) vuelven al inicio', ['/', '/'], [$volverDe('https://lucas.ejemplo.com//evil.example/x'), $volverDe('https://lucas.ejemplo.com/\\evil.example/x')]);
+
 section('Mensajes de error: monto en formato inglés (E2) y cuerpo demasiado grande (E4)');
 use App\Http\Peticion as PE;
 use App\Support\Dinero as DE;
