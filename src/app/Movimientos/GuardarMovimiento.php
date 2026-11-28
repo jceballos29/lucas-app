@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Movimientos;
 
 use App\Domain\Movimiento;
+use App\Logging\Logger;
 use App\Notificaciones\NotificadorPresupuesto;
 use App\Repository\MovimientoRepository;
 use App\Support\AlmacenAdjuntos;
 use App\Support\Dinero;
 use App\Support\ResultadoSubida;
+use RuntimeException;
 
 /**
  * Aplica un {@see EnvioMovimiento} ya validado (R1 de docs/AUDITORIA.md): guarda el movimiento (normal o dividido) con
@@ -18,6 +20,8 @@ use App\Support\ResultadoSubida;
  */
 final class GuardarMovimiento
 {
+    private const AVISO_COMPROBANTE_FALLIDO = 'El movimiento se guardó, pero no se pudo guardar el comprobante: edítalo para adjuntarlo de nuevo.';
+
     public function __construct(
         private readonly GestionMovimientos $gestion,
         private readonly MovimientoRepository $movimientos,
@@ -42,10 +46,14 @@ final class GuardarMovimiento
         switch ($saved['codigo']) {
             case ReglasMovimiento::OK:
                 $movId = (int) $saved['id'];
+                $avisos = [];
                 if ($subida->hayArchivo()) {
-                    $this->adjuntar($userId, $movId, $subida, $espacioId);
-                    if ($existente !== null && $existente->adjuntoRuta !== null) {
-                        AlmacenAdjuntos::eliminar($existente->adjuntoRuta);
+                    if ($this->adjuntar($userId, $movId, $subida, $espacioId)) {
+                        if ($existente !== null && $existente->adjuntoRuta !== null) {
+                            AlmacenAdjuntos::eliminar($existente->adjuntoRuta);
+                        }
+                    } else {
+                        $avisos[] = self::AVISO_COMPROBANTE_FALLIDO; // el movimiento YA está guardado: el comprobante anterior se conserva
                     }
                 } elseif ($existente !== null && $this->pideQuitarAdjunto() && $existente->adjuntoRuta !== null) {
                     $this->movimientos->actualizarAdjunto($userId, $movId, null, null, null, $espacioId);
@@ -63,7 +71,7 @@ final class GuardarMovimiento
                     $aviso = $this->aviso->para($userId, $data['id_categoria'], $data['fecha'], $espacioId);
                 }
 
-                return $this->conAviso($mensaje, $aviso === null ? [] : [$aviso]);
+                return $this->conAviso($mensaje, $aviso === null ? $avisos : [...$avisos, $aviso]);
 
             case ReglasMovimiento::TIPO_DISCORDANTE:
                 return ResultadoGuardado::conErrores(['id_categoria' => 'Esa categoría no es de ' . ($data['tipo'] === 'ingreso' ? 'ingresos' : 'gastos') . '. Elige otra o cambia el tipo.']);
@@ -90,14 +98,14 @@ final class GuardarMovimiento
 
         switch ($saved['codigo']) {
             case ReglasMovimiento::OK:
-                if ($subida->hayArchivo() && isset($saved['ids'][0])) {
-                    $this->adjuntar($userId, (int) $saved['ids'][0], $subida, $espacioId);
+                $avisos = [];
+                if ($subida->hayArchivo() && isset($saved['ids'][0]) && !$this->adjuntar($userId, (int) $saved['ids'][0], $subida, $espacioId)) {
+                    $avisos[] = self::AVISO_COMPROBANTE_FALLIDO;
                 }
 
                 $mensaje = 'Se registró ' . ($base['tipo'] === 'ingreso' ? 'el ingreso dividido' : 'el gasto dividido')
                     . ' (' . count($partes) . ' categorías) por ' . Dinero::formatear($base['monto_total']) . " en «{$saved['cuenta']}».";
 
-                $avisos = [];
                 if ($base['tipo'] === 'gasto') {
                     foreach ($partes as $p) {
                         $this->notificador->notificarGasto($userId, $p['id_categoria'], $base['fecha'], $espacioId);
@@ -126,11 +134,29 @@ final class GuardarMovimiento
         }
     }
 
-    /** Guarda el archivo subido y lo asocia al movimiento. */
-    private function adjuntar(int $userId, int $movimientoId, ResultadoSubida $subida, ?int $espacioId): void
+    /**
+     * Guarda el archivo subido y lo asocia al movimiento. El movimiento YA está confirmado en la base de datos: si el disco falla (sin permisos,
+     * lleno) no se propaga el error —sería un 500 con el movimiento creado y quien reintenta lo duplicaría—, se registra y se avisa (B11).
+     *
+     * @return bool true si quedó adjuntado.
+     */
+    private function adjuntar(int $userId, int $movimientoId, ResultadoSubida $subida, ?int $espacioId): bool
     {
-        $guardado = AlmacenAdjuntos::guardarDesdeArchivo((string) $subida->tmp, (string) $subida->mime, (string) $subida->nombre);
-        $this->movimientos->actualizarAdjunto($userId, $movimientoId, $guardado['ruta'], $guardado['nombre'], $guardado['mime'], $espacioId);
+        $guardado = null;
+
+        try {
+            $guardado = AlmacenAdjuntos::guardarDesdeArchivo((string) $subida->tmp, (string) $subida->mime, (string) $subida->nombre);
+            $this->movimientos->actualizarAdjunto($userId, $movimientoId, $guardado['ruta'], $guardado['nombre'], $guardado['mime'], $espacioId);
+
+            return true;
+        } catch (RuntimeException $error) {
+            if ($guardado !== null) {
+                AlmacenAdjuntos::eliminar($guardado['ruta']); // el archivo se copió pero no se pudo anotar: que no quede huérfano
+            }
+            Logger::exception('adjunto', $error);
+
+            return false;
+        }
     }
 
     private function pideQuitarAdjunto(): bool

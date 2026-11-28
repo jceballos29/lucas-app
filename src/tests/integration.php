@@ -1322,6 +1322,30 @@ $partes = [['id_categoria' => $rCatGasto, 'monto' => '700.00', 'descripcion' => 
 $envDiv = new App\Movimientos\EnvioMovimiento(true, ['tipo' => 'gasto', 'monto_total' => '1000.00', 'fecha' => '2026-11-26', 'id_cuenta' => $cCuenta, 'descripcion' => 'Dividido R1', 'etiqueta' => null, 'num_cuotas' => 1], $partes, [], [], [], $subVacia);
 $r6 = $gm->guardar($cUser, null, $envDiv);
 same('GuardarMovimiento: un gasto dividido crea una fila por parte y lo cuenta en el mensaje', [true, true, 2], [$r6->ok, str_contains($r6->mensaje, '(2 categorías) por '), (int) $pdo->query("SELECT COUNT(*) FROM transacciones WHERE id_usuario = $cUser AND descripcion IN ('a', 'b')")->fetchColumn()]);
+// B11: si el comprobante falla DESPUÉS de guardar el movimiento, el movimiento queda, no hay 500 y se avisa.
+$logAntes11 = ini_get('error_log');
+ini_set('error_log', '/dev/null');
+$subRota = App\Support\ResultadoSubida::valido('/no/existe/comprobante.png', 'image/png', 'png', 'recibo.png');   // el archivo temporal no existe: copiar falla
+$envRoto = static fn (array $over = []): App\Movimientos\EnvioMovimiento => new App\Movimientos\EnvioMovimiento(false, $over + ['tipo' => 'gasto', 'monto' => '700.00', 'fecha' => '2026-11-26', 'id_cuenta' => $cCuenta, 'id_categoria' => $rCatGasto, 'descripcion' => 'Con comprobante roto', 'etiqueta' => null, 'num_cuotas' => 1], [], [], [], [], $subRota);
+$n11 = (int) $pdo->query("SELECT COUNT(*) FROM transacciones WHERE id_usuario = $cUser")->fetchColumn();
+$rb = $gm->guardar($cUser, null, $envRoto());
+same('B11: con el comprobante roto el movimiento SÍ se guarda, sin excepción, y avisa de que falló el archivo', [true, 'warn', true, $n11 + 1], [$rb->ok, $rb->tono, str_contains($rb->mensaje, 'no se pudo guardar el comprobante'), (int) $pdo->query("SELECT COUNT(*) FROM transacciones WHERE id_usuario = $cUser")->fetchColumn()]);
+same('B11: ese movimiento quedó sin comprobante (no hay ruta a medias)', null, $pdo->query("SELECT adjunto_ruta FROM transacciones WHERE descripcion = 'Con comprobante roto' AND id_usuario = $cUser")->fetchColumn() ?: null);
+$idRoto = (int) $pdo->query("SELECT id_transaccion FROM transacciones WHERE descripcion = 'Con comprobante roto' AND id_usuario = $cUser")->fetchColumn();
+$bytesPdf = "%PDF-1.4\n1 0 obj\n<< >>\nendobj\ntrailer\n<< >>\n%%EOF\n";
+$adjOk = App\Support\AlmacenAdjuntos::guardarDesdeContenido($bytesPdf, 'application/pdf', 'bueno.pdf');
+$container->movimientos()->actualizarAdjunto($cUser, $idRoto, $adjOk['ruta'], $adjOk['nombre'], $adjOk['mime']);
+$re = $gm->guardar($cUser, $container->movimientos()->findOwned($cUser, $idRoto), $envRoto(['monto' => '800.00']));
+same('B11: al EDITAR con un comprobante nuevo que falla, se guardan los cambios y se CONSERVA el comprobante anterior (archivo y ruta)', [true, 'warn', $adjOk['ruta'], true], [
+    $re->ok, $re->tono, (string) $pdo->query("SELECT adjunto_ruta FROM transacciones WHERE id_transaccion = $idRoto")->fetchColumn(),
+    is_file((string) App\Support\AlmacenAdjuntos::rutaAbsoluta($adjOk['ruta'])),
+]);
+App\Support\AlmacenAdjuntos::eliminar($adjOk['ruta']);
+$subRotaDiv = new App\Movimientos\EnvioMovimiento(true, ['tipo' => 'gasto', 'monto_total' => '1000.00', 'fecha' => '2026-11-26', 'id_cuenta' => $cCuenta, 'descripcion' => 'Dividido roto', 'etiqueta' => null, 'num_cuotas' => 1], [['id_categoria' => $rCatGasto, 'monto' => '600.00', 'descripcion' => 'r1'], ['id_categoria' => $rCatGasto, 'monto' => '400.00', 'descripcion' => 'r2']], [], [], [], $subRota);
+$rd = $gm->guardar($cUser, null, $subRotaDiv);
+same('B11: un gasto dividido con el comprobante roto también se guarda (2 partes) y avisa', [true, 'warn', 2], [$rd->ok, $rd->tono, (int) $pdo->query("SELECT COUNT(*) FROM transacciones WHERE id_usuario = $cUser AND descripcion IN ('r1', 'r2')")->fetchColumn()]);
+ini_set('error_log', (string) $logAntes11);
+
 same('AvisoPresupuesto: sin presupuesto para esa categoría no hay aviso', null, $container->avisoPresupuesto()->para($cUser, $rCatGasto, '2026-11-26'));
 same('AvisoPresupuesto: una fecha inválida tampoco', null, $container->avisoPresupuesto()->para($cUser, $rCatGasto, 'no-es-fecha'));
 
