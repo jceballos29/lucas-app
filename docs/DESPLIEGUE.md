@@ -31,6 +31,13 @@ Parte de `.env.example` y **cambia todas las claves** (las de desarrollo son pú
 
 No subas `.env` a git (ya está en `.gitignore`).
 
+**Antes del primer arranque (y cada vez que cambies el `.env`) ejecuta `bin/comprobar-produccion`.** Revisa que ninguna clave sea de
+desarrollo o débil (menos de 12 caracteres, de ejemplo, repetida entre roles), que `APP_KEY` tenga 32 caracteres o más, que `APP_ORIGIN` sea
+`https://` y no `localhost`, que el SMTP no mande usuario y clave sin cifrar y que existan los certificados. No imprime ninguna clave y sale
+con código 1 si algo está mal. Además, `salud.php` responde **503** (y registra `[seguridad]…`) si en producción la clave de la base de datos
+de la aplicación o `APP_KEY` son las públicas de desarrollo o débiles. `MAIL_ENCRYPTION=none` con `MAIL_USER`/`MAIL_PASSWORD` se rechaza al
+enviar el primer correo fuera de `APP_ENV=local`: usa `starttls` (587) o `tls` (465).
+
 ## 3. Certificados HTTPS
 
 nginx espera `fullchain.pem` y `privkey.pem` en `CERTS_DIR`. Con **Let's Encrypt** y `certbot` (la validación usa `./certbot-webroot`):
@@ -58,10 +65,24 @@ necesita ver `X-Forwarded-*`; en ese caso configura `real_ip` para que la limita
 ## 4. Primer arranque
 
 ```bash
+bin/comprobar-produccion                                # revisa el .env (claves, HTTPS, SMTP, certificados)
+mkdir -p src/storage/adjuntos                           # los comprobantes (único sitio donde escribe PHP); su dueño debe ser HOST_UID
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml ps          # todos «healthy» / «running»
 curl -fsS https://$APP_DOMAIN/salud.php                # {"estado":"ok"}
 ```
+
+### La imagen de producción (código de solo lectura)
+
+`docker-compose.prod.yml` construye la imagen PHP con **`docker/php/Dockerfile.prod`**, no con la de desarrollo: el código y las dependencias van
+**dentro de la imagen** (de `root`, sin permiso de escritura para el usuario de PHP), el contenedor corre con el sistema de archivos de solo
+lectura (`read_only`, `/tmp` en memoria, sin capacidades extra) y lo único escribible es `src/storage/` (los comprobantes, en el host para que
+`bin/backup-db` los empaquete). La imagen no lleva git, unzip, Composer ni Xdebug, y OPcache no revalida archivos. Consecuencias:
+
+- **Cambiar código = reconstruir** (`docker compose -f docker-compose.prod.yml up -d --build`); editar `src/` en el servidor ya no cambia lo que sirve PHP (nginx sí lee `src/public/` del host para los archivos estáticos: despliega siempre con `git pull` + `--build`).
+- Los scripts siguen funcionando (`exec php php scripts/...`); las migraciones van incluidas en la imagen (`/var/www/database/migrations`).
+- `src/storage` debe existir y ser escribible por `HOST_UID` (`mkdir -p src/storage/adjuntos`); si PHP no puede guardar comprobantes, mira ahí primero.
+- `tests/imagen-produccion.sh` construye la imagen y comprueba todo esto (también corre en `tests/run-all.sh` y en CI).
 
 ### El administrador
 

@@ -1,0 +1,27 @@
+# Contexto de construcción de la imagen de PRODUCCIÓN (docker/php/Dockerfile.prod, contexto = raíz del repositorio). Fuera de la imagen:
+# secretos, datos, copias, dependencias de desarrollo y todo lo que no es código de la aplicación.
+.git
+.github
+.env
+.env.*
+!.env.example
+backups
+certs
+certbot-webroot
+letsencrypt
+docs
+tests
+vendor
+node_modules
+.agent
+.claude
+.mcp.json
+.playwright-mcp
+.vscode
+.phpstan.cache
+.php-cs-fixer.cache
+src/storage
+src/vendor
+src/tests
+*.log
+*.sql.gz

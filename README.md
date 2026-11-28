@@ -171,6 +171,8 @@ tests/smoke.sh                                      # punta a punta con curl (co
 tests/backup.sh                                     # copia de seguridad real + restauración
 tests/run-all.sh                                    # todas las suites, en orden
 python3 tests/ataques.py                            # ataques contra la app en marcha (IDOR, XSS, fuerza bruta, 2FA...)
+bin/comprobar-produccion                           # revisa el .env de producción (claves débiles, HTTPS, SMTP, certificados) antes de arrancar
+tests/imagen-produccion.sh                          # construye la imagen de producción y comprueba que el código es de solo lectura
 bin/estatico todo                                   # PHPStan (nivel 6) + PHP CS Fixer, igual que CI (bin/estatico estilo:arreglar para corregir)
 python3 tests/carga.py --setup --users 500          # prueba de carga (ver docs/DESPLIEGUE.md; --cleanup al terminar)
 bin/as-migrator php scripts/migrate.php             # aplica las migraciones pendientes

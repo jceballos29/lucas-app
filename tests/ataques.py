@@ -808,9 +808,12 @@ def pruebas_exposicion() -> None:
     prod_compose = (Path(DIR) / 'docker-compose.prod.yml').read_text(encoding='utf-8')
     dockerfile = (Path(DIR) / 'docker' / 'php' / 'Dockerfile').read_text(encoding='utf-8')
     php_prod = prod_compose[prod_compose.index('\n  php:'):prod_compose.index('\n  nginx:')]
-    chk('docker-compose.prod.yml construye la imagen PHP sin Xdebug (INSTALL_XDEBUG: "0")', re.search(r'INSTALL_XDEBUG:\s*"?0"?', php_prod) is not None)
+    chk('docker-compose.prod.yml construye la imagen PHP de producción (Dockerfile.prod: sin Xdebug, git ni Composer)', 'dockerfile: docker/php/Dockerfile.prod' in php_prod)
     chk('docker-compose.prod.yml fija XDEBUG_MODE=off en el servicio php', re.search(r'XDEBUG_MODE:\s*"?off"?', php_prod) is not None)
     chk('el Dockerfile solo instala Xdebug si INSTALL_XDEBUG=1', 'if [ "$INSTALL_XDEBUG" = "1" ]; then install-php-extensions xdebug' in dockerfile and 'opcache xdebug' not in dockerfile)
+    prod_df = '\n'.join(l for l in (Path(DIR) / 'docker' / 'php' / 'Dockerfile.prod').read_text(encoding='utf-8').splitlines() if not l.lstrip().startswith('#'))
+    chk('B1: la imagen de producción no instala Xdebug, git, unzip ni Composer', not re.search(r'xdebug|apt-get install|composer:2 /usr/bin/composer', prod_df, re.I))
+    chk('B1: el servicio php de producción es de solo lectura y no monta el código con escritura', 'read_only: true' in php_prod and './src:/var/www/html' not in php_prod.replace('./src/storage:/var/www/html/storage', ''))
     # C1 (resuelto): la seed que corre en producción no crea el administrador de la clave pública.
     seed = (Path(DIR) / 'database' / '02-seed.sql').read_text(encoding='utf-8')
     chk('la seed que también corre en producción no crea usuarios ni contiene la clave pública del admin (C1)', 'INTO usuarios' not in seed and 'Admin#2026dev' not in seed and '$2y$' not in seed)

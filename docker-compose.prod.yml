@@ -7,15 +7,27 @@
 services:
   php:
     build:
-      context: ./docker/php
+      # El contexto es la RAÍZ: el código se copia DENTRO de la imagen (B1 de docs/AUDITORIA.md). Sin Xdebug, git, Composer ni unzip
+      # (M2/B1); ver docker/php/Dockerfile.prod.
+      context: .
+      dockerfile: docker/php/Dockerfile.prod
       args:
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
-        # Sin Xdebug en la imagen de producción (M2 de docs/AUDITORIA.md): cargado y sin XDEBUG_MODE arrancaría en modo «develop».
-        INSTALL_XDEBUG: "0"
     restart: unless-stopped
+    # B1: el código de la imagen es de solo lectura y el sistema de archivos del contenedor también; lo único escribible es el volumen de
+    # comprobantes y /tmp (sesiones de PHP, en memoria). Quien ejecutara código en PHP no podría modificar la aplicación.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     volumes:
-      - ./src:/var/www/html
+      # Los comprobantes (src/storage/adjuntos) siguen en el host: bin/backup-db los empaqueta desde ahí. Créala antes del primer arranque
+      # (mkdir -p src/storage/adjuntos) y que su dueño sea HOST_UID (ver docs/DESPLIEGUE.md).
+      - ./src/storage:/var/www/html/storage
     environment:
       APP_ENV: production
       # Segunda barrera: si alguien reconstruyera con Xdebug, queda apagado.

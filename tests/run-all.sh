@@ -19,4 +19,7 @@ tests/smoke.sh
 echo; echo "################ Copias de seguridad"
 tests/backup.sh
 
+echo; echo "################ Imagen de producción (B1)"
+tests/imagen-produccion.sh
+
 echo; echo "Todas las suites pasaron."

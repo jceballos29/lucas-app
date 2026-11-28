@@ -116,7 +116,10 @@ check "docker-compose.prod.yml no pasa APP_ENV al servicio db (04-dev-admin.sh n
 check "04-dev-admin.sh no crea nada con APP_ENV=production" "0" "$(docker compose exec -T -e APP_ENV=production db bash /docker-entrypoint-initdb.d/04-dev-admin.sh 2>&1 | grep -c 'creado')"
 
 echo; echo "== La imagen de producción no lleva Xdebug (M2)"
-check "docker-compose.prod.yml construye la imagen PHP con INSTALL_XDEBUG=0" "1" "$(sed -n '/^  php:/,/^  nginx:/p' docker-compose.prod.yml | grep -c -E 'INSTALL_XDEBUG: *"?0"?')"
+check "docker-compose.prod.yml construye la imagen PHP de producción (Dockerfile.prod, sin Xdebug ni herramientas)" "1" "$(sed -n '/^  php:/,/^  correo:/p' docker-compose.prod.yml | grep -c -E 'dockerfile: *docker/php/Dockerfile\.prod')"
+check "M2/B1: Dockerfile.prod no instala Xdebug, ni git, unzip ni Composer" "0" "$(grep -v '^#' docker/php/Dockerfile.prod | grep -c -i -E 'xdebug|apt-get install|composer:2 /usr/bin/composer')"
+check "B1: el compose de producción monta el código de solo lectura (read_only) y solo storage/ escribible" "2" "$(sed -n '/^  php:/,/^  correo:/p' docker-compose.prod.yml | grep -c -E '^    read_only: true|\./src/storage:/var/www/html/storage')"
+check "B1: y ya no monta ./src entero en el contenedor php" "0" "$(sed -n '/^  php:/,/^  correo:/p' docker-compose.prod.yml | grep -c -E '^      - \./src:/var/www/html')"
 check "docker-compose.prod.yml fija XDEBUG_MODE=off en el servicio php" "1" "$(sed -n '/^  php:/,/^  nginx:/p' docker-compose.prod.yml | grep -c -E 'XDEBUG_MODE: *"?off"?')"
 check "el Dockerfile solo instala Xdebug con INSTALL_XDEBUG=1" "1" "$(grep -c 'if \[ "\$INSTALL_XDEBUG" = "1" \]; then install-php-extensions xdebug' docker/php/Dockerfile)"
 check "M4: docker-compose.prod.yml tiene el servicio «correo» que envía la cola" "1" "$(grep -c '^  correo:' docker-compose.prod.yml)"
