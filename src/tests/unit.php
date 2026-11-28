@@ -620,6 +620,27 @@ same('el 33,3 % de un tercio', 33.3, K::agrupar([$fila('A', '1'), $fila('B', '1'
 same('sin gastos', ['items' => [], 'total' => '0.00'], K::agrupar([]));
 same('con total cero no divide por cero', 0.0, K::agrupar([$fila('A', '0.00')])['items'][0]['percent']);
 
+section('ConfiguracionProduccion: sin claves de desarrollo ni débiles (B10)');
+use App\Security\ConfiguracionProduccion as CP;
+
+$fuerte = 'k7Vq2nXr9LmT4zWb8Hc3';
+same('las claves públicas de desarrollo se rechazan por nombre', [true, true, true, true], array_map(static fn (string $c): bool => CP::claveDebil($c, 12) !== null, CP::CLAVES_DE_DESARROLLO));
+same('una clave larga y al azar se acepta', null, CP::claveDebil($fuerte));
+same('vacía, corta, con «dev»/«password» suelto o repetitiva se rechaza', [true, true, true, true, true], [
+    CP::claveDebil('') !== null, CP::claveDebil('abc123') !== null, CP::claveDebil('mi_clave_dev_2027') !== null, CP::claveDebil('Password-de-la-empresa-1') !== null, CP::claveDebil('aaaaaaaaaaaaaaaa') !== null,
+]);
+same('«dev» dentro de una palabra o de un azar NO delata (no hay falsos positivos por «developer» o «xdevx»)', [null, null], [CP::claveDebil('Zk9developerQm4Tr7Lw2Xc'), CP::claveDebil('Qm4Tr7xdevxLw2Xc9Zk3')]);
+same('la clave de APP_KEY exige 32 caracteres', [true, false], [CP::claveDebil('k7Vq2nXr9LmT4zWb8Hc3', 32) !== null, CP::claveDebil(str_repeat('aZ3k', 8) . 'Q9x1', 32) !== null]);
+same('un .env de desarrollo (.env.example) da problemas en todas las claves, el origen y el correo', true, count(CP::problemas([
+    'APP_ORIGIN' => 'http://localhost:8090', 'APP_KEY' => 'lucas-clave-de-desarrollo-no-usar-en-produccion', 'DB_PASSWORD' => 'lucas_app_dev_2026', 'DB_MIGRATION_PASSWORD' => 'lucas_migrator_dev_2026', 'DB_ROOT_PASSWORD' => 'lucas_root_dev_2026', 'MAIL_ENCRYPTION' => 'none', 'MAIL_USER' => 'u', 'MAIL_PASSWORD' => 'p',
+])) >= 6);
+$bueno = ['APP_ORIGIN' => 'https://lucas.ejemplo.com', 'APP_KEY' => str_repeat('aZ3k', 8) . 'Q9x1', 'DB_PASSWORD' => 'k7Vq2nXr9LmT4zWb8Hc3', 'DB_MIGRATION_PASSWORD' => 'Tn5Yp8Rc2KwJ6vLq9Xm1', 'DB_ROOT_PASSWORD' => 'Gh3Fd7Sb1NzC4xMw8Qe2', 'MAIL_ENCRYPTION' => 'starttls', 'MAIL_USER' => 'u', 'MAIL_PASSWORD' => 'p'];
+same('una configuración buena no da problemas', [], CP::problemas($bueno));
+same('dos roles con la misma clave se detecta', true, count(CP::problemas([...$bueno, 'DB_ROOT_PASSWORD' => 'k7Vq2nXr9LmT4zWb8Hc3'])) === 1);
+same('APP_ORIGIN sin https o con localhost se detecta', [1, 1, 0], [count(CP::problemas([...$bueno, 'APP_ORIGIN' => 'http://lucas.ejemplo.com'])), count(CP::problemas([...$bueno, 'APP_ORIGIN' => 'https://localhost'])), count(CP::problemas([...$bueno, 'APP_ORIGIN' => 'https://lucas.ejemplo.com']))]);
+same('solo se revisa lo que está en el entorno (la aplicación solo ve DB_PASSWORD y APP_KEY)', [], CP::problemas(['DB_PASSWORD' => 'k7Vq2nXr9LmT4zWb8Hc3']));
+same('ningún mensaje incluye el valor de una clave', false, str_contains(implode(' ', CP::problemas(['DB_PASSWORD' => 'lucas_app_dev_2026', 'APP_KEY' => 'corta'])), 'lucas_app_dev_2026'));
+
 section('SmtpMailer: configuración que no se admite en producción (B5)');
 use App\Mail\SmtpMailer as SM;
 

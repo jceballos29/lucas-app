@@ -1806,5 +1806,43 @@ contains "los recursos estáticos cambiaron: la caché del service worker se ren
 post_form "$JMU" /perfil.php /perfil.php "accion=clave" "clave_actual=incorrecta" "clave_nueva=abc" "clave_nueva2=x"
 contains "U2: el campo con error queda marcado aria-invalid y enlazado a su mensaje" 'aria-invalid="true" aria-describedby="e-clave_actual"' "$TMP/body"
 
+echo; echo "== Configuración de producción: claves de desarrollo y SMTP sin cifrar (B5, B10)"
+docker compose exec -T php sh -c 'cat > /tmp/malo.env <<EOF
+APP_ORIGIN=http://localhost:8090
+APP_KEY=lucas-clave-de-desarrollo-no-usar-en-produccion
+DB_PASSWORD=lucas_app_dev_2026
+DB_MIGRATION_PASSWORD=lucas_migrator_dev_2026
+DB_ROOT_PASSWORD=lucas_root_dev_2026
+APP_DOMAIN=lucas.ejemplo.com
+MAIL_HOST=smtp.ejemplo.com
+MAIL_FROM=lucas@ejemplo.com
+MAIL_ENCRYPTION=none
+MAIL_USER=usuario
+MAIL_PASSWORD=clave
+EOF
+cat > /tmp/bueno.env <<EOF
+APP_ORIGIN=https://lucas.ejemplo.com
+APP_KEY=aZ3kaZ3kaZ3kaZ3kaZ3kaZ3kaZ3kaZ3kQ9x1
+DB_PASSWORD=k7Vq2nXr9LmT4zWb8Hc3
+DB_MIGRATION_PASSWORD=Tn5Yp8Rc2KwJ6vLq9Xm1
+DB_ROOT_PASSWORD=Gh3Fd7Sb1NzC4xMw8Qe2
+APP_DOMAIN=lucas.ejemplo.com
+MAIL_HOST=smtp.ejemplo.com
+MAIL_FROM=lucas@ejemplo.com
+MAIL_ENCRYPTION=starttls
+MAIL_USER=usuario
+MAIL_PASSWORD=clave
+EOF' >/dev/null
+SALIDA="$(docker compose exec -T php php scripts/comprobar-config.php /tmp/malo.env 2>&1)"
+check "B10: un .env con valores de desarrollo falla (exit 1)" "1" "$(docker compose exec -T php php scripts/comprobar-config.php /tmp/malo.env >/dev/null 2>&1; echo $?)"
+contains "B10: avisa de la clave de la aplicación" "DB_PASSWORD" <(echo "$SALIDA")
+contains "B10: de APP_KEY" "APP_KEY" <(echo "$SALIDA")
+contains "B10: de APP_ORIGIN sin HTTPS" "APP_ORIGIN" <(echo "$SALIDA")
+contains "B5: y del SMTP sin cifrar con credenciales" "MAIL_ENCRYPTION=none" <(echo "$SALIDA")
+check "B10: la salida nunca contiene una clave" "0" "$(echo "$SALIDA" | grep -c 'lucas_app_dev_2026\|lucas_root_dev_2026\|lucas_migrator_dev_2026')"
+check "B10: un .env correcto pasa (exit 0)" "0" "$(docker compose exec -T php php scripts/comprobar-config.php /tmp/bueno.env >/dev/null 2>&1; echo $?)"
+check "B10: bin/comprobar-produccion rechaza el .env.example (exit 1)" "1" "$(ENV_FILE=.env.example bin/comprobar-produccion >/dev/null 2>&1; echo $?)"
+docker compose exec -T php rm -f /tmp/malo.env /tmp/bueno.env
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

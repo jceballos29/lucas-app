@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#
+# Revisa el .env de PRODUCCIÓN ANTES del primer arranque (y tras cambiarlo): claves de desarrollo o débiles (B10), APP_KEY, APP_ORIGIN con
+# HTTPS, SMTP sin cifrar con credenciales (B5) y que existan los certificados. No imprime ninguna clave. Sale con 1 si algo está mal.
+#
+#   bin/comprobar-produccion                 # revisa ./.env
+#   ENV_FILE=/ruta/al/.env bin/comprobar-produccion
+#
+# Usa la imagen del contenedor php, así que hace falta Docker pero no PHP en el servidor.
+
+set -eu
+export MSYS_NO_PATHCONV=1
+cd "$(dirname "$0")/.."
+
+ENV_FILE="${ENV_FILE:-.env}"
+[ -f "$ENV_FILE" ] || { echo "No existe $ENV_FILE." >&2; exit 2; }
+ENV_ABS="$(cd "$(dirname "$ENV_FILE")" && pwd)/$(basename "$ENV_FILE")"
+
+# Certificados HTTPS (los lee nginx): se comprueban aquí porque el contenedor php no los ve.
+certs="$(grep -E '^CERTS_DIR=' "$ENV_FILE" | tail -n1 | cut -d= -f2- | tr -d '\r')"; certs="${certs:-./certs}"
+fallo=0
+for f in fullchain.pem privkey.pem; do
+    [ -f "$certs/$f" ] || { echo "✗ Falta $certs/$f (ver «Certificados HTTPS» en docs/DESPLIEGUE.md)."; fallo=1; }
+done
+
+# --no-deps y sin entrypoint: solo ejecuta el script (no arranca la base de datos ni PHP-FPM).
+docker compose run --rm --no-deps -T -v "$ENV_ABS:/tmp/lucas.env:ro" --entrypoint php php scripts/comprobar-config.php /tmp/lucas.env || fallo=1
+exit "$fallo"

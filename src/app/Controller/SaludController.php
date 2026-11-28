@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Container;
 use App\Http\Failure;
 use App\Security\AdminSemilla;
+use App\Security\ConfiguracionProduccion;
 use Throwable;
 
 /**
@@ -34,6 +35,18 @@ final class SaludController
                 echo '{"estado":"no disponible"}';
 
                 return;
+            }
+
+            // B10: tampoco es una instancia sana si la clave de la base de datos o APP_KEY son las públicas de desarrollo o claves débiles.
+            if (getenv('APP_ENV') !== 'local') {
+                $debiles = ConfiguracionProduccion::problemas(array_filter(['DB_PASSWORD' => getenv('DB_PASSWORD'), 'APP_KEY' => getenv('APP_KEY')], 'is_string'));
+                if ($debiles !== []) {
+                    error_log('[seguridad] Configuración débil: ' . implode(' ', $debiles) . ' (bin/comprobar-produccion, docs/DESPLIEGUE.md)');
+                    http_response_code(503);
+                    echo '{"estado":"no disponible"}';
+
+                    return;
+                }
             }
 
             echo '{"estado":"ok"}';
