@@ -620,6 +620,38 @@ same('el 33,3 % de un tercio', 33.3, K::agrupar([$fila('A', '1'), $fila('B', '1'
 same('sin gastos', ['items' => [], 'total' => '0.00'], K::agrupar([]));
 same('con total cero no divide por cero', 0.0, K::agrupar([$fila('A', '0.00')])['items'][0]['percent']);
 
+section('SmtpMailer: configuración que no se admite en producción (B5)');
+use App\Mail\SmtpMailer as SM;
+
+same('sin cifrar y con credenciales fuera de desarrollo se rechaza (production, staging y entorno vacío)', [true, true, true], [
+    SM::problemaDeConfiguracion('none', 'usuario', 'clave', 'production') !== null,
+    SM::problemaDeConfiguracion('none', 'usuario', '', 'staging') !== null,
+    SM::problemaDeConfiguracion('none', '', 'clave', '') !== null,
+]);
+same('el mensaje dice qué hacer (starttls o tls)', true, str_contains((string) SM::problemaDeConfiguracion('none', 'u', 'p', 'production'), 'starttls'));
+same('en desarrollo (APP_ENV=local, Mailpit) se admite sin cifrar', null, SM::problemaDeConfiguracion('none', 'usuario', 'clave', 'local'));
+same('con starttls o tls siempre se admite', [null, null], [SM::problemaDeConfiguracion('starttls', 'u', 'p', 'production'), SM::problemaDeConfiguracion('tls', 'u', 'p', 'production')]);
+same('sin cifrar y SIN credenciales (un relé interno) tampoco se rechaza', null, SM::problemaDeConfiguracion('none', '', '', 'production'));
+same('fromEnvironment rechaza la combinación peligrosa antes de conectar', 'rechazado', (static function (): string {
+    $antes = [getenv('MAIL_HOST'), getenv('MAIL_FROM'), getenv('MAIL_ENCRYPTION'), getenv('MAIL_USER'), getenv('MAIL_PASSWORD'), getenv('APP_ENV')];
+    putenv('MAIL_HOST=smtp.ejemplo.com');
+    putenv('MAIL_FROM=a@ejemplo.com');
+    putenv('MAIL_ENCRYPTION=none');
+    putenv('MAIL_USER=u');
+    putenv('MAIL_PASSWORD=p');
+    putenv('APP_ENV=production');
+    try {
+        SM::fromEnvironment();
+        $r = 'aceptado';
+    } catch (App\Mail\MailException) {
+        $r = 'rechazado';
+    }
+    foreach (['MAIL_HOST', 'MAIL_FROM', 'MAIL_ENCRYPTION', 'MAIL_USER', 'MAIL_PASSWORD', 'APP_ENV'] as $i => $k) {
+        $antes[$i] === false ? putenv($k) : putenv("$k={$antes[$i]}");
+    }
+    return $r;
+})());
+
 section('Mail\Message: construcción de correos (RF-04)');
 use App\Mail\Message as Msg;
 

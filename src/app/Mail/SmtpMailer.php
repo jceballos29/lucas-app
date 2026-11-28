@@ -27,6 +27,21 @@ final class SmtpMailer implements Mailer
     ) {
     }
 
+    /**
+     * B5 de docs/AUDITORIA.md: `AUTH LOGIN` viaja en base64, o sea, en claro. Con `MAIL_ENCRYPTION=none` el usuario y la clave del SMTP
+     * irían por la red sin cifrar; solo se admite en desarrollo (`APP_ENV=local`, Mailpit). Lógica pura, para probarla sin servidor.
+     *
+     * @return string|null El motivo por el que la configuración se rechaza, o null si es aceptable.
+     */
+    public static function problemaDeConfiguracion(string $encryption, string $usuario, string $clave, string $appEnv): ?string
+    {
+        if ($encryption === 'none' && ($usuario !== '' || $clave !== '') && $appEnv !== 'local') {
+            return 'MAIL_ENCRYPTION=none con MAIL_USER/MAIL_PASSWORD enviaría las credenciales del SMTP sin cifrar: usa starttls (puerto 587) o tls (465).';
+        }
+
+        return null;
+    }
+
     /** Construye el cliente con las variables MAIL_* del entorno. @throws MailException Si falta la configuración. */
     public static function fromEnvironment(): self
     {
@@ -43,12 +58,20 @@ final class SmtpMailer implements Mailer
             throw new MailException('MAIL_ENCRYPTION debe ser none, starttls o tls.');
         }
 
+        $usuario = (string) (getenv('MAIL_USER') ?: '');
+        $clave = (string) (getenv('MAIL_PASSWORD') ?: '');
+        $problema = self::problemaDeConfiguracion($encryption, $usuario, $clave, (string) (getenv('APP_ENV') ?: 'production'));
+
+        if ($problema !== null) {
+            throw new MailException($problema);
+        }
+
         return new self(
             $host,
             (int) (getenv('MAIL_PORT') ?: 25),
             $encryption,
-            (string) (getenv('MAIL_USER') ?: ''),
-            (string) (getenv('MAIL_PASSWORD') ?: ''),
+            $usuario,
+            $clave,
             $from,
             (string) (getenv('MAIL_FROM_NAME') ?: 'Lucas'),
         );
@@ -67,7 +90,9 @@ final class SmtpMailer implements Mailer
             bin2hex(random_bytes(12)) . '@' . $domain,
         );
 
-        $socket = @stream_socket_client(($this->encryption === 'tls' ? 'tls://' : 'tcp://') . $this->host . ':' . $this->port, $errno, $error, $this->timeout);
+        // Con TLS (directo o STARTTLS) se exige un certificado válido y a nombre del servidor: sin esto un intermediario podría suplantarlo.
+        $contexto = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'peer_name' => $this->host, 'allow_self_signed' => false]]);
+        $socket = @stream_socket_client(($this->encryption === 'tls' ? 'tls://' : 'tcp://') . $this->host . ':' . $this->port, $errno, $error, $this->timeout, STREAM_CLIENT_CONNECT, $contexto);
 
         if ($socket === false) {
             throw new MailException("No se pudo conectar al servidor de correo ($errno: $error).");
