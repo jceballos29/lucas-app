@@ -15,6 +15,9 @@ use PDO;
 /**
  * Importador asistido de movimientos desde texto/archivo CSV (Fase 13).
  *
+ * M8/U4: antes de guardar hay una VISTA PREVIA (`vistaPrevia`): cada fila con el monto como se interpretó, avisos de montos ambiguos
+ * («1.234») y de posibles duplicados (mismo día, tipo, monto y descripción ya en la cuenta, o repetidos en el archivo), y los totales.
+ *
  * Acepta líneas con separador `;` o `,`, con 3 o 4 columnas:
  *   - `Fecha;Descripción;Monto` (el signo del monto define si es `gasto` (-) o `ingreso` (+), o si todos son positivos y viene columna Tipo)
  *   - `Fecha;Tipo;Descripción;Monto`
@@ -36,8 +39,9 @@ final class ImportadorCsv
      * Analiza un texto CSV sin tocar la base de datos.
      *
      * @return array{
-     *   filas: list<array{linea: int, fecha: string, tipo: string, monto: string, descripcion: string}>,
-     *   errores: list<string>
+     *   filas: list<array{linea: int, fecha: string, tipo: string, monto: string, descripcion: string, monto_crudo: string, ambiguo: bool}>,
+     *   errores: list<string>,
+     *   truncado: bool
      * }
      */
     public static function parsearTexto(string $contenidoCsv): array
@@ -50,6 +54,7 @@ final class ImportadorCsv
         $lineas = preg_split('/\r\n|\r|\n/', trim($contenidoCsv)) ?: [];
         $filas = [];
         $errores = [];
+        $truncado = false;
 
         foreach ($lineas as $idx => $raw) {
             $numLinea = $idx + 1;
@@ -120,14 +125,91 @@ final class ImportadorCsv
                 'tipo' => $tipo,
                 'monto' => $monto,
                 'descripcion' => $descripcionLimpia !== '' ? $descripcionLimpia : 'Movimiento importado CSV',
+                'monto_crudo' => $montoBruto,
+                'ambiguo' => self::esAmbiguo($montoBruto),
             ];
 
             if (count($filas) >= self::MAX_FILAS) {
+                // Hay más filas de las que se importan por vez: se avisa en vez de cortar en silencio.
+                $truncado = count(array_filter(array_slice($lineas, $idx + 1), static fn (string $l): bool => trim($l) !== '')) > 0;
                 break;
             }
         }
 
-        return ['filas' => $filas, 'errores' => $errores];
+        return ['filas' => $filas, 'errores' => $errores, 'truncado' => $truncado];
+    }
+
+    /**
+     * ¿Se puede leer de dos maneras? «1.234» es mil doscientos treinta y cuatro (punto de miles, el formato de Lucas), pero un banco que
+     * escriba el punto como decimal querría decir 1,234. Con coma decimal o con 2 decimales no hay duda.
+     */
+    public static function esAmbiguo(string $montoBruto): bool
+    {
+        $limpio = preg_replace('/[\s$+\-−]/u', '', $montoBruto) ?? '';
+
+        return preg_match('/^\d{1,3}\.\d{3}$/', $limpio) === 1;
+    }
+
+    /**
+     * Prepara la vista previa: qué filas parecen duplicados, los totales y cómo quedaría la cuenta. No escribe nada.
+     *
+     * @param list<array{linea: int, fecha: string, tipo: string, monto: string, descripcion: string}> $filas
+     * @return array{
+     *   cuenta: string, saldo_actual: string, saldo_final: string, saldo_negativo: bool,
+     *   ingresos: string, gastos: string, duplicadas: array<int, string>
+     * }|null null si la cuenta no es del usuario o espacio.
+     */
+    public function vistaPrevia(int $userId, int $cuentaId, array $filas, ?int $espacioId = null): ?array
+    {
+        $cuenta = $this->cuentas->findOwned($userId, $cuentaId, $espacioId);
+        if ($cuenta === null || $filas === []) {
+            return null;
+        }
+
+        $fechas = array_column($filas, 'fecha');
+        $existentes = [];
+        foreach ($this->movimientos->coincidentes($cuentaId, min($fechas), max($fechas)) as $e) {
+            $existentes[self::huella($e['fecha'], $e['tipo'], $e['monto'], $e['descripcion'])] = true;
+        }
+
+        $duplicadas = [];
+        $vistas = [];
+        $ingresos = [];
+        $gastos = [];
+        $netos = [];
+        foreach ($filas as $f) {
+            $h = self::huella($f['fecha'], $f['tipo'], $f['monto'], $f['descripcion']);
+            if (isset($existentes[$h])) {
+                $duplicadas[$f['linea']] = 'bd';
+            } elseif (isset($vistas[$h])) {
+                $duplicadas[$f['linea']] = 'archivo';
+            }
+            $vistas[$h] = true;
+            if ($f['tipo'] === 'ingreso') {
+                $ingresos[] = $f['monto'];
+                $netos[] = $f['monto'];
+            } else {
+                $gastos[] = $f['monto'];
+                $netos[] = '-' . $f['monto'];
+            }
+        }
+
+        $saldoFinal = Dinero::sumar([$cuenta->saldo, ...$netos]);
+
+        return [
+            'cuenta' => $cuenta->nombre,
+            'saldo_actual' => $cuenta->saldo,
+            'saldo_final' => $saldoFinal,
+            'saldo_negativo' => $cuenta->tipo !== 'tarjeta_credito' && Dinero::aCentavos($saldoFinal) < 0,
+            'ingresos' => Dinero::sumar($ingresos === [] ? ['0.00'] : $ingresos),
+            'gastos' => Dinero::sumar($gastos === [] ? ['0.00'] : $gastos),
+            'duplicadas' => $duplicadas,
+        ];
+    }
+
+    private static function huella(string $fecha, string $tipo, string $monto, string $descripcion): string
+    {
+        return $fecha . '|' . $tipo . '|' . Dinero::aCentavos($monto) . '|' . mb_strtolower(trim($descripcion), 'UTF-8');
     }
 
     /**

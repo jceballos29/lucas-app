@@ -877,6 +877,15 @@ same('reconoce ingreso con signo + y fecha DD/MM/AAAA', ['2026-11-25', 'ingreso'
     $resCsv['filas'][1]['descripcion'],
 ]);
 same('una fecha inválida en CSV reporta la línea con error', 1, count(IC::parsearTexto("2026-02-31;Raro;-100")['errores']));
+same('M8: «1.234» es ambiguo; «1.234,50», «1234», «12.50», «1.234.567» y «$ 5.000,00» no', [true, false, false, false, false, false, true], [
+    IC::esAmbiguo('1.234'), IC::esAmbiguo('1.234,50'), IC::esAmbiguo('1234'), IC::esAmbiguo('12.50'), IC::esAmbiguo('1.234.567'), IC::esAmbiguo('$ 5.000,00'), IC::esAmbiguo('-185.000'),
+]);
+same('M8: las filas traen el monto crudo y si es ambiguo', ['-1.234', true, 'gasto', '1234.00'], (static function (): array { $f = IC::parsearTexto('2026-11-20;Café;-1.234')['filas'][0]; return [$f['monto_crudo'], $f['ambiguo'], $f['tipo'], $f['monto']]; })());
+same('U4: todos los errores se devuelven con su número de línea', ['Línea 1', 'Línea 2'], array_map(static fn (string $e): string => mb_substr($e, 0, 7), IC::parsearTexto("mala;x;-5\n2026-11-20;y;abc\n2026-11-20;z;-1")['errores']));
+$muchas = implode("\n", array_map(static fn (int $i): string => "2026-11-20;Fila $i;-100", range(1, IC::MAX_FILAS + 5)));
+$resMuchas = IC::parsearTexto($muchas);
+same('M8: si hay más de 200 filas se leen 200 y se avisa de que hay más (no se corta en silencio)', [IC::MAX_FILAS, true], [count($resMuchas['filas']), $resMuchas['truncado']]);
+same('con exactamente 200 filas no se marca como truncado', false, IC::parsearTexto(implode("\n", array_map(static fn (int $i): string => "2026-11-20;Fila $i;-100", range(1, IC::MAX_FILAS))))['truncado']);
 
 section('MovimientoValidator: etiquetas transversales y división de movimientos (Fase 14)');
 $mv14 = new App\Validation\MovimientoValidator();

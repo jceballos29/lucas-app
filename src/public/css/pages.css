@@ -247,3 +247,10 @@ input[type="color"].input { width: 96px; height: 44px; padding: 4px; cursor: poi
 .recovery-codes { list-style: none; margin: 12px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
 .recovery-codes li { padding: 8px 12px; border: 1px solid var(--border, #cbd5e1); border-radius: 8px; background: var(--surface-2, #f8fafc); }
 .recovery-codes code { font-size: 1rem; letter-spacing: .06em; user-select: all; }
+
+/* Vista previa de la importación CSV (M8/U4) */
+.summary > div { display: flex; gap: var(--s-2); align-items: baseline; }
+.summary dt { color: var(--muted); }
+.summary dd { margin: 0; font-weight: 650; color: var(--ink); }
+.error-list { margin: var(--s-2) 0 0; padding-left: 1.25rem; }
+.table td input[type="checkbox"] { width: 20px; height: 20px; }

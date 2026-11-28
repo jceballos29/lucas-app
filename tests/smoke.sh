@@ -1496,10 +1496,40 @@ contains "el saldo de Banco quedó exactamente en 850.000" '$850.000' "$TMP/body
 
 request "$JTR" GET /movimientos-importar.php
 check "la pantalla de importar CSV responde 200" "200" "$CODE"
-post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "id_cuenta=$CBANCO" "id_categoria_gasto=$KG" "id_categoria_ingreso=$KI" "csv_texto=$HOY_APP;Reembolso CSV;+50000"
-check "importar CSV redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
+# M8/U4: importar es en dos pasos (vista previa → confirmar). El servidor vuelve a leer el texto: no confía en lo que muestre la tabla.
+IMP=(  "id_cuenta=$CBANCO" "id_categoria_gasto=$KG" "id_categoria_ingreso=$KI" )
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "${IMP[@]}" "csv_texto=$HOY_APP;Reembolso CSV;+50000"
+check "M8: enviar el CSV muestra la vista previa" "200" "$CODE"
+contains "M8: la vista previa dice «Revisa antes de importar»" "Revisa antes de importar" "$TMP/body"
+contains "M8: y muestra el monto como se interpretó" '+$50.000' "$TMP/body"
+contains "M8: y el saldo de la cuenta antes y después" "Saldo de «Banco»" "$TMP/body"
+check "M8: la vista previa NO guardó nada todavía" "0" "$(sql "SELECT COUNT(*) FROM transacciones WHERE descripcion='Reembolso CSV'")"
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "${IMP[@]}" "accion=confirmar" "csv_texto=$HOY_APP;Reembolso CSV;+50000"
+contains "M8: confirmar sin marcar ninguna fila no importa nada y lo explica" "Marca al menos un movimiento" "$TMP/body"
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "${IMP[@]}" "accion=confirmar" "incluir[]=999" "csv_texto=$HOY_APP;Reembolso CSV;+50000"
+contains "M8: marcar una línea que no existe tampoco importa" "Marca al menos un movimiento" "$TMP/body"
+check "M8: …y sigue sin haber nada guardado" "0" "$(sql "SELECT COUNT(*) FROM transacciones WHERE descripcion='Reembolso CSV'")"
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "${IMP[@]}" "accion=confirmar" "incluir[]=1" "csv_texto=$HOY_APP;Reembolso CSV;+50000"
+check "importar CSV (confirmado) redirige a movimientos" "302 /movimientos.php" "$CODE $LOC"
 request "$JTR" GET /movimientos.php
 contains "muestra el movimiento importado desde CSV" "Reembolso CSV" "$TMP/body"
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "${IMP[@]}" "csv_texto=$HOY_APP;Reembolso CSV;+50000"
+contains "M8: volver a cargar el mismo CSV avisa del posible duplicado" "Posible duplicado: ya está en la cuenta" "$TMP/body"
+absent "M8: y la fila duplicada viene desmarcada" 'id="inc-1" checked' "$TMP/body"
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "${IMP[@]}" "csv_texto=$HOY_APP;Café ambiguo;-1.234"
+contains "M8: un monto como «1.234» se marca como ambiguo" "Monto ambiguo" "$TMP/body"
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "${IMP[@]}" "csv_texto=$HOY_APP;Uno;-1000
+$HOY_APP;Uno;-1000"
+contains "M8: una fila repetida dentro del archivo se avisa" "Repetida en este archivo" "$TMP/body"
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "${IMP[@]}" "csv_texto=fecha-mala;X;-5
+$HOY_APP;Y;abc
+$HOY_APP;Z;-100"
+contains "U4: se listan TODOS los problemas con su número de línea (la 1…" "Línea 1" "$TMP/body"
+contains "U4: …y la 2)" "Línea 2" "$TMP/body"
+contains "U4: sin confirmar mientras haya errores (se vuelve a previsualizar)" "Previsualizar" "$TMP/body"
+absent "U4: no se ofrece «Confirmar importación» con errores" "Confirmar importación" "$TMP/body"
+post_form "$JTR" /movimientos-importar.php /movimientos-importar.php "${IMP[@]}" "accion=editar" "csv_texto=$HOY_APP;Texto conservado;-5"
+contains "U4: «Volver y editar» devuelve el texto al cuadro" "Texto conservado" "$TMP/body"
 
 echo; echo "== División de movimientos (Splits) y etiquetas transversales #tags (Fase 14)"
 KT2="$(sql "SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND nombre='Transporte'")"

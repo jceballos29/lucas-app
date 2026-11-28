@@ -215,6 +215,22 @@ final class MovimientoRepository
      *
      * @return list<string>
      */
+    /**
+     * Movimientos de una cuenta entre dos fechas (inclusive), para detectar duplicados al importar (M8). Quien llama ya comprobó que la
+     * cuenta es del usuario o del espacio.
+     *
+     * @return list<array{fecha: string, tipo: string, monto: string, descripcion: string}>
+     */
+    public function coincidentes(int $cuentaId, string $desde, string $hasta): array
+    {
+        $stmt = $this->pdo->prepare('SELECT fecha, tipo, monto, descripcion FROM transacciones WHERE id_cuenta = :c AND fecha BETWEEN :d AND :h');
+        $stmt->execute(['c' => $cuentaId, 'd' => $desde, 'h' => $hasta]);
+
+        return array_map(static fn (array $r): array => [
+            'fecha' => (string) $r['fecha'], 'tipo' => (string) $r['tipo'], 'monto' => (string) $r['monto'], 'descripcion' => (string) $r['descripcion'],
+        ], $stmt->fetchAll());
+    }
+
     public function todasLasRutasAdjuntos(): array
     {
         return array_values(array_filter(

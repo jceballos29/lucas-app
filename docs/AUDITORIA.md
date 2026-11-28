@@ -10,7 +10,7 @@ Lucas está **bien construida y la base de seguridad es sólida** para una aplic
 |---|---|---|
 | Crítica | 1 (resuelta) | Compromete producción si se despliega tal cual. |
 | Alta | 2 (2 resueltas) | Explotable hoy por un usuario registrado o anónimo. |
-| Media | 8 (7 resueltas) | Debilita seguridad, disponibilidad o integridad de datos; conviene corregir antes de abrir la app al público. |
+| Media | 8 (8 resueltas) | Debilita seguridad, disponibilidad o integridad de datos; conviene corregir antes de abrir la app al público. |
 | Baja | 12 | Endurecimiento y buenas prácticas. |
 | Refactor / código muerto | 9 | Deuda técnica; no afecta a usuarios hoy. |
 | UX/UI | 11 | Accesibilidad, móvil y flujos. |
@@ -186,10 +186,17 @@ Lucas está **bien construida y la base de seguridad es sólida** para una aplic
   - **No se hizo**: código QR (hay clave para teclear y enlace `otpauth://`; un QR necesitaría una librería o generarlo a mano), aviso por correo al activar/desactivar, ni 2FA por SMS/correo (a propósito: más débiles).
   - Si se pierde `APP_KEY`, los secretos guardados no se pueden leer: nadie con 2FA podría pasar el segundo paso hasta usar `desactivar-2fa.php` y reactivarlo.
 
-#### M8 · Importación CSV sin vista previa y con formato de número ambiguo
+#### M8 · Importación CSV sin vista previa y con formato de número ambiguo — ✅ RESUELTO (2026-11-28, junto con U4)
 - **Dónde:** `ImportadorCsv`, `Dinero::parse()`.
 - **Evidencia (probado):** `0.001` se acepta como **$1,00** y `1.234` como **$1.234** (punto = miles, decisión documentada). Un CSV de un banco con decimales en punto («1.500» = ¿1,5 o mil quinientos?) se importa **sin que el usuario vea el resultado antes de guardar**, y no hay detección de duplicados.
 - **Solución:** paso intermedio «Vista previa» (tabla con fecha, descripción, monto interpretado y total), botón «Confirmar importación», aviso si algún monto es ambiguo, y detección de duplicados (misma fecha+monto+descripción en la cuenta). **Esfuerzo:** 0,5 día.
+- **Qué se hizo:**
+  - **Importar es en dos pasos.** Enviar el CSV (pegado o archivo) solo muestra la **vista previa** «Revisa antes de importar»: tabla con línea, fecha, tipo, descripción y el monto **como se interpretó**, totales de ingresos y gastos y el saldo de la cuenta antes → después. Solo «Confirmar importación» guarda; «Volver y editar» devuelve el texto al cuadro.
+  - **Montos ambiguos:** una fila como «1.234» (punto + 3 cifras) se marca con «Monto ambiguo: se leyó «1.234» como $1.234» y un aviso explica que Lucas lee el punto como miles.
+  - **Duplicados:** si ya hay un movimiento de esa cuenta con el mismo día, tipo, monto y descripción, la fila se marca «Posible duplicado» y **viene desmarcada** (se puede marcar a mano); las repetidas dentro del propio archivo se avisan pero vienen marcadas. Cada fila lleva su casilla para importar solo las que quieras.
+  - **Aviso de saldo negativo** ya en la vista previa (antes solo fallaba al guardar) y **aviso de truncado**: con más de 200 filas se leen 200 y se dice, en vez de cortar en silencio.
+  - **El servidor no confía en la tabla:** al confirmar vuelve a leer el texto CSV (los montos nunca viajan como campos), solo importa las líneas marcadas que existan y revalida la cuenta (ajena → 404).
+- Pruebas: 5 unitarias, 8 de integración, 19 de humo y 6 de `ataques.py` (una cuenta ajena no se puede ni previsualizar, campos extra y líneas manipuladas se ignoran, un CSV de 20.000 líneas basura se rechaza rápido listando como mucho 50 problemas, y la vista previa escapa HTML).
 
 ### BAJA
 
@@ -279,10 +286,10 @@ Método: `ui-ux-pro-max` (checklist de accesibilidad, interacción, rendimiento,
 
 | ID | Severidad | Hallazgo | Solución |
 |---|---|---|---|
-| U1 | Media | **El botón flotante (+) tapa contenido** en móvil (en la captura del panel oculta texto de «Gastos por categoría») y duplica el botón «Nuevo movimiento» de la cabecera. | Añadir `padding-bottom: 88px` al contenido en móvil, o quitar el botón de cabecera en móvil y dejar solo el FAB; ocultar el FAB cuando el teclado está abierto. |
-| U2 | Media | **El foco no pasa al primer error al fallar la validación.** (Corrección: `Ui::notice` sí usa `role="alert"`/`"status"`; la auditoría automática no los vio porque las 16 páginas se pidieron sin avisos ni errores visibles.) Falta verificar que los errores por campo se anuncien (`aria-describedby` ya existe en `Ui`). | `role="status"` en avisos de éxito, `role="alert"` en errores; resumen de errores arriba del formulario con enlaces a cada campo y `focus()` al cargar si hay errores; `aria-describedby` en cada campo inválido. |
-| U3 | Media | **Objetivos táctiles menores de 44 px:** `.btn--sm` (36 px), botones de paginación (40 px) y los enlaces de texto «Ver reportes / Ver todos / Ver presupuestos» de las tarjetas. La guía `ui-ux-pro-max` pide ≥ 44 px y 8 px de separación. | `min-height: 44px` en móvil (`@media (pointer: coarse)`) para estos controles; padding vertical en los enlaces de cabecera de tarjeta. |
-| U4 | Media | **Importar CSV no tiene vista previa** (ver M8) y solo muestra los 3 primeros errores del archivo. | Tabla de vista previa, lista completa de errores con número de línea y botón «Confirmar». |
+| U1 ✅ | Media | **El botón flotante (+) tapa contenido** en móvil (en la captura del panel oculta texto de «Gastos por categoría») y duplica el botón «Nuevo movimiento» de la cabecera. | Añadir `padding-bottom: 88px` al contenido en móvil, o quitar el botón de cabecera en móvil y dejar solo el FAB; ocultar el FAB cuando el teclado está abierto. |
+| U2 ✅ | Media | **El foco no pasa al primer error al fallar la validación.** (Corrección: `Ui::notice` sí usa `role="alert"`/`"status"`; la auditoría automática no los vio porque las 16 páginas se pidieron sin avisos ni errores visibles.) Falta verificar que los errores por campo se anuncien (`aria-describedby` ya existe en `Ui`). | `role="status"` en avisos de éxito, `role="alert"` en errores; resumen de errores arriba del formulario con enlaces a cada campo y `focus()` al cargar si hay errores; `aria-describedby` en cada campo inválido. |
+| U3 ✅ | Media | **Objetivos táctiles menores de 44 px:** `.btn--sm` (36 px), botones de paginación (40 px) y los enlaces de texto «Ver reportes / Ver todos / Ver presupuestos» de las tarjetas. La guía `ui-ux-pro-max` pide ≥ 44 px y 8 px de separación. | `min-height: 44px` en móvil (`@media (pointer: coarse)`) para estos controles; padding vertical en los enlaces de cabecera de tarjeta. |
+| U4 ✅ | Media | **Importar CSV no tiene vista previa** (ver M8) y solo muestra los 3 primeros errores del archivo. | Tabla de vista previa, lista completa de errores con número de línea y botón «Confirmar». |
 | U5 | Baja | **Los errores del servidor salen como texto plano** (403/404/429 de `Response::plain`, 413 de nginx): sin marca, sin navegación, sin botón de volver. | Páginas de error con layout (ver E3) y `error_page 413` en nginx apuntando a una página estática. |
 | U6 | Baja | **Formulario de movimiento largo y con campos innecesarios:** «Número de cuotas (tarjeta de crédito)» aparece siempre aunque la cuenta no sea tarjeta; no se preselecciona la cuenta cuando solo hay una; el campo Monto no recibe el foco; el selector de archivo es el nativo («Browse…» en inglés según el navegador) y rompe el estilo. | Mostrar «Cuotas» solo si la cuenta elegida es de tarjeta (el atributo ya se puede leer con `data-tipo`); preseleccionar cuenta única y última categoría usada; `autofocus` en monto; estilizar el `input[type=file]` con una etiqueta «Elegir archivo». |
 | U7 | Baja | **No hay modo oscuro** (0 reglas `prefers-color-scheme`). El panel ya usa una tarjeta oscura, así que el sistema de color lo admite fácilmente. | Redefinir los tokens bajo `@media (prefers-color-scheme: dark)` y probar contrastes. |
@@ -350,8 +357,8 @@ Los hallazgos de este reporte que siguieran abiertos (hoy ninguno) se marcan en 
 | 6 | ~~M1~~ ✅ | Bloqueo por (correo, IP) | hecho | DoS de cuentas |
 | 7 | ~~M6~~ ✅ | CSP/attachment en comprobantes | hecho | Endurecimiento |
 | 8 | ~~M4~~ ✅ | Cola de correo | hecho | Disponibilidad |
-| 9 | U1-U3 | FAB, aria-live y tamaños táctiles | 0,5 día | Accesibilidad |
-| 10 | M8 / U4 | Vista previa de importación | 0,5 día | Datos erróneos |
+| 9 | ~~U1-U3~~ ✅ | FAB, foco en errores y tamaños táctiles | hecho | Accesibilidad |
+| 10 | ~~M8 / U4~~ ✅ | Vista previa de importación | hecho | Datos erróneos |
 | 11 | ~~M5~~ ✅ (parcial) | Tope de sesiones, caducidad absoluta, menos escrituras; falta el `SessionHandler` | hecho | Escalado |
 | 12 | ~~M7~~ ✅ | 2FA TOTP | hecho | Cuenta financiera |
 | 13 | R2, R8, R1 | Lista única de tablas, CI + PHPStan, partir `MovimientoController` | 1-2 días | Deuda técnica |

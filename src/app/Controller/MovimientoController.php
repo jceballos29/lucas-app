@@ -387,6 +387,8 @@ final class MovimientoController
             }
 
             $errors = [];
+            $erroresCsv = [];
+            $preview = null;
             $old = [
                 'id_cuenta' => isset($cuentas[0]) ? (string) $cuentas[0]->id : '',
                 'id_categoria_gasto' => (string) $catGastoDef,
@@ -432,35 +434,66 @@ final class MovimientoController
                     $errors['csv_texto'] = 'Pega las líneas CSV o selecciona un archivo .csv.';
                 }
 
-                if ($errors === []) {
+                // M8/U4: primero una VISTA PREVIA; solo «confirmar» guarda. «editar» vuelve al formulario con el texto.
+                $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : 'previsualizar';
+
+                if ($accion === 'editar') {
+                    $errors = [];
+                } elseif ($errors === []) {
                     $parsed = \App\Movimientos\ImportadorCsv::parsearTexto($csvTexto);
                     if ($parsed['errores'] !== []) {
-                        $errors['csv_texto'] = implode(' ', array_slice($parsed['errores'], 0, 3));
+                        $n = count($parsed['errores']);
+                        // Se listan todos los problemas con su línea, hasta 50 (un archivo basura de 500 KB no debe generar una página gigante).
+                        $erroresCsv = array_slice($parsed['errores'], 0, 50);
+                        if ($n > 50) {
+                            $erroresCsv[] = '… y ' . ($n - 50) . ' problemas más.';
+                        }
+                        $errors['csv_texto'] = $n === 1 ? 'Hay 1 línea con problemas. Corrígela y vuelve a previsualizar.' : "Hay $n líneas con problemas. Corrígelas y vuelve a previsualizar.";
                     } elseif ($parsed['filas'] === []) {
                         $errors['csv_texto'] = 'No se encontraron filas de movimientos válidas en el CSV.';
                     } else {
-                        $res = $this->container->importadorCsv()->importar(
-                            $user['id'],
-                            $cuentaId,
-                            $catGastoId,
-                            $catIngresoId,
-                            $parsed['filas'],
-                            $espacioId,
-                        );
+                        $importador = $this->container->importadorCsv();
+                        $preview = $importador->vistaPrevia($user['id'], $cuentaId, $parsed['filas'], $espacioId);
 
-                        switch ($res['codigo']) {
-                            case ReglasMovimiento::OK:
-                                $n = $res['importados'];
-                                Flash::set('ok', 'Se ' . ($n === 1 ? 'importó 1 movimiento' : "importaron $n movimientos") . " en «{$res['cuenta']}».");
-                                Response::redirect('/movimientos.php');
+                        if ($preview === null) {
+                            Response::plain(404, "No encontrado.\n");
+                        }
 
-                            case ReglasMovimiento::SALDO_INSUFICIENTE:
-                                $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));
-                                $errors['csv_texto'] = "La cuenta «{$res['cuenta']}» tiene $disp disponibles y al aplicar estos movimientos quedaría en saldo negativo.";
-                                break;
+                        $preview['filas'] = $parsed['filas'];
+                        $preview['truncado'] = $parsed['truncado'];
 
-                            default:
-                                Response::plain(404, "No encontrado.\n");
+                        if ($accion === 'confirmar') {
+                            $marcadas = [];
+                            foreach (is_array($_POST['incluir'] ?? null) ? $_POST['incluir'] : [] as $l) {
+                                if (is_string($l) && ctype_digit($l) && strlen($l) < 9) {
+                                    $marcadas[(int) $l] = true;
+                                }
+                            }
+                            $elegidas = array_values(array_filter($parsed['filas'], static fn (array $f): bool => isset($marcadas[$f['linea']])));
+                            $preview['marcadas'] = array_keys($marcadas);
+
+                            if ($elegidas === []) {
+                                $errors['incluir'] = 'Marca al menos un movimiento para importarlo.';
+                            } else {
+                                $res = $importador->importar($user['id'], $cuentaId, $catGastoId, $catIngresoId, $elegidas, $espacioId);
+
+                                switch ($res['codigo']) {
+                                    case ReglasMovimiento::OK:
+                                        $n = $res['importados'];
+                                        $omitidas = count($parsed['filas']) - $n;
+                                        Flash::set('ok', 'Se ' . ($n === 1 ? 'importó 1 movimiento' : "importaron $n movimientos") . " en «{$res['cuenta']}»."
+                                            . ($omitidas > 0 ? ' Se omitieron ' . $omitidas . ($omitidas === 1 ? ' fila.' : ' filas.') : ''));
+                                        Response::redirect('/movimientos.php');
+
+                                    case ReglasMovimiento::SALDO_INSUFICIENTE:
+                                        $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));
+                                        $errors['incluir'] = "La cuenta «{$res['cuenta']}» tiene $disp disponibles y al aplicar los movimientos marcados quedaría en saldo negativo.";
+                                        break;
+
+                                    default:
+                                        Response::plain(404, "No encontrado.\n");
+                                }
+                            }
                         }
                     }
                 }
@@ -474,6 +507,8 @@ final class MovimientoController
             'categorias' => $categorias,
             'old' => $old,
             'errors' => $errors,
+            'erroresCsv' => $erroresCsv,
+            'preview' => $preview,
         ], 'Importar movimientos CSV', $user, 'app', 'movimientos');
     }
 

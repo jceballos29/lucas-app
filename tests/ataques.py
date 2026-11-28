@@ -443,6 +443,32 @@ def pruebas_archivos(A: Cliente, ea: str) -> None:
     chk('las imágenes siguen mostrándose en el navegador (inline)', (A.get(f'/adjunto.php?id={id_mov}').headers.get('Content-Disposition') or '').startswith('inline'))
 
 
+def pruebas_importacion(A: Cliente, B: Cliente, ea: str, eb: str) -> None:
+    seccion('Importación CSV: vista previa, manipulación y abuso (M8/U4)')
+    uA, uB = uid(ea), uid(eb)
+    crear_cuenta(A, 'Cuenta Import', '100000')
+    ca = id_cuenta(uA, 'Cuenta Import')
+    cat_g = mysql("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo='gasto' ORDER BY id_categoria LIMIT 1")
+    cat_i = mysql("SELECT id_categoria FROM categorias WHERE id_usuario IS NULL AND tipo='ingreso' ORDER BY id_categoria LIMIT 1")
+    hoy = hoy_mes()
+    base = {'id_cuenta': ca, 'id_categoria_gasto': cat_g, 'id_categoria_ingreso': cat_i}
+    n0 = mysql(f"SELECT COUNT(*) FROM transacciones WHERE id_cuenta={ca}")
+    r = A.post('/movimientos-importar.php', {**base, 'csv_texto': f'{hoy};Previa;-100'}, '/movimientos-importar.php')
+    chk('enviar un CSV solo previsualiza: no guarda nada', r.status == 200 and 'Revisa antes de importar' in r.texto and mysql(f"SELECT COUNT(*) FROM transacciones WHERE id_cuenta={ca}") == n0)
+    r = B.post('/movimientos-importar.php', {**base, 'accion': 'confirmar', 'incluir[]': '1', 'csv_texto': f'{hoy};Intruso;-100'}, '/movimientos-importar.php')
+    chk('B no puede previsualizar ni confirmar sobre la cuenta de A (404) y no se crea nada', r.status == 404 and mysql(f"SELECT COUNT(*) FROM transacciones WHERE id_cuenta={ca}") == n0, f'HTTP {r.status}')
+    r = A.post('/movimientos-importar.php', {**base, 'accion': 'confirmar', 'incluir[]': '1', 'csv_texto': f'{hoy};Honesto;-250', 'monto': '1', 'filas': '[{"monto":"1"}]'}, '/movimientos-importar.php')
+    chk('al confirmar solo cuenta el texto CSV: campos extra («monto», «filas») se ignoran', mysql(f"SELECT monto FROM transacciones WHERE id_cuenta={ca} AND descripcion='Honesto'") == '250.00', mysql(f"SELECT monto FROM transacciones WHERE id_cuenta={ca} AND descripcion='Honesto'"))
+    r = A.post('/movimientos-importar.php', {**base, 'accion': 'confirmar', 'incluir[]': ['x', '-1', '1e3', '99999999999'], 'csv_texto': f'{hoy};Raro;-1'}, '/movimientos-importar.php')
+    chk('números de línea manipulados no importan nada ni rompen', r.status == 200 and mysql(f"SELECT COUNT(*) FROM transacciones WHERE descripcion='Raro'") == '0', f'HTTP {r.status}')
+    basura = '\n'.join(f'basura {i};x;y' for i in range(20000))
+    t0 = time.time()
+    r = A.post('/movimientos-importar.php', {**base, 'csv_texto': basura}, '/movimientos-importar.php')
+    chk('un CSV de 20.000 líneas basura se rechaza rápido y la página lista como mucho 50 problemas', r.status == 200 and time.time() - t0 < 8 and r.texto.count('<li>Línea') <= 50 and 'problemas más' in r.texto, f'{time.time() - t0:.1f} s, {r.texto.count("<li>Línea")} líneas')
+    r = A.post('/movimientos-importar.php', {**base, 'csv_texto': f'{hoy};<script>alert(1)</script>;-5'}, '/movimientos-importar.php')
+    chk('la vista previa escapa el HTML de la descripción', '<script>alert(1)</script>' not in r.texto and '&lt;script&gt;' in r.texto)
+
+
 def pruebas_espacios(E: Cliente, F: Cliente, B: Cliente, ee: str, ef: str) -> None:
     seccion('Espacios compartidos: roles y abuso')
     uE, uF = uid(ee), uid(ef)
@@ -821,6 +847,7 @@ def main() -> int:
         pruebas_carreras(A, ea)
         pruebas_entradas(A, ea)
         pruebas_archivos(A, ea)
+        pruebas_importacion(A, B, ea, eb)
         pruebas_espacios(E, F, B, ee, ef)
         pruebas_sesion(ea)
         pruebas_correo(ev)

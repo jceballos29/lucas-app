@@ -1286,6 +1286,19 @@ same('importar lote CSV de +50.000 y -20.000 deja el saldo en 205.000', ['ok', 2
     (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo,
 ]);
 
+// M8/U4: vista previa (no escribe), duplicados, totales y saldo resultante.
+$antesSaldo = (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo;
+$lotePrev = App\Movimientos\ImportadorCsv::parsearTexto("2026-11-25;Bono;+50000\n2026-11-25;Cena;-30000\n2026-11-25;Cena;-30000\n2026-11-26;Nueva;-1000")['filas'];
+$prev = $importador->vistaPrevia($cUser, $cCuenta, $lotePrev);
+same('vista previa: marca como duplicado de la cuenta lo que ya está importado (mismo día, tipo, monto y descripción)', [1 => 'bd'], array_intersect_key($prev['duplicadas'], [1 => 1]));
+same('vista previa: la 2.ª «Cena» es nueva en la cuenta y la 3.ª se marca repetida en el archivo', [3 => 'archivo'], array_intersect_key($prev['duplicadas'], [2 => 1, 3 => 1]));
+same('vista previa: no hay duplicado si cambia el monto o el día', false, isset($prev['duplicadas'][4]));
+same('vista previa: totales y saldo resultante', ['50000.00', '61000.00', $antesSaldo, App\Support\Dinero::sumar([$antesSaldo, '50000.00', '-30000.00', '-30000.00', '-1000.00'])], [$prev['ingresos'], $prev['gastos'], $prev['saldo_actual'], $prev['saldo_final']]);
+same('vista previa: NO escribió nada (el saldo no cambió)', $antesSaldo, (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo);
+same('vista previa: avisa si la cuenta quedaría en negativo', true, $importador->vistaPrevia($cUser, $cCuenta, App\Movimientos\ImportadorCsv::parsearTexto('2026-11-27;Gasto enorme;-99999999')['filas'])['saldo_negativo']);
+same('vista previa de una cuenta ajena: null (no revela nada)', null, $importador->vistaPrevia($uOtroImp = (int) $usuarios->create('Intruso Imp', 'intruso.imp@correo.com', 'x'), $cCuenta, $lotePrev));
+same('vista previa sin filas: null', null, $importador->vistaPrevia($cUser, $cCuenta, []));
+
 section('División de movimientos (Splits) y etiquetas transversales #tags (Fase 14)');
 $sUser = (int) $usuarios->create('Sofía Splits', 'sofia.splits@correo.com', 'x');
 $sCuenta = $cuentas->create($sUser, 'Banco Sofía', 'bancaria', '500000.00');
