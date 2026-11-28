@@ -123,6 +123,12 @@ section('LimitadorIntentos (reglas puras)');
 same('por debajo de los límites', false, App\Auth\LimitadorIntentos::excede(4, 19));
 same('5 por correo bloquea', true, App\Auth\LimitadorIntentos::excede(5, 0));
 same('20 por IP bloquea', true, App\Auth\LimitadorIntentos::excede(0, 20));
+same('con par: 5 del par bloquean', true, App\Auth\LimitadorIntentos::excede(5, 5, 5));
+same('con par: 49 por correo no bloquean si el par está bajo', false, App\Auth\LimitadorIntentos::excede(49, 5, 4));
+same('con par: 50 por correo (IP rotatorias) bloquean', true, App\Auth\LimitadorIntentos::excede(50, 0, 0));
+same('con par: 20 por IP bloquean', true, App\Auth\LimitadorIntentos::excede(0, 20, 0));
+same('login y clave cuentan por par; registro no', [true, true, false], [App\Auth\LimitadorIntentos::usaPar('login'), App\Auth\LimitadorIntentos::usaPar('clave'), App\Auth\LimitadorIntentos::usaPar('registro')]);
+same('la clave del par no lleva el correo ni la IP en claro y depende de ambos', true, !str_contains(App\Auth\LimitadorIntentos::clavePar('ana@correo.com', '1.2.3.4'), 'ana') && App\Auth\LimitadorIntentos::clavePar('ana@correo.com', '1.2.3.4') !== App\Auth\LimitadorIntentos::clavePar('ana@correo.com', '1.2.3.5'));
 same('la clave del correo no lleva el correo en claro', false, str_contains(App\Auth\LimitadorIntentos::claveCorreo('ana@correo.com'), 'ana'));
 same('la clave del correo ignora mayúsculas y espacios', App\Auth\LimitadorIntentos::claveCorreo('ana@correo.com'), App\Auth\LimitadorIntentos::claveCorreo(' ANA@correo.com '));
 

@@ -63,7 +63,7 @@ final class AuthController
                 return;
             }
 
-            $limitador->perdonar('login', $correo);
+            $limitador->perdonar('login', $correo, $ip);
         } catch (RuntimeException $error) {
             $this->failed($error, 'auth/login', ['email' => $correo], 'Iniciar sesión');
         }

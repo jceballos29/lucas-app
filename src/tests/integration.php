@@ -119,16 +119,34 @@ section('LimitadorIntentos (BD real)');
 $limitador = new LimitadorIntentos($container->intentos());
 same('al principio no hay bloqueo', false, $limitador->bloqueado('login', 'x@correo.com', '10.0.0.1'));
 
-for ($i = 0; $i < LimitadorIntentos::MAX_POR_CORREO - 1; $i++) {
-    $limitador->registrar('login', 'x@correo.com', '10.0.0.' . (10 + $i));
+// M1: en login el bloqueo duro es por par (correo, IP); los fallos de otras IP no dejan fuera al dueño.
+for ($i = 0; $i < LimitadorIntentos::MAX_POR_PAR - 1; $i++) {
+    $limitador->registrar('login', 'x@correo.com', '10.0.0.1');
 }
-same('4 fallos del mismo correo aún no bloquean', false, $limitador->bloqueado('login', 'x@correo.com', '10.0.0.99'));
-$limitador->registrar('login', 'X@correo.com', '10.0.0.50');
-same('el 5.º fallo bloquea ese correo (sin distinguir mayúsculas)', true, $limitador->bloqueado('login', 'x@correo.com', '10.0.0.99'));
-same('otro correo desde otra IP no se ve afectado', false, $limitador->bloqueado('login', 'y@correo.com', '10.0.0.99'));
-same('los fallos de login no cuentan para el registro', false, $limitador->bloqueado('registro', 'x@correo.com', '10.0.0.99'));
-$limitador->perdonar('login', 'x@correo.com');
-same('perdonar libera el correo', false, $limitador->bloqueado('login', 'x@correo.com', '10.0.0.99'));
+same('4 fallos del mismo par aún no bloquean', false, $limitador->bloqueado('login', 'x@correo.com', '10.0.0.1'));
+$limitador->registrar('login', 'X@correo.com', '10.0.0.1');
+same('el 5.º fallo bloquea ese par (sin distinguir mayúsculas)', true, $limitador->bloqueado('login', 'x@correo.com', '10.0.0.1'));
+same('M1: el dueño, desde OTRA IP, puede entrar', false, $limitador->bloqueado('login', 'x@correo.com', '10.0.0.99'));
+same('otro correo desde la misma IP no se ve afectado', false, $limitador->bloqueado('login', 'y@correo.com', '10.0.0.1'));
+same('los fallos de login no cuentan para el registro', false, $limitador->bloqueado('registro', 'x@correo.com', '10.0.0.1'));
+$limitador->perdonar('login', 'x@correo.com', '10.0.0.1');
+same('perdonar libera el par', false, $limitador->bloqueado('login', 'x@correo.com', '10.0.0.1'));
+
+for ($i = 0; $i < LimitadorIntentos::MAX_POR_CORREO_ROTANDO_IP - 1; $i++) {
+    $limitador->registrar('login', 'rot@correo.com', '172.16.' . intdiv($i, 4) . '.' . (1 + $i % 4));
+}
+same('49 fallos con IP rotatorias (4 por IP) aún no bloquean el correo', false, $limitador->bloqueado('login', 'rot@correo.com', '172.31.0.1'));
+$limitador->registrar('login', 'rot@correo.com', '172.31.9.9');
+same('el 50.º fallo con el mismo correo (rotando IP) bloquea el correo', true, $limitador->bloqueado('login', 'rot@correo.com', '172.31.0.1'));
+$limitador->perdonar('login', 'rot@correo.com', '172.31.9.9');
+same('un acceso correcto perdona el contador por correo', false, $limitador->bloqueado('login', 'rot@correo.com', '172.31.0.1'));
+
+// El registro mantiene el límite clásico por correo (5): no es adivinar contraseñas, sino evitar el abuso del correo.
+for ($i = 0; $i < LimitadorIntentos::MAX_POR_CORREO; $i++) {
+    $limitador->registrar('registro', 'w@correo.com', '10.0.1.' . (10 + $i));
+}
+same('registro: 5 intentos con el mismo correo bloquean aunque cambie la IP', true, $limitador->bloqueado('registro', 'w@correo.com', '10.0.1.99'));
+$limitador->perdonar('registro', 'w@correo.com');
 
 for ($i = 0; $i < LimitadorIntentos::MAX_POR_IP; $i++) {
     $limitador->registrar('registro', "z$i@correo.com", '10.9.9.9');
@@ -940,6 +958,7 @@ $otraAntes = $filasDe($otra);
 $catsDef = (int) $pdo->query('SELECT COUNT(*) FROM categorias WHERE id_usuario IS NULL')->fetchColumn();
 $huellasAntes = (int) $pdo->query("SELECT COUNT(*) FROM intentos_acceso WHERE clave = '" . LimitadorIntentos::claveCorreo('victor@correo.com') . "'")->fetchColumn();
 same('y hay intentos de acceso con el hash de su correo', 2, $huellasAntes);
+// (La clave por par es un hash de correo+IP: no se puede localizar sin la IP, pero caduca a los 15 min y se purga sola.)
 
 same('eliminar la cuenta de un usuario normal', 'ok', $borrar->eliminar($vic));
 same('NO queda ninguna fila suya en ninguna tabla (RNF-20)', array_fill_keys(array_keys($antesVic), 0), $filasDe($vic));

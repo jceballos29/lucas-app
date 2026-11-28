@@ -222,7 +222,7 @@ final class PerfilController
             return [$campo => 'La contraseña actual no es correcta.'];
         }
 
-        $limitador->perdonar('clave', $correo);
+        $limitador->perdonar('clave', $correo, $ip);
 
         return [];
     }
