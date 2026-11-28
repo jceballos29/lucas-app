@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Auth\CredentialSource;
+use App\Database\Esquema;
 use App\Domain\Usuario;
 use PDO;
 use PDOException;
@@ -136,25 +137,7 @@ final class UsuarioRepository implements CredentialSource
                         $adjuntosABorrar[] = $ruta;
                     }
                 }
-                foreach ([
-                    'DELETE FROM pagos_deuda WHERE id_deuda IN (SELECT id_deuda FROM deudas WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
-                    'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
-                    'DELETE FROM movimientos_recurrentes WHERE id_espacio = :e',
-                    'DELETE FROM tasas_cambio WHERE id_espacio = :e',
-                    'DELETE FROM transferencias WHERE id_espacio = :e',
-                    'DELETE FROM transacciones WHERE id_espacio = :e',
-                    'DELETE FROM presupuestos WHERE id_espacio = :e',
-                    'DELETE FROM deudas WHERE id_espacio = :e',
-                    'DELETE FROM metas_ahorro WHERE id_espacio = :e',
-                    'DELETE FROM cuentas WHERE id_espacio = :e',
-                    'DELETE FROM categorias WHERE id_espacio = :e',
-                    'DELETE FROM espacio_invitaciones WHERE id_espacio = :e',
-                    'DELETE FROM espacio_miembros WHERE id_espacio = :e',
-                    'DELETE FROM espacios WHERE id_espacio = :e',
-                ] as $sqlEsp) {
-                    $paramsEsp = str_contains($sqlEsp, ':e2') ? ['e' => $espacioId, 'e2' => $espacioId] : ['e' => $espacioId];
-                    $this->pdo->prepare($sqlEsp)->execute($paramsEsp);
-                }
+                Esquema::borrarEspacio($this->pdo, $espacioId);
             }
         }
 
@@ -163,7 +146,7 @@ final class UsuarioRepository implements CredentialSource
             ->execute(['id' => $id, 'id2' => $id]);
 
         // Reasignar registros financieros en espacios compartidos que aún continúan con otros miembros al propietario del espacio.
-        foreach (['cuentas', 'categorias', 'transacciones', 'transferencias', 'tasas_cambio', 'presupuestos', 'metas_ahorro', 'deudas', 'movimientos_recurrentes'] as $tabla) {
+        foreach (Esquema::TABLAS_FINANCIERAS as $tabla) {
             $this->pdo->prepare(
                 "UPDATE $tabla t JOIN espacios e ON e.id_espacio = t.id_espacio
                  SET t.id_usuario = e.id_creador
@@ -185,26 +168,7 @@ final class UsuarioRepository implements CredentialSource
             }
         }
 
-        foreach ([
-            'DELETE FROM pagos_deuda WHERE id_deuda IN (SELECT id_deuda FROM deudas WHERE id_usuario = :id AND id_espacio IS NULL) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_usuario = :id2 AND id_espacio IS NULL)',
-            'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_usuario = :id AND id_espacio IS NULL) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_usuario = :id2 AND id_espacio IS NULL)',
-            'DELETE FROM movimientos_recurrentes WHERE id_usuario = :id AND id_espacio IS NULL',
-            'DELETE FROM tasas_cambio WHERE id_usuario = :id AND id_espacio IS NULL',
-            'DELETE FROM transferencias WHERE id_usuario = :id AND id_espacio IS NULL',
-            'DELETE FROM transacciones WHERE id_usuario = :id AND id_espacio IS NULL',
-            'DELETE FROM presupuestos WHERE id_usuario = :id AND id_espacio IS NULL',
-            'DELETE FROM deudas WHERE id_usuario = :id AND id_espacio IS NULL',
-            'DELETE FROM metas_ahorro WHERE id_usuario = :id AND id_espacio IS NULL',
-            'DELETE FROM cuentas WHERE id_usuario = :id AND id_espacio IS NULL',
-            'DELETE FROM categorias WHERE id_usuario = :id AND id_espacio IS NULL',
-            'DELETE FROM espacio_miembros WHERE id_usuario = :id',
-            'DELETE FROM sesiones_usuario WHERE id_usuario = :id',
-            'DELETE FROM restablecimientos WHERE id_usuario = :id',
-            'DELETE FROM usuarios WHERE id_usuario = :id',
-        ] as $sql) {
-            $params = str_contains($sql, ':id2') ? ['id' => $id, 'id2' => $id] : ['id' => $id];
-            $this->pdo->prepare($sql)->execute($params);
-        }
+        Esquema::borrarPersonales($this->pdo, $id);
 
         return $adjuntosABorrar;
     }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Domain\Espacio;
+use App\Database\Esquema;
 use PDO;
 
 /**
@@ -104,24 +105,7 @@ final class EspacioRepository
             static fn (mixed $ruta): bool => is_string($ruta) && $ruta !== ''
         ));
 
-        foreach ([
-            'DELETE FROM pagos_deuda WHERE id_deuda IN (SELECT id_deuda FROM deudas WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
-            'DELETE FROM aportes_meta WHERE id_meta IN (SELECT id_meta FROM metas_ahorro WHERE id_espacio = :e) OR id_cuenta IN (SELECT id_cuenta FROM cuentas WHERE id_espacio = :e2)',
-            'DELETE FROM movimientos_recurrentes WHERE id_espacio = :e',
-            'DELETE FROM transferencias WHERE id_espacio = :e',
-            'DELETE FROM transacciones WHERE id_espacio = :e',
-            'DELETE FROM presupuestos WHERE id_espacio = :e',
-            'DELETE FROM deudas WHERE id_espacio = :e',
-            'DELETE FROM metas_ahorro WHERE id_espacio = :e',
-            'DELETE FROM cuentas WHERE id_espacio = :e',
-            'DELETE FROM categorias WHERE id_espacio = :e',
-            'DELETE FROM espacio_invitaciones WHERE id_espacio = :e',
-            'DELETE FROM espacio_miembros WHERE id_espacio = :e',
-            'DELETE FROM espacios WHERE id_espacio = :e',
-        ] as $sql) {
-            $params = str_contains($sql, ':e2') ? ['e' => $espacioId, 'e2' => $espacioId] : ['e' => $espacioId];
-            $this->pdo->prepare($sql)->execute($params);
-        }
+        Esquema::borrarEspacio($this->pdo, $espacioId);
 
         return $adjuntosABorrar;
     }

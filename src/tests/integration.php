@@ -1584,6 +1584,26 @@ $pdo->exec("UPDATE cola_correo SET procesado_en = NOW() - INTERVAL 8 DAY WHERE e
 same('purgar borra los enviados de más de 7 días pero no los fallidos de menos de 30', [1, 0, 1], [$cola->purgar(), (int) $pdo->query("SELECT COUNT(*) FROM cola_correo WHERE estado = 'enviado'")->fetchColumn(), (int) $pdo->query("SELECT COUNT(*) FROM cola_correo WHERE estado = 'fallido'")->fetchColumn()]);
 $pdo->exec('DELETE FROM cola_correo');
 
+section('Esquema: una sola lista de tablas, y ninguna tabla con datos de usuario sin tratar (R2)');
+use App\Database\Esquema;
+$tablasBd = array_map('strval', $pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN));
+$ordenar = static function (array $a): array { sort($a); return $a; };
+same('Esquema::TODAS es exactamente el conjunto de tablas de 01-schema.sql', $ordenar($tablasBd), $ordenar(Esquema::TODAS));
+preg_match('/^APP_TABLES="([^"]+)"/m', (string) file_get_contents(dirname(__DIR__, 2) . '/database/03-users.sh'), $mApp);
+same('APP_TABLES de database/03-users.sh (permisos de la aplicación) coincide con Esquema::TODAS', $ordenar(Esquema::TODAS), $ordenar(explode(' ', $mApp[1] ?? '')));
+$conColumna = static function (string $col) use ($pdo): array {
+    $q = $pdo->prepare("SELECT DISTINCT c.table_name FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE' WHERE c.table_schema = DATABASE() AND c.column_name = :c");
+    $q->execute(['c' => $col]);
+    return array_map('strval', $q->fetchAll(PDO::FETCH_COLUMN));
+};
+$tratadas = array_merge(Esquema::TABLAS_FINANCIERAS, Esquema::EXPLICITAS_EXTRA, Esquema::POR_CASCADA);
+$sinTratar = array_values(array_diff(array_merge($conColumna('id_usuario'), $conColumna('id_espacio')), $tratadas));
+same('toda tabla con id_usuario o id_espacio está en TABLAS_FINANCIERAS, EXPLICITAS_EXTRA o POR_CASCADA (si no, quedaría huérfana al borrar)', [], $sinTratar);
+same('las TABLAS_FINANCIERAS tienen las dos columnas (id_usuario e id_espacio)', [], array_values(array_diff(Esquema::TABLAS_FINANCIERAS, array_intersect($conColumna('id_usuario'), $conColumna('id_espacio')))));
+$cascada = $pdo->query("SELECT k.table_name FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r ON r.constraint_schema = k.table_schema AND r.constraint_name = k.constraint_name AND r.table_name = k.table_name WHERE k.table_schema = DATABASE() AND k.referenced_table_name IN ('usuarios', 'espacios') AND r.delete_rule = 'CASCADE'")->fetchAll(PDO::FETCH_COLUMN);
+same('las tablas POR_CASCADA con id_usuario/id_espacio tienen de verdad FK ON DELETE CASCADE', [], array_values(array_diff(array_intersect(Esquema::POR_CASCADA, array_merge($conColumna('id_usuario'), $conColumna('id_espacio'))), $cascada)));
+same('ninguna tabla aparece en dos listas de tratamiento', [], array_values(array_diff_key(array_count_values($tratadas), array_filter(array_count_values($tratadas), static fn (int $n): bool => $n === 1))));
+
 section('Multimoneda por cuenta, transferencias multimoneda y conversión en reportes/presupuestos (Fase 18)');
 $mUser = (int) $usuarios->create('Mateo Multimoneda', 'mateo.multi@correo.com', 'x');
 $tasasRepo = $container->tasasCambio();
