@@ -46,6 +46,15 @@ services:
       db:
         condition: service_healthy
 
+  # Envía la cola de correo (M4): las peticiones web solo encolan; este proceso los manda al SMTP con reintentos. Mismo código y variables que `php`.
+  correo:
+    extends:
+      service: php
+    command: ["sh", "-c", "while true; do php scripts/enviar-cola.php || true; sleep 5; done"]
+    depends_on:
+      db:
+        condition: service_healthy
+
   nginx:
     image: nginx:1.30.6-alpine
     restart: unless-stopped

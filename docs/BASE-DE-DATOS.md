@@ -134,6 +134,16 @@ No tiene relaciones: es una tabla de apoyo, sin FK, que se purga sola.
 
 `usuarios.totp_secreto` (VARCHAR 255) guarda el secreto TOTP **cifrado** con libsodium y la clave `APP_KEY` (nunca en claro); `totp_activado_en` (DATETIME NULL) indica cuándo se confirmó (`NULL` = 2FA no activo) y `totp_ultimo_paso` (BIGINT) el último paso de 30 s aceptado, para que un código no pueda reutilizarse (RNF-26).
 
+**cola_correo** (cola de correo saliente, M4)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_correo | INT AUTO_INCREMENT | PK | Identificador |
+| destinatario · asunto | VARCHAR | | A quién y qué asunto |
+| cuerpo | MEDIUMTEXT | | El mensaje; **se vacía** cuando sale o se da por perdido (puede llevar enlaces con token) |
+| estado | ENUM('pendiente','enviado','fallido') | INDEX con `proximo_intento` | Ciclo de vida |
+| intentos · proximo_intento · ultimo_error | TINYINT · DATETIME · VARCHAR | | Reintentos con espera creciente (1, 5, 15, 60 min; máx. 5 intentos) |
+| creado_en · procesado_en | TIMESTAMP · DATETIME NULL | | Historial (se purga a los 7 días los enviados y a los 30 los fallidos) |
+
 **cuentas**
 | Campo | Tipo | Clave | Descripción |
 |---|---|---|---|
@@ -217,8 +227,9 @@ MySQL ejecuta `database/` solo cuando el volumen está vacío, en orden alfabét
 
 | Archivo | Qué hace |
 |---|---|
-| `01-schema.sql` | Crea las 9 tablas (7 de negocio + `intentos_acceso` + `restablecimientos`). |
-| `02-seed.sql` | **Primera seed**: categorías predeterminadas y el administrador inicial (ver abajo). |
+| `01-schema.sql` | Crea las tablas de la aplicación (negocio + `intentos_acceso`, `restablecimientos`, `sesiones_usuario`, `notificaciones_enviadas`, `verificaciones_correo`, `codigos_recuperacion` y `cola_correo`). |
+| `02-seed.sql` | **Primera seed**: categorías predeterminadas (también se ejecuta en producción; **no crea usuarios**). |
+| `04-dev-admin.sh` + `dev/admin.sql` | Administrador de **desarrollo** (ver abajo): solo se crea con `APP_ENV=local`; `dev/admin.sql` está en una subcarpeta para que MySQL no lo ejecute solo. |
 | `03-users.sh` | Crea los usuarios de MySQL con mínimo privilegio. Va después porque los permisos por tabla exigen que existan. |
 | `migrations/NNN-*.sql` | Cambios posteriores, **idempotentes**. `bin/as-migrator php scripts/migrate.php` aplica los pendientes y los anota en la tabla `migraciones`; una base nueva ya los trae en `01-schema.sql`. Si una migración añade tablas, vuelve a ejecutar `03-users.sh` para dar permisos a la aplicación. |
 

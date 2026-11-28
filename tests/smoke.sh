@@ -24,6 +24,7 @@ passed=0; failed=0
 
 cleanup() {
     sql "DELETE FROM intentos_acceso" >/dev/null 2>&1
+    sql "DELETE FROM cola_correo WHERE destinatario LIKE 'smoke\\_%' OR destinatario LIKE 'otro\\_%@ejemplo.org'" >/dev/null 2>&1
     # Orden explícito: transacciones y aportes referencian cuentas sin cascada (ver D5 en docs/PLAN.md).
     sql "DELETE r FROM restablecimientos r JOIN usuarios u ON u.id_usuario = r.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
     sql "DELETE pd FROM pagos_deuda pd JOIN usuarios u ON u.id_usuario = pd.id_usuario WHERE u.correo LIKE 'smoke\\_%@correo.com'" >/dev/null 2>&1
@@ -88,8 +89,10 @@ register() { # JAR correo clave [extra]
 login() { post_form "$1" /login.php /login.php "correo=$2" "clave=$3"; }
 
 MAILPIT="http://127.0.0.1:$(env_value MAILPIT_PORT)"; [ "$MAILPIT" = "http://127.0.0.1:" ] && MAILPIT="http://127.0.0.1:8025"
-mail_clear() { curl -s -X DELETE "$MAILPIT/api/v1/messages" >/dev/null; }
-mail_ids() { curl -s -G "$MAILPIT/api/v1/search" --data-urlencode "query=to:$1" | grep -o '"ID":"[^"]*"' | cut -d'"' -f4; }
+# M4: los correos de la aplicación pasan por la cola y los envía el servicio `correo`; antes de mirar o vaciar Mailpit se espera a que la cola esté vacía.
+cola_esperar() { local i; for i in $(seq 1 60); do [ "$(sql "SELECT COUNT(*) FROM cola_correo WHERE estado='pendiente'")" = "0" ] && return 0; sleep 0.25; done; return 1; }
+mail_clear() { cola_esperar || true; curl -s -X DELETE "$MAILPIT/api/v1/messages" >/dev/null; }
+mail_ids() { cola_esperar || true;  curl -s -G "$MAILPIT/api/v1/search" --data-urlencode "query=to:$1" | grep -o '"ID":"[^"]*"' | cut -d'"' -f4; }
 mail_count() { mail_ids "$1" | wc -l | tr -d ' '; }
 wait_mail() { local i; for i in $(seq 1 40); do [ "$(mail_count "$1")" -ge "${2:-1}" ] && return 0; sleep 0.25; done; return 1; }
 mail_find() { # correo patrón -> el token (64 hex) del PRIMER mensaje de ese correo que contenga el patrón (el registro también envía el de verificación)
@@ -116,6 +119,7 @@ echo; echo "== La imagen de producción no lleva Xdebug (M2)"
 check "docker-compose.prod.yml construye la imagen PHP con INSTALL_XDEBUG=0" "1" "$(sed -n '/^  php:/,/^  nginx:/p' docker-compose.prod.yml | grep -c -E 'INSTALL_XDEBUG: *"?0"?')"
 check "docker-compose.prod.yml fija XDEBUG_MODE=off en el servicio php" "1" "$(sed -n '/^  php:/,/^  nginx:/p' docker-compose.prod.yml | grep -c -E 'XDEBUG_MODE: *"?off"?')"
 check "el Dockerfile solo instala Xdebug con INSTALL_XDEBUG=1" "1" "$(grep -c 'if \[ "\$INSTALL_XDEBUG" = "1" \]; then install-php-extensions xdebug' docker/php/Dockerfile)"
+check "M4: docker-compose.prod.yml tiene el servicio «correo» que envía la cola" "1" "$(grep -c '^  correo:' docker-compose.prod.yml)"
 check "M7: docker-compose.prod.yml exige APP_KEY (sin ella no arranca)" "1" "$(grep -c "APP_KEY: \${APP_KEY:?" docker-compose.prod.yml)"
 
 echo; echo "== Sin sesión"
@@ -1342,6 +1346,54 @@ contains "muestra Mi espacio personal activo" "Mi espacio personal" "$TMP/body"
 
 JF2="$(new_jar)"; UF2="smoke_${RUN}_fam2@correo.com"; register "$JF2" "$UF2" "$P"
 UF2ID="$(uid "$UF2")"
+
+echo; echo "== Verificación de correo (A1)"
+check "el registro deja el correo SIN verificar" "NULL" "$(sql "SELECT IFNULL(correo_verificado_en,'NULL') FROM usuarios WHERE correo='$UTR'")"
+request "$JTR" GET /perfil.php
+contains "el perfil avisa de que falta confirmar el correo" "Confirma tu correo" "$TMP/body"
+contains "y ofrece reenviar el enlace" "Reenviar enlace de verificación" "$TMP/body"
+request "$JTR" GET /panel.php;  contains "el aviso aparece en el resto de páginas con enlace a Mi perfil" "Reenviar el enlace desde Mi perfil" "$TMP/body"
+post_form "$JTR" /espacios.php /espacios.php "accion=crear" "nombre=Hogar Sin Verificar" "moneda=COP"
+SINV="$(sql "SELECT id_espacio FROM espacios WHERE nombre='Hogar Sin Verificar'")"
+post_form "$JTR" /espacios.php /espacios.php "accion=invitar" "id_espacio=$SINV" "correo=otro_${RUN}@ejemplo.org" "rol=lector"
+contains "sin verificar no se puede invitar a nadie" "Verifica tu correo" "$TMP/body"
+check "y no se creó ninguna invitación" "0" "$(sql "SELECT COUNT(*) FROM espacio_invitaciones WHERE id_espacio=$SINV")"
+post_form "$JTR" /perfil.php /perfil.php "accion=notificaciones" "notif_presupuestos=1" "notif_resumen_mensual=1"
+check "sin verificar no se pueden activar los avisos por correo" "0" "$(sql "SELECT notif_presupuestos+notif_resumen_mensual FROM usuarios WHERE correo='$UTR'")"
+post_form "$JTR" /perfil.php /perfil.php "accion=resumen_prueba"
+check "ni pedir el resumen de prueba" "0" "$(mail_count "$UTR" | awk '{print ($1>1)}')"
+wait_mail "$UTR" 1 || true
+VTOK="$(mail_verif_token "$UTR")"
+check "el registro envió un correo con enlace de verificación de 64 hex" "64" "${#VTOK}"
+cola_esperar || true
+check "M4: el correo pasó por la cola: quedó «enviado»" "enviado" "$(sql "SELECT estado FROM cola_correo WHERE destinatario='$UTR' ORDER BY id_correo LIMIT 1")"
+check "M4: y su cuerpo (con el enlace y el token) ya no está en la base de datos" "0" "$(sql "SELECT COUNT(*) FROM cola_correo WHERE destinatario='$UTR' AND cuerpo<>''")"
+JV="$(new_jar)"
+request "$JV" GET "/verificar.php?token=$VTOK"
+check "abrir el enlace responde 200" "200" "$CODE"; contains "y solo muestra el botón para confirmar" "Confirmar mi correo" "$TMP/body"
+check "un GET NO verifica (un previsualizador de enlaces no gasta el enlace)" "NULL" "$(sql "SELECT IFNULL(correo_verificado_en,'NULL') FROM usuarios WHERE correo='$UTR'")"
+request "$JV" GET "/verificar.php?token=$(printf 'a%.0s' $(seq 1 64))"
+contains "un enlace inventado dice que no es válido" "no es válido o ya caducó" "$TMP/body"
+request "$JV" POST /verificar.php --data-urlencode "token=$VTOK"
+check "confirmar sin token CSRF se rechaza" "403" "$CODE"
+ORIGIN_SENT="http://evil.example" post_form "$JV" /verificar.php "/verificar.php?token=$VTOK" "token=$VTOK"
+check "confirmar desde otro origen se rechaza" "403" "$CODE"
+post_form "$JV" /verificar.php "/verificar.php?token=$VTOK" "token=$VTOK"
+check "confirmar con el botón lleva al inicio de sesión con aviso" "302 /login.php?msg=verified" "$CODE $LOC"
+check "y el correo queda verificado" "1" "$(sql "SELECT correo_verificado_en IS NOT NULL FROM usuarios WHERE correo='$UTR'")"
+request "$JV" GET "/verificar.php?token=$VTOK"
+contains "el enlace es de un solo uso" "no es válido o ya caducó" "$TMP/body"
+request "$JTR" GET /perfil.php
+absent "el aviso de «Confirma tu correo» desaparece" "Confirma tu correo" "$TMP/body"
+contains "y el perfil dice que está verificado" "Tu correo está verificado" "$TMP/body"
+post_form "$JTR" /perfil.php /perfil.php "accion=notificaciones" "notif_presupuestos=1"
+check "ya verificado, activar los avisos funciona" "1" "$(sql "SELECT notif_presupuestos FROM usuarios WHERE correo='$UTR'")"
+post_form "$JTR" /perfil.php /perfil.php "accion=notificaciones"
+JRE="$(new_jar)"; URE="smoke_${RUN}_reenvio@correo.com"; register "$JRE" "$URE" "$P"
+for i in 1 2 3; do post_form "$JRE" /perfil.php /perfil.php "accion=reenviar_verificacion"; done
+check "el límite de reenvíos (3 por hora, contando el del registro) corta el cuarto" "3" "$(mail_count "$URE")"
+request "$JRE" GET /perfil.php; contains "y avisa con un mensaje claro" "varios enlaces" "$TMP/body"
+sql "DELETE FROM espacios WHERE id_espacio=$SINV" >/dev/null   # el espacio de prueba de este bloque: el de abajo debe ser el único del usuario
 
 post_form "$JTR" /espacios.php /espacios.php "accion=crear" "nombre=Hogar Familia Smoke" "moneda=COP"
 check "crear espacio familiar redirige a espacios" "302 /espacios.php" "$CODE $LOC"

@@ -135,6 +135,9 @@ y conserva las últimas 8. Programa una por semana:
 
 ## 7. Monitorización (RNF-14)
 
+**Correo.** Los correos de la aplicación salen por una cola: el servicio `correo` de `docker-compose.prod.yml` (arranca con el resto, se reinicia solo) los envía con reintentos. Comprueba que está vivo y la cola sana con
+`docker compose -f docker-compose.prod.yml exec -T php php scripts/enviar-cola.php --estado` (pendientes, enviados, fallidos y antigüedad del más viejo; si hay «pendientes» de hace muchos minutos, revisa `docker compose logs correo` y el SMTP). Tras actualizar a esta versión: migración 015 y `03-users.sh` (tabla `cola_correo`).
+
 `https://tu-dominio/salud.php` responde `200 {"estado":"ok"}` si la aplicación y la base de datos responden, y `503` si no (sin revelar
 versiones ni errores). Apunta un monitor externo (UptimeRobot, Better Stack, un `curl` en cron...) a esa dirección y avisa por correo.
 Los contenedores se reinician solos (`restart: unless-stopped`) y nginx tiene un `healthcheck`. El 98 % mensual de disponibilidad (RNF-14)

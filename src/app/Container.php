@@ -246,7 +246,8 @@ final class Container
     /** El cliente de correo (D7), con las variables MAIL_*. En las pruebas se sustituye con {@see useMailer()}. */
     public function mailer(): Mailer
     {
-        return $this->mailer ??= SmtpMailer::fromEnvironment();
+        // Las peticiones web solo ENCOLAN (M4); los procesos de consola (scripts de cron, el propio worker) envían directamente.
+        return $this->mailer ??= PHP_SAPI === 'cli' ? SmtpMailer::fromEnvironment() : new \App\Mail\ColaMailer(new \App\Repository\ColaCorreoRepository($this->pdo()));
     }
 
     public function useMailer(Mailer $mailer): void

@@ -308,3 +308,18 @@ CREATE TABLE codigos_recuperacion (
   FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
 );
 
+-- Cola de correo (M4): la petición web solo inserta; scripts/enviar-cola.php envía con reintentos. El cuerpo (puede llevar enlaces con
+-- token) se borra cuando el correo sale o se da por perdido.
+CREATE TABLE cola_correo (
+  id_correo       INT AUTO_INCREMENT PRIMARY KEY,
+  destinatario    VARCHAR(190) NOT NULL,
+  asunto          VARCHAR(255) NOT NULL,
+  cuerpo          MEDIUMTEXT NOT NULL,
+  estado          ENUM('pendiente','enviado','fallido') NOT NULL DEFAULT 'pendiente',
+  intentos        TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  proximo_intento DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ultimo_error    VARCHAR(255) NULL DEFAULT NULL,
+  creado_en       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  procesado_en    DATETIME NULL DEFAULT NULL,
+  INDEX idx_cola_pendiente (estado, proximo_intento)
+);

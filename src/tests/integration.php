@@ -1511,6 +1511,65 @@ $limDp->registrar('login', '2fa:dp@correo.com', '10.8.0.99');
 same('el 10.º bloquea el segundo factor de esa cuenta, sea cual sea la IP', true, $limDp->bloqueado('login', '2fa:dp@correo.com', '10.8.9.9', LimitadorIntentos::MAX_POR_CORREO_DOS_PASOS));
 same('y no afecta a la contraseña de la misma cuenta (otra clave)', false, $limDp->bloqueado('login', 'dp@correo.com', '10.8.9.9'));
 
+section('Cola de correo: encolar, reclamar, reintentar y no dejar tokens guardados (M4)');
+$cola = new App\Repository\ColaCorreoRepository($pdo);
+$colaMailer = new App\Mail\ColaMailer($cola);
+$pdo->exec('DELETE FROM cola_correo');
+$colaMailer->send('ana@correo.com', 'Restablece tu contraseña', "Hola\nhttps://x/restablecer.php?token=SECRETO\n");
+same('enviar por la cola solo inserta una fila pendiente (no habla con el SMTP)', [1, 'pendiente', 0], [
+    (int) $pdo->query('SELECT COUNT(*) FROM cola_correo')->fetchColumn(),
+    (string) $pdo->query('SELECT estado FROM cola_correo')->fetchColumn(),
+    (int) $pdo->query('SELECT intentos FROM cola_correo')->fetchColumn(),
+]);
+same('un destinatario inválido o con saltos de línea se rechaza al encolar (no se guarda)', [2, 2, 1], (static function () use ($colaMailer, $pdo): array {
+    $n = 0;
+    foreach (['no-es-correo', "a@b.co\nBcc: x@y.co", 'a b@c.co'] as $malo) {
+        try { $colaMailer->send($malo, 'Asunto', 'x'); } catch (App\Mail\MailException) { $n++; }
+    }
+    $asunto = 0;
+    try { $colaMailer->send('ok@correo.com', "Asunto\nBcc: x@y.co", 'x'); } catch (App\Mail\MailException) { $asunto++; }
+    return [$n === 3 ? 2 : $n, $asunto === 1 ? 2 : $asunto, (int) $pdo->query('SELECT COUNT(*) FROM cola_correo')->fetchColumn()];
+})());
+$lote = $cola->reclamar(10);
+same('reclamar devuelve el correo, cuenta el intento y lo oculta a otro proceso', [1, 1, 'ana@correo.com', 1, []], [count($lote), $lote[0]['intentos'], $lote[0]['destinatario'], (int) str_contains($lote[0]['cuerpo'], 'SECRETO'), $cola->reclamar(10)]);
+$id = $lote[0]['id_correo'];
+$cola->marcarFallo($id, 1, 'SMTP caído');
+same('un fallo lo deja pendiente con espera de 1 min y registra el error', [true, 'SMTP caído', 'pendiente'], [
+    (int) $pdo->query("SELECT proximo_intento > NOW() + INTERVAL 30 SECOND AND proximo_intento < NOW() + INTERVAL 90 SECOND FROM cola_correo WHERE id_correo = $id")->fetchColumn() === 1,
+    (string) $pdo->query("SELECT ultimo_error FROM cola_correo WHERE id_correo = $id")->fetchColumn(),
+    (string) $pdo->query("SELECT estado FROM cola_correo WHERE id_correo = $id")->fetchColumn(),
+]);
+same('mientras espera, no se reclama', [], $cola->reclamar(10));
+same('la espera crece: 1, 5, 15 y 60 min (y 60 después)', [60, 300, 900, 3600, 3600], array_map([App\Repository\ColaCorreoRepository::class, 'esperaTrasFallo'], [1, 2, 3, 4, 9]));
+$pdo->exec("UPDATE cola_correo SET proximo_intento = NOW() - INTERVAL 1 SECOND WHERE id_correo = $id");
+$lote = $cola->reclamar(10);
+same('vencida la espera se vuelve a reclamar (2.º intento)', [1, 2], [count($lote), $lote[0]['intentos'] ?? 0]);
+$cola->marcarEnviado($id);
+same('al enviarse queda «enviado» y SE BORRA el cuerpo (puede llevar enlaces con token)', ['enviado', '', 0], [
+    (string) $pdo->query("SELECT estado FROM cola_correo WHERE id_correo = $id")->fetchColumn(),
+    (string) $pdo->query("SELECT cuerpo FROM cola_correo WHERE id_correo = $id")->fetchColumn(),
+    count($cola->reclamar(10)),
+]);
+$colaMailer->send('beto@correo.com', 'Asunto', 'cuerpo con TOKEN');
+for ($i = 1; $i <= App\Repository\ColaCorreoRepository::MAX_INTENTOS; $i++) {
+    $pdo->exec("UPDATE cola_correo SET proximo_intento = NOW() - INTERVAL 1 SECOND WHERE estado = 'pendiente'");
+    $l = $cola->reclamar(10);
+    if ($l !== []) {
+        $cola->marcarFallo($l[0]['id_correo'], $l[0]['intentos'], 'sigue caído');
+    }
+}
+same('tras 5 intentos fallidos pasa a «fallido», sin cuerpo y sin más reintentos', ['fallido', '', []], [
+    (string) $pdo->query("SELECT estado FROM cola_correo WHERE destinatario = 'beto@correo.com'")->fetchColumn(),
+    (string) $pdo->query("SELECT cuerpo FROM cola_correo WHERE destinatario = 'beto@correo.com'")->fetchColumn(),
+    $cola->reclamar(10),
+]);
+$colaMailer->send('c1@correo.com', 'A', 'x'); $colaMailer->send('c2@correo.com', 'A', 'x'); $colaMailer->send('c3@correo.com', 'A', 'x');
+same('reclamar respeta el máximo pedido y el orden', ['c1@correo.com', 'c2@correo.com'], array_column($cola->reclamar(2), 'destinatario'));
+same('el resumen cuenta por estado', [1, 1, 3], (static function () use ($cola): array { $r = $cola->resumen(); return [$r['enviado'], $r['fallido'], $r['pendiente']]; })());
+$pdo->exec("UPDATE cola_correo SET procesado_en = NOW() - INTERVAL 8 DAY WHERE estado = 'enviado'");
+$pdo->exec("UPDATE cola_correo SET procesado_en = NOW() - INTERVAL 8 DAY WHERE estado = 'fallido'");
+same('purgar borra los enviados de más de 7 días pero no los fallidos de menos de 30', [1, 0, 1], [$cola->purgar(), (int) $pdo->query("SELECT COUNT(*) FROM cola_correo WHERE estado = 'enviado'")->fetchColumn(), (int) $pdo->query("SELECT COUNT(*) FROM cola_correo WHERE estado = 'fallido'")->fetchColumn()]);
+$pdo->exec('DELETE FROM cola_correo');
 
 section('Multimoneda por cuenta, transferencias multimoneda y conversión en reportes/presupuestos (Fase 18)');
 $mUser = (int) $usuarios->create('Mateo Multimoneda', 'mateo.multi@correo.com', 'x');
