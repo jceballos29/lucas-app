@@ -735,6 +735,16 @@ same('proxima_fecha inválida se rechaza', true, isset($rv->validate(['proxima_f
 
 section('ReglasEspacio y EspacioValidator (Fase 10)');
 use App\Espacios\ReglasEspacio as RE;
+same('invitación dentro de todos los límites', RE::OK, RE::evaluarLimitesInvitacion(0, 0, 0, false));
+same('9 enviadas hoy aún permite la décima', RE::OK, RE::evaluarLimitesInvitacion(9, 0, 0, false));
+same('10 enviadas hoy: límite por usuario', RE::LIMITE_USUARIO, RE::evaluarLimitesInvitacion(10, 0, 0, false));
+same('2 recibidas por esa dirección aún permite la tercera', RE::OK, RE::evaluarLimitesInvitacion(0, 2, 0, false));
+same('3 recibidas por esa dirección: límite por destinatario', RE::LIMITE_DESTINO, RE::evaluarLimitesInvitacion(0, 3, 0, false));
+same('19 pendientes en el espacio aún permite una más', RE::OK, RE::evaluarLimitesInvitacion(0, 0, 19, false));
+same('20 pendientes: límite del espacio', RE::LIMITE_PENDIENTES, RE::evaluarLimitesInvitacion(0, 0, 20, false));
+same('con 20 pendientes, reinvitar a una dirección que ya tiene una sí se permite', RE::OK, RE::evaluarLimitesInvitacion(0, 0, 20, true));
+same('el límite por usuario manda sobre los demás', RE::LIMITE_USUARIO, RE::evaluarLimitesInvitacion(10, 3, 20, false));
+same('los límites son 10 por usuario, 3 por destinatario, 20 pendientes y 24 h', [10, 3, 20, 86400], [RE::INVITACIONES_POR_USUARIO, RE::INVITACIONES_POR_DESTINO, RE::INVITACIONES_PENDIENTES_POR_ESPACIO, RE::VENTANA_INVITACIONES]);
 same('en el espacio personal (null) siempre se puede escribir', true, RE::puedeEscribir(null));
 same('propietario y editor pueden escribir', [true, true], [RE::puedeEscribir('propietario'), RE::puedeEscribir('editor')]);
 same('lector NO puede escribir', false, RE::puedeEscribir('lector'));

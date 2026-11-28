@@ -200,7 +200,7 @@ final class Container
 
     public function gestionEspacios(): GestionEspacios
     {
-        return new GestionEspacios($this->pdo(), $this->espacios(), $this->mailer(), \App\Config\Environment::get('APP_ORIGIN'));
+        return new GestionEspacios($this->pdo(), $this->espacios(), $this->notificaciones(), $this->mailer(), \App\Config\Environment::get('APP_ORIGIN'));
     }
 
     public function presupuestos(): PresupuestoRepository

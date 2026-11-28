@@ -9,6 +9,8 @@ use App\Database\Transaction;
 use App\Domain\Espacio;
 use App\Mail\Mailer;
 use App\Repository\EspacioRepository;
+use App\Repository\NotificacionRepository;
+use App\Support\AlmacenAdjuntos;
 use PDO;
 use RuntimeException;
 
@@ -29,6 +31,7 @@ final class GestionEspacios
     public function __construct(
         private readonly PDO $pdo,
         private readonly EspacioRepository $espacios,
+        private readonly NotificacionRepository $notificaciones,
         private readonly Mailer $mailer,
         private readonly string $appOrigin,
     ) {
@@ -92,6 +95,10 @@ final class GestionEspacios
             }
 
             $this->espacios->createInvitation($espacioId, $correo, $rol, $tokenHash, self::INVITACION_TTL);
+
+            // Se anota SIN espacio (id_espacio NULL): así borrar el espacio no reinicia los contadores.
+            $this->notificaciones->reservar($actorId, null, 'invitacion:u' . $actorId . ':' . bin2hex(random_bytes(8)));
+            $this->notificaciones->reservar($actorId, null, $prefijoDestino . bin2hex(random_bytes(8)));
 
             return ['codigo' => ReglasEspacio::OK, 'espacioNombre' => $espacio->nombre];
         });

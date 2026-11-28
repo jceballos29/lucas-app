@@ -90,4 +90,29 @@ final class ReglasEspacio
 
         return self::OK;
     }
+
+    /**
+     * ¿Puede enviarse otra invitación? Evita que Lucas sirva para mandar correo a terceros (A2 de docs/AUDITORIA.md).
+     *
+     * @param int $delUsuario Invitaciones que envió este usuario en las últimas 24 h (en cualquiera de sus espacios).
+     * @param int $alDestino Invitaciones que recibió esa dirección en las últimas 24 h, de cualquier usuario.
+     * @param int $pendientes Invitaciones vigentes del espacio.
+     * @param bool $reemplazaPendiente true si ya hay una vigente para ese correo en este espacio (se sustituye: no suma una pendiente más).
+     */
+    public static function evaluarLimitesInvitacion(int $delUsuario, int $alDestino, int $pendientes, bool $reemplazaPendiente): string
+    {
+        if ($delUsuario >= self::INVITACIONES_POR_USUARIO) {
+            return self::LIMITE_USUARIO;
+        }
+
+        if ($alDestino >= self::INVITACIONES_POR_DESTINO) {
+            return self::LIMITE_DESTINO;
+        }
+
+        if (!$reemplazaPendiente && $pendientes >= self::INVITACIONES_PENDIENTES_POR_ESPACIO) {
+            return self::LIMITE_PENDIENTES;
+        }
+
+        return self::OK;
+    }
 }

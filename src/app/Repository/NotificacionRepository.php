@@ -39,4 +39,22 @@ final class NotificacionRepository
 
         return $stmt->fetchColumn() !== false;
     }
+
+    /**
+     * Cuántas claves que empiezan por `$prefijo` se reservaron en los últimos `$segundos` (el reloj lo pone MySQL, UTC). Con `$userId`
+     * solo cuentan las de ese usuario. Sirve de contador para los límites anti-abuso (p. ej. invitaciones por correo).
+     */
+    public function contarPorPrefijo(string $prefijo, int $segundos, ?int $userId = null): int
+    {
+        $sql = "SELECT COUNT(*) FROM notificaciones_enviadas WHERE clave_dedup LIKE :p ESCAPE '!' AND enviado_en >= (NOW() - INTERVAL :s SECOND)" . ($userId !== null ? ' AND id_usuario = :u' : '');
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue('p', str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $prefijo) . '%');
+        $stmt->bindValue('s', $segundos, PDO::PARAM_INT);
+        if ($userId !== null) {
+            $stmt->bindValue('u', $userId, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        return (int) $stmt->fetchColumn();
+    }
 }
