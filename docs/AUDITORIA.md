@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-11-26 · **Última actualización:** 2026-11-28 · **Alcance:** todo el repositorio hasta el commit `30764d4` (Fase 20) · **Entorno probado:** stack Docker de desarrollo (PHP 8.4, MySQL 8.4, nginx 1.30) en `http://localhost:8090`.
 
-> **Estado a 2026-11-28 (actualizado tras R5–R7):** de los hallazgos de seguridad (C1, A1–A2, M1–M8) **no queda ninguno abierto** (M5 se resolvió salvo el `SessionHandler`, decisión consciente). También están resueltos B1, B5, B10 y B12, U1–U4 y **todos los refactores (R1–R9)**. **No queda ningún hallazgo de la auditoría abierto**; solo el cierre de la lista previa al despliegue (sección 9). Cada hallazgo resuelto lleva su «Qué se hizo»; los commits están en el historial, uno por hallazgo.
+> **Estado a 2026-11-28 (tras la segunda revisión, sección 11):** los 47 hallazgos de la primera auditoría están resueltos (M5 salvo el `SessionHandler`, decisión consciente). La **segunda revisión** (sección 11) volvió a probar la aplicación entera —incluida la configuración de producción levantada de verdad— y encontró **10 mejoras menores nuevas (N1–N10), ninguna crítica ni alta**, registradas con su solución para un próximo paso. Cada hallazgo resuelto lleva su «Qué se hizo»; los commits están en el historial, uno por hallazgo.
 
 ## 1. Veredicto
 
@@ -16,15 +16,16 @@ Lucas está **bien construida y la base de seguridad es sólida** para una aplic
 | Baja | 12 (12 resueltas) | Endurecimiento y buenas prácticas. |
 | Refactor / código muerto | 9 (9 resueltos: R1–R9) | Deuda técnica; no afecta a usuarios hoy. |
 | UX/UI | 11 (11 resueltos) | Accesibilidad, móvil y flujos. |
+| Segunda revisión (N1–N10) | 10 pendientes | Mejoras menores nuevas (1 media, 9 bajas); ver sección 11. |
 
-**Orden recomendado de trabajo:** el plan original (C1 → A1 → A2 → M1, M2, M3 → resto) ya está cumplido; lo pendiente es la lista previa al despliegue y los hallazgos bajos (ver sección 9).
+**Orden recomendado de trabajo:** el plan original (C1 → A1 → A2 → M1, M2, M3 → resto) está cumplido. Lo siguiente es la lista previa al despliegue (sección 9) y las mejoras N1–N10 de la segunda revisión (sección 11, con su orden).
 
 ---
 
 ## 2. Cómo se hizo la auditoría
 
 1. **Revisión de código** de la capa de seguridad (sesión, CSRF, origen, login, recuperación, límites de intentos), adjuntos, importador/exportador CSV, perfil, administración, espacios compartidos, borrado de cuentas, correo, repositorios (consultas SQL), vistas (escape de salida), Docker, nginx, PHP y scripts de base de datos.
-2. **Suites del proyecto:** unitarias (504), integración con BD temporal (436) y humo con curl (792). **Todas pasaban, 0 fallos** (hoy, tras los arreglos, son 588, 563 y 875; ver sección 8). `php -l` sobre todos los `.php` de `app/`, `public/`, `views/` y `scripts/`: sin errores de sintaxis.
+2. **Suites del proyecto:** unitarias (504), integración con BD temporal (436) y humo con curl (792). **Todas pasaban, 0 fallos** (hoy, tras los arreglos, son 626, 590 y 932; ver sección 8). `php -l` sobre todos los `.php` de `app/`, `public/`, `views/` y `scripts/`: sin errores de sintaxis.
 3. **Pruebas de ataque en vivo** (scripts en Python contra la app en marcha, con 3 usuarios de prueba y un espacio compartido; ver sección 7).
 4. **UX/UI** con las skills `ui-ux-pro-max` y `frontend-design`: capturas a 375 px, auditoría de accesibilidad de 16 páginas y revisión del CSS.
 5. **Limpieza:** los usuarios `audit_*`/`victima_*`, sus datos, comprobantes en disco y correos de prueba se borraron al terminar. Durante la auditoría original no se modificó ningún archivo del código; los arreglos vinieron después, uno por hallazgo.
@@ -344,7 +345,7 @@ Los hallazgos de este reporte que siguieran abiertos (hoy ninguno) se marcan en 
 
 ## 8. Cobertura de pruebas del proyecto
 
-- **Hoy:** unitarias **588**, integración **563**, humo **875**, copias de seguridad **39** y ataques **169**; todas con 0 fallidas. (En la auditoría original: 504, 436 y 792, sin las dos últimas.)
+- **Hoy:** unitarias **626**, integración **590**, humo **932**, copias de seguridad **39**, imagen de producción **23** y ataques **171**; todas con 0 fallidas. (En la auditoría original: 504, 436 y 792, sin las dos últimas.)
 - **Análisis estático y estilo (R8):** PHPStan nivel 6 sin avisos nuevos (la línea base `phpstan-baseline.neon` recoge 34 previos, ninguno un fallo real) y PHP CS Fixer limpio; `bin/estatico todo` los ejecuta en el contenedor.
 - **CI (R8):** `.github/workflows/ci.yml` (calidad + `tests/run-all.sh` + `tests/ataques.py` con Docker Compose). **Aún no se ejecutó en GitHub**: sus comandos se probaron en local.
 - Está bien cubierto: validadores, dinero, CSRF/origen, sesión, límites, correo y su cola, adjuntos, copias y restauración (incluidos archivos manipulados), 2FA, migraciones idempotentes, IDOR, el borrado completo de datos contra `information_schema` (R2) y los índices (R9).
@@ -394,3 +395,59 @@ La aplicación estaba **bien construida** y hoy lo está más: arquitectura clar
 Lo que la auditoría original señalaba como barrera para llamarla «lista para internet» eran **tres decisiones de producto y operación**: la cuenta admin sembrada (C1), la ausencia de verificación de correo con invitaciones por correo (A1/A2) y el cuidado de la imagen de producción (M2/B1). **C1, A1, A2 y M2 están resueltos**, igual que todos los hallazgos medios (M1–M8): ya no se puede bloquear a otra persona al iniciar sesión, los comprobantes se sirven aislados y viajan en las copias, el correo no ocupa procesos web, las sesiones tienen tope y caducidad y hay verificación en dos pasos (obligatoria para administradores).
 
 **Lo que queda** no es de seguridad crítica: los hallazgos bajos que había que cerrar antes de producir (B1, B5 y B10) ya están resueltos; todos los hallazgos, refactores y mejoras de interfaz están terminados. Antes del primer despliegue público hay que completar la lista de la sección 9: configuración de producción (`bin/comprobar-produccion` en verde: `APP_ORIGIN` con HTTPS, `APP_KEY`, contraseñas generadas, SMTP real con TLS), una **restauración real** de las copias en el servidor y **una ejecución del CI en GitHub**.
+
+---
+
+## 11. Segunda revisión (2026-11-28)
+
+Tras cerrar los 47 hallazgos se volvió a revisar **todo**: el propio informe, el código, la aplicación en marcha, la interfaz y —por primera vez— el **compose de producción levantado de verdad**. Esta sección dice qué se comprobó, qué salió bien y qué mejoras nuevas aparecieron.
+
+### 11.1 Qué se verificó y resultado
+
+| Comprobación | Cómo | Resultado |
+|---|---|---|
+| El informe es coherente | Script: los 47 IDs tienen marca de resuelto; las rutas de archivo citadas existen; los enlaces de `docs/` y `README` no están rotos | ✅ (corregidos contadores y recuentos de pruebas desactualizados) |
+| Todas las suites | `tests/run-all.sh` + `tests/ataques.py` | ✅ 626 + 590 + 932 + 39 + 23 + 171, 0 fallidas |
+| Cobertura de CSRF y origen | Revisión de los 14 controladores con POST | ✅ todos llaman a `require_csrf()` y `reject_foreign_origin()` |
+| Cobertura de acceso | Cada página de `public/` frente a la guardia de su controlador | ✅ solo quedan sin sesión las que deben (login, registro, recuperar, restablecer, salud, status) |
+| Inyección SQL | Búsqueda de consultas con variables interpoladas | ✅ solo constantes del esquema (`Esquema`, `$where`, `$scope`) |
+| Exposición de archivos | 36 rutas sensibles (`.env`, `.git`, `vendor`, `storage`, `app`, `scripts`, `tests`, `database`, `docs`, traversal…) | ✅ ninguna responde 200 (`status.php` sí, solo en desarrollo, por diseño) |
+| Cabeceras | CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, COOP/CORP; cookie `HttpOnly`+`SameSite` | ✅ |
+| Dependencias | `composer audit` (herramientas de desarrollo; la aplicación no tiene dependencias) | ✅ sin avisos |
+| Registros de PHP | Revisión de la sesión completa de pruebas | ✅ sin `Warning`/`Deprecated`/`Notice` (solo las trazas de N4) |
+| Migraciones | Reejecutar `migrate.php` | ✅ «No hay migraciones pendientes» (idempotente) |
+| Accesibilidad | 20 pantallas: `lang`, un `h1`, `main`, etiquetas, nombres de botones, `alt`, `id` duplicados, CSRF en formularios, `noopener`, atributos en línea, títulos de tabla | ✅ 20/20 sin problemas |
+| Contraste y móvil | 15 pantallas × tema claro y oscuro a 390 px: contraste WCAG AA, desbordamiento horizontal, errores de consola | ✅ ningún contraste bajo ni desbordamiento ni error (objetivos táctiles: ver N7) |
+| Rendimiento | `tests/carga.py` con 100 usuarios simulados (tras la cola de correo, las sesiones y el manejador de errores) | ✅ 827 peticiones, 0 errores, páginas p95 = 9 ms, login (bcrypt) p95 = 0,58 s |
+| **Producción de verdad** | `docker-compose.prod.yml` en un proyecto aparte con HTTPS autofirmado y claves generadas; un usuario real de principio a fin | ✅ 15 de 16 comprobaciones (la 16.ª fue un error de mi script: comparaba `Secure` con mayúscula; la cookie era correcta) |
+
+Lo que ese arranque de producción confirmó: `salud.php` responde 200 por HTTPS con claves fuertes, HTTP redirige a HTTPS, la cookie es `__Host-lucas_session` con `Secure`/`HttpOnly`/`Path=/` y sin `Domain`, HSTS y CSP presentes, **registrarse, crear una cuenta y subir un comprobante funcionan con el sistema de archivos de solo lectura** (el archivo cae en `src/storage` del host), el comprobante se sirve con `sandbox` y `no-store`, `ping.php` renueva la sesión, un POST de otro origen da 403, un 404 de navegador es la página con marca y `status.php` responde 404. Después se apagó y se borró todo (volumen y archivo subido). `bin/comprobar-produccion` rechazó correctamente un `.env` con `APP_ORIGIN=localhost`.
+
+### 11.2 Mejoras nuevas (ninguna crítica ni alta)
+
+| ID | Prioridad | Hallazgo | Evidencia | Solución | Esfuerzo |
+|---|---|---|---|---|---|
+| N1 | Media | **El token de la URL queda en el registro de errores de PHP.** B2 lo ocultó en el `access_log` de nginx, pero `Logger::exception()` escribe la `REQUEST_URI` completa. | Con la BD parada, `GET /restablecer.php?token=cccc…` dejó `[connection] /restablecer.php?token=cccc…` en el log de PHP. (El log de accesos de PHP-FPM sí omite la consulta.) | Enmascarar `token=` en `Logger::format()` (misma regla que nginx) y probarlo. | 15 min |
+| N2 | Baja | **nginx acepta `PUT`, `DELETE`, `PATCH` y `OPTIONS`** y los trata como un GET (responden 200 con la página). `TRACE` ya da 405. | `curl -X PUT /login.php` → 200. No cambia datos (las acciones exigen `POST`), pero es superficie innecesaria. | En el `server` de nginx (desarrollo y producción): `if ($request_method !~ ^(GET\|HEAD\|POST)$) { return 405; }`. Prueba de humo. | 15 min |
+| N3 | Baja | **`/login.php`, `/registro.php` y `/recuperar.php` no llevan `Cache-Control: no-store`** (sí lo llevan las páginas con `?token`). Contienen un token CSRF. | `curl -I /login.php` sin `Cache-Control`. | Mandar `no-store` desde `View::page()` en el diseño `auth`. | 10 min |
+| N4 | Baja | **`enviar-cola.php` y `mantenimiento.php` vuelcan una traza PHP fatal en cada vuelta si la BD no responde** (ruido en el log cada 5 s; el bucle sigue vivo). | Visto al parar la BD y al apagar el stack de producción: `Uncaught PDOException … Connection.php:50`. | Capturar `RuntimeException` y escribir una línea con `Logger` y `exit(1)`. | 15 min |
+| N5 | Baja | **`bin/comprobar-produccion` usa el compose de desarrollo salvo que se defina `COMPOSE_FILE`**: en un servidor construiría la imagen de desarrollo. `DESPLIEGUE.md` no lo menciona. | Lectura del script y de la guía. | Decirlo en la guía (`COMPOSE_FILE=docker-compose.prod.yml bin/comprobar-produccion`) o que el script lo use por defecto si existe. | 15 min |
+| N6 | Baja | **Dos imágenes sin versión fija**: `mysql:8.4` (parche flotante) y `composer:2` (etapa de construcción). Las demás sí están fijadas. | `grep image:/FROM`. | Fijar `mysql:8.4.x` y `composer:2.x`; reconstruir y pasar las suites. | 20 min |
+| N7 | Baja | **El botón de mostrar contraseña mide 38 px** en móvil (el resto de objetivos ya cumple 44 px; U3 no lo cubrió). Las casillas de 14–18 px se usan a través de su etiqueta (aceptable). | Barrido de objetivos a 390 px en `perfil.php`. | `min-width/min-height: 44px` para `.field__toggle` en pantallas táctiles. | 5 min |
+| N8 | Baja | **Código sin uso en producción** (solo lo llaman las pruebas o nadie): `ColaCorreoRepository::descartar()` (ni las pruebas), `Peticion::esPost()` y `getEntero()` (añadidos en R4 sin llamadas), `DosPasos::estaActivo()`, `NotificacionRepository::existe()`, `PresupuestoRepository::alertas()`, `UsuarioRepository::countActiveAdmins()`, `ConversorMoneda::tasaImplicita()` y la función `session_is_expired()`. | Script de búsqueda de métodos sin llamadas fuera de `tests/`. (`useMailer`, `reiniciar` y `guardarDesdeContenido` son ayudas de prueba legítimas.) | Borrar los que no tienen uso real y sus pruebas; dejar los demás con comentario «solo pruebas». | 45 min |
+| N9 | Baja | **Análisis estático:** la línea base de PHPStan conserva 33 avisos (tipos de arrays en PHPDoc). A nivel 8 hay 109, **ninguno un fallo real** (sobre todo `PDO::query()` que «puede devolver false», con el modo de excepciones nunca ocurre, y `?->` redundantes). | `phpstan --level=8` sin línea base. | Tipar los arrays y vaciar la línea base; subir a nivel 7 u 8 con las excepciones justificadas. | 1 día |
+| N10 | Baja | **Documentación desactualizada:** el `README` («Funcionalidades previstas» y la tabla de fases) llega solo hasta la fase 7 y no menciona transferencias, tarjetas, multimoneda, espacios compartidos, deudas, importación con vista previa, adjuntos, alertas, verificación de correo ni 2FA; `MEJORAS-FUTURAS.md` lista 13 propuestas sin estado (todas implementadas); `BASE-DE-DATOS.md` no documenta **11 tablas** (`cuotas_tarjeta`, `deudas`, `pagos_deuda`, `espacios`, `espacio_miembros`, `espacio_invitaciones`, `movimientos_recurrentes`, `notificaciones_enviadas`, `sesiones_usuario`, `tasas_cambio`, `transferencias`) ni su diagrama; `PLAN.md` dice «8 a 72 bytes» para la contraseña (ahora 10–72). | Comparación de `database/01-schema.sql` con el diccionario y lectura de los documentos. | Actualizar esos cuatro documentos; añadir a `Esquema` un test que compare las tablas con el diccionario (como ya se hace con `03-users.sh`). | 2–3 h |
+
+### 11.3 Próximo paso recomendado (por orden)
+
+1. **N1** (15 min): el único con impacto en datos sensibles: un token válido en un log de errores.
+2. **N2, N3, N4, N5, N7** (en total ~1 h): endurecimiento y robustez pequeños, de un solo archivo cada uno, con su prueba.
+3. **N8, N6** (~1 h): limpieza y versiones fijas.
+4. **N10** (2–3 h): poner al día la documentación, que es lo que primero lee quien llega al proyecto.
+5. **N9** (1 día): deuda de tipos; conviene hacerla con calma y por módulos.
+
+Siguen pendientes **de tu lado**, sin cambios: `bin/comprobar-produccion` con tu `.env` real, una restauración real de las copias en tu servidor y ejecutar el CI una vez en GitHub (aquí solo se probaron sus comandos). Mejoras opcionales ya registradas: QR del 2FA, quitar EXIF al descargar, `SessionHandler` propio (solo con varios contenedores PHP), selector manual de tema claro/oscuro y recordar la última categoría usada.
+
+### 11.4 Veredicto de la segunda revisión
+
+La aplicación está **correcta y funcional**: las seis suites automáticas y el arranque real de producción pasan, no hay hallazgos de seguridad críticos ni altos, la interfaz cumple accesibilidad y contraste en los dos temas, y el rendimiento no empeoró con los cambios de la primera ronda. Lo nuevo son mejoras menores de endurecimiento, mantenimiento y documentación (N1–N10), ninguna bloquea publicar.
