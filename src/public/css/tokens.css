@@ -17,11 +17,16 @@
   --teal-strong: #075A63;        /* texto sobre fondo teal claro: 6,9:1 */
   --teal-tint: #DDF3F5;
   --sky-tint: #E6F3FB;
+  --sky-line: var(--sky);        /* bordes en tono sky (en oscuro, uno más apagado: --sky también es TEXTO sobre fondos oscuros) */
   --sky-soft: #7FB6CF;           /* 5.ª porción de los gráficos */
   --muted: #4A6B7D;              /* texto secundario: 5,7:1 sobre blanco */
   --line: #DAE8F1;               /* divisores y bordes de tarjetas */
   --field-border: #7B9DB0;       /* borde de controles: ≥ 3:1 (WCAG 1.4.11) */
-  --surface: var(--white);
+  /* Roles (para el modo oscuro, U7): las marcas de arriba son fijas; el texto, los títulos y las superficies cambian de valor con el tema. */
+  --text: var(--ink);            /* texto principal */
+  --text-strong: var(--navy);    /* títulos, etiquetas y texto de controles */
+  --bg-raised: var(--white);     /* superficies: tarjetas, campos, menús */
+  --surface: var(--bg-raised);
   --canvas: var(--mist);
 
   /* Estado (único color funcional añadido a la paleta: errores y presupuesto excedido) */
@@ -29,7 +34,7 @@
   --danger-text: #9A1F18;        /* 7,1:1 sobre --danger-tint */
   --danger-tint: #FDECEA;
 
-  /* Tipografía (pila del sistema: sin fuentes externas, la CSP no las admite) */
+  /* Tipografía: Inter alojada en /fonts (U8) y, si no carga, el tipo del sistema (la CSP no admite fuentes externas) */
   --font: Inter, "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --fs-xs: .75rem;
   --fs-sm: .8125rem;
@@ -72,4 +77,35 @@
 
   --sidebar-w: 264px;
   --content-max: 1180px;
+}
+
+/* U8: 16 px de texto base en móvil (la guía de accesibilidad lo recomienda; en pantallas anchas se mantiene la densidad de 15 px). */
+@media (max-width: 767px) {
+  :root { --fs-base: 1rem; }
+}
+
+/* U7: modo oscuro. Solo redefine los roles y los tonos de apoyo; los elementos que ya son oscuros por diseño (menú lateral, tarjeta de saldo) y
+   el texto sobre fondo de marca (botón teal, etiquetas navy) no cambian. `screen`: al imprimir siempre se usa el diseño claro. */
+@media screen and (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --canvas: #0A141B;
+    --bg-raised: #112430;
+    --text: #E8F3F9;
+    --text-strong: #BFE3F5;
+    --muted: #9FB8C6;            /* 7,3:1 sobre --bg-raised */
+    --line: #26404F;
+    --field-border: #5F7F91;     /* ≥ 3:1 sobre --bg-raised */
+    --teal-text: #46C8D4;        /* 7,2:1 */
+    --teal-strong: #9BE4EB;
+    --teal-tint: #0F3B42;
+    --sky-line: #2E5C75;
+    --sky-tint: #17323F;
+    --danger: #E4584D;
+    --danger-text: #FFB4AB;      /* 8,3:1 sobre --danger-tint */
+    --danger-tint: #3B1A18;
+    --sh-1: 0 1px 2px rgba(0, 0, 0, .35);
+    --sh-2: 0 6px 20px -6px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .3);
+    --sh-3: 0 24px 48px -12px rgba(0, 0, 0, .7);
+  }
 }

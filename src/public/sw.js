@@ -7,7 +7,7 @@
  */
 'use strict';
 
-var CACHE_NAME = 'lucas-static-v4';
+var CACHE_NAME = 'lucas-static-v6';
 var PRECACHE_ASSETS = [
   '/offline.html',
   '/favicon.svg',
@@ -21,6 +21,7 @@ var PRECACHE_ASSETS = [
   '/css/components.css',
   '/css/layout.css',
   '/css/pages.css',
+  '/fonts/inter-latin-wght-normal.woff2',
   '/js/app.js'
 ];
 

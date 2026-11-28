@@ -76,7 +76,7 @@
 .form-actions { display: flex; flex-direction: column-reverse; gap: var(--s-2); margin-top: var(--s-2); }
 
 /* ---------- Pantalla de acceso (login, registro, recuperar) ---------- */
-.auth { min-height: 100vh; min-height: 100dvh; display: grid; background: var(--white); }
+.auth { min-height: 100vh; min-height: 100dvh; display: grid; background: var(--bg-raised); }
 .auth-hero {
   display: none; flex-direction: column; justify-content: space-between; gap: var(--s-8); padding: 56px 64px; color: var(--white);
   background:
@@ -153,7 +153,7 @@
   .table td::before { content: none; }
   .table td.is-end { text-align: right; }
   .table tbody tr:last-child td { border-bottom: 0; }
-  .table tbody tr:hover td { background: color-mix(in srgb, var(--mist) 70%, var(--white)); }
+  .table tbody tr:hover td { background: color-mix(in srgb, var(--canvas) 70%, var(--bg-raised)); }
   .table td.is-actions { padding-top: 14px; }
   .table td.is-actions > * { justify-content: flex-end; }
   .table th:last-child { text-align: right; }

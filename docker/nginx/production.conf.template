@@ -79,7 +79,7 @@ server {
         try_files $uri =404;
     }
 
-    location ~* \.(css|js|svg|png|ico)$ {
+    location ~* \.(css|js|svg|png|ico|woff2)$ {
         include /etc/nginx/snippets/security-headers.conf;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         add_header Cache-Control "public, max-age=2592000, immutable" always;

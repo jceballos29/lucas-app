@@ -56,6 +56,14 @@ final class Form
             ] + ($o['attrs'] ?? []);
 
             $control = '<input' . Attrs::render($attrs) . '>';
+            if ($type === 'file') {
+                // U6: el selector nativo escribe «Browse…/No file chosen» en el idioma del navegador y rompe el estilo. El <input> sigue ahí
+                // (oculto a la vista, enfocable y con su etiqueta) y se pinta un botón en español; app.js muestra el nombre elegido.
+                $attrs['class'] = 'file-input__native sr-only';
+                $control = '<div class="file-input"><input' . Attrs::render($attrs) . '>'
+                    . '<label class="btn btn--secondary btn--sm" for="' . escape($id) . '">Elegir archivo</label>'
+                    . '<span class="file-input__name muted" data-file-name data-vacio="Ningún archivo seleccionado">Ningún archivo seleccionado</span></div>';
+            }
             if ($type === 'password') {
                 $control = '<div class="field__control">' . $control
                     . '<button class="field__toggle" type="button" data-toggle-password="' . escape($id) . '" aria-pressed="false" aria-label="Mostrar contraseña">'

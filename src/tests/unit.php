@@ -622,7 +622,8 @@ same('con total cero no divide por cero', 0.0, K::agrupar([$fila('A', '0.00')])[
 
 section('Response: «Volver» de la página de error no es una redirección abierta');
 $volverDe = static function (string $referer, string $host = 'lucas.ejemplo.com'): string {
-    $_SERVER['HTTP_REFERER'] = $referer; $_SERVER['HTTP_HOST'] = $host;
+    $_SERVER['HTTP_REFERER'] = $referer;
+    $_SERVER['HTTP_HOST'] = $host;
     $m = new ReflectionMethod(App\Http\Response::class, 'paginaAnterior');
     $r = $m->invoke(null);
     unset($_SERVER['HTTP_REFERER'], $_SERVER['HTTP_HOST']);

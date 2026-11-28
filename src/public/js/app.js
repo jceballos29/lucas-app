@@ -225,6 +225,53 @@
     syncCuotasTarjeta();
   }
 
+  /* 9b. Selector de archivo (Ui::field type=file): muestra el nombre elegido junto al botón «Elegir archivo». */
+  document.querySelectorAll('.file-input__native').forEach(function (input) {
+    var nombre = input.parentNode.querySelector('[data-file-name]');
+    if (!nombre) return;
+    input.addEventListener('change', function () {
+      nombre.textContent = input.files && input.files.length ? input.files[0].name : nombre.getAttribute('data-vacio');
+    });
+  });
+
+  /* 9c. Aviso de sesión a punto de caducar (U10). La sesión caduca tras `data-session-ttl` segundos SIN actividad; quien rellena un formulario
+         largo no hace peticiones y la perdería sin aviso. Dos minutos antes sale un aviso con «Seguir conectado», que renueva la sesión con
+         una petición mínima a /ping.php (204 = renovada; cualquier otra cosa = ya caducó). */
+  var zonaSesion = document.querySelector('[data-session-ttl]');
+  if (zonaSesion) {
+    var ttlMs = Number(zonaSesion.getAttribute('data-session-ttl')) * 1000;
+    var AVISO_ANTES_MS = 120000;
+    var aviso = null, temporizador = null;
+    var quitarAviso = function () { if (aviso) { aviso.remove(); aviso = null; } };
+    var pintarAviso = function (texto, conBoton) {
+      quitarAviso();
+      aviso = document.createElement('div');
+      aviso.className = 'notice notice--warn session-warning';
+      aviso.setAttribute('role', 'alert');
+      var p = document.createElement('p');
+      p.textContent = texto;
+      aviso.appendChild(p);
+      var enlace = document.createElement(conBoton ? 'button' : 'a');
+      if (conBoton) { enlace.type = 'button'; enlace.className = 'btn btn--secondary btn--sm'; enlace.textContent = 'Seguir conectado'; enlace.addEventListener('click', renovar); }
+      else { enlace.href = '/login.php'; enlace.className = 'btn btn--secondary btn--sm'; enlace.textContent = 'Iniciar sesión'; }
+      aviso.appendChild(enlace);
+      zonaSesion.insertBefore(aviso, zonaSesion.firstChild);
+    };
+    var programar = function () {
+      clearTimeout(temporizador);
+      temporizador = setTimeout(function () {
+        pintarAviso('Tu sesión caducará en 2 minutos por inactividad. Si estás rellenando un formulario, pulsa «Seguir conectado».', true);
+        temporizador = setTimeout(function () { pintarAviso('Tu sesión caducó. Inicia sesión de nuevo (copia lo que hayas escrito antes de salir de esta página).', false); }, AVISO_ANTES_MS);
+      }, Math.max(ttlMs - AVISO_ANTES_MS, 0));
+    };
+    var renovar = function () {
+      fetch('/ping.php', { credentials: 'same-origin', redirect: 'manual', cache: 'no-store' }).then(function (r) {
+        if (r.status === 204) { quitarAviso(); programar(); } else { pintarAviso('Tu sesión caducó. Inicia sesión de nuevo (copia lo que hayas escrito antes de salir de esta página).', false); }
+      }).catch(function () { pintarAviso('No se pudo renovar la sesión (¿sin conexión?). Inténtalo otra vez.', true); });
+    };
+    programar();
+  }
+
   /* 10. Botones de impresión / Guardar como PDF (Fase 19, sin onclick en línea para respetar la CSP). */
   document.querySelectorAll('[data-print]').forEach(function (btn) {
     btn.addEventListener('click', function () { window.print(); });

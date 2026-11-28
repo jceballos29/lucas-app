@@ -32,6 +32,8 @@ foreach ($cuentas as $c) {
     $opcionesCuenta[(string) $c->id] = $c->nombre . ($c->activa ? '' : ' (inactiva)') . ' · ' . \App\Support\Dinero::formatearEn($c->saldo, $c->moneda);
     $atributosCuenta[(string) $c->id] = ['data-cuenta-tipo' => $c->tipo];
 }
+// U6: con una sola cuenta no hay nada que elegir: viene preseleccionada (al crear).
+$cuentaElegida = $old['id_cuenta'] === '' && !$editando && count($opcionesCuenta) === 1 ? (string) array_key_first($opcionesCuenta) : $old['id_cuenta'];
 $opcionesCategoria = [];
 $atributosCategoria = [];
 foreach ($categorias as $k) {
@@ -57,10 +59,10 @@ for ($q = 1; $q <= 36; $q++) {
         <?php if ($editando): ?><input type="hidden" name="id" value="<?= (int) $movimiento->id ?>"><?php endif; ?>
         <?= Ui::segmented(['name' => 'tipo', 'legend' => 'Tipo de movimiento', 'options' => ['gasto' => 'Gasto', 'ingreso' => 'Ingreso'], 'checked' => $old['tipo']]) ?>
         <?php if (isset($errors['tipo'])): ?><?= Ui::notice($errors['tipo'], 'error') ?><?php endif; ?>
-        <?= Ui::field(['id' => 'monto', 'label' => 'Monto', 'size' => 'lg', 'value' => $old['monto'], 'placeholder' => '$ 0', 'required' => true, 'error' => $errors['monto'] ?? null, 'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off', 'data-money' => true]]) ?>
+        <?= Ui::field(['id' => 'monto', 'label' => 'Monto', 'size' => 'lg', 'value' => $old['monto'], 'placeholder' => '$ 0', 'required' => true, 'error' => $errors['monto'] ?? null, 'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off', 'data-money' => true, 'autofocus' => !$editando && !$errors]]) ?>
         <div class="form-grid">
             <?= Ui::field(['id' => 'fecha', 'label' => 'Fecha', 'type' => 'date', 'value' => $old['fecha'], 'required' => true, 'error' => $errors['fecha'] ?? null]) ?>
-            <?= Ui::select(['id' => 'cuenta', 'name' => 'id_cuenta', 'label' => 'Cuenta', 'blank' => 'Elige una cuenta', 'options' => $opcionesCuenta, 'optionAttrs' => $atributosCuenta, 'selected' => $old['id_cuenta'], 'error' => $errors['id_cuenta'] ?? null]) ?>
+            <?= Ui::select(['id' => 'cuenta', 'name' => 'id_cuenta', 'label' => 'Cuenta', 'blank' => 'Elige una cuenta', 'options' => $opcionesCuenta, 'optionAttrs' => $atributosCuenta, 'selected' => $cuentaElegida, 'error' => $errors['id_cuenta'] ?? null]) ?>
         </div>
         <div class="form-grid">
             <?= Ui::select(['id' => 'categoria', 'name' => 'id_categoria', 'label' => 'Categoría', 'blank' => 'Elige una categoría', 'options' => $opcionesCategoria, 'optionAttrs' => $atributosCategoria, 'selected' => $old['id_categoria'], 'error' => $errors['id_categoria'] ?? null]) ?>

@@ -1805,7 +1805,7 @@ contains "U1: …se oculta con un campo enfocado" "body:has(input:focus, select:
 request "$JMU" GET /js/app.js
 contains "U2: el foco pasa al primer campo con error al volver el formulario" '[aria-invalid="true"]' "$TMP/body"
 request "$JMU" GET /sw.js
-contains "los recursos estáticos cambiaron: la caché del service worker se renovó (v4)" "lucas-static-v4" "$TMP/body"
+contains "los recursos estáticos cambiaron: la caché del service worker se renovó (v6)" "lucas-static-v6" "$TMP/body"
 post_form "$JMU" /perfil.php /perfil.php "accion=clave" "clave_actual=incorrecta" "clave_nueva=abc" "clave_nueva2=x"
 contains "U2: el campo con error queda marcado aria-invalid y enlazado a su mensaje" 'aria-invalid="true" aria-describedby="e-clave_actual"' "$TMP/body"
 
@@ -1895,6 +1895,34 @@ contains "U5: …con una página con la marca, no la de nginx" "Archivo demasiad
 absent "U5: (no se ve «nginx»)" "nginx" "$TMP/body"
 post_form "$JTR" /movimiento-form.php /movimiento-form.php "tipo=gasto" "monto=1,234.56" "fecha=$HOY_APP" "id_cuenta=$CBANCO" "id_categoria=$KG" "descripcion=ingles"
 contains "E2: un monto en formato inglés explica cómo escribirlo" "Parece formato inglés" "$TMP/body"
+
+echo; echo "== Interfaz: formulario, fuente, modo oscuro, aviso de sesión (U6-U11)"
+JU6="$(new_jar)"; UU6="smoke_${RUN}_u6@correo.com"; register "$JU6" "$UU6" "$P"
+post_form "$JU6" /cuenta-form.php /cuenta-form.php "nombre=Única U6" "tipo=efectivo" "saldo_inicial=100.000"
+request "$JU6" GET /movimiento-form.php
+contains "U6: con una sola cuenta, viene preseleccionada" 'selected>Única U6' "$TMP/body"
+contains "U6: el monto recibe el foco al crear un movimiento" 'autofocus' "$TMP/body"
+contains "U6: el selector de archivo es un botón en español («Elegir archivo»)" "Elegir archivo" "$TMP/body"
+contains "U6: …con el nombre elegido junto al botón" "Ningún archivo seleccionado" "$TMP/body"
+check "U6: el campo de archivo sigue siendo un <input type=file> real (accesible por teclado)" "1" "$(grep -c 'class="file-input__native sr-only"' "$TMP/body" | awk '{print ($1>=1)}')"
+request "$JU6" GET /panel.php
+contains "U10: las páginas con sesión llevan el tiempo de caducidad para el aviso" 'data-session-ttl="1800"' "$TMP/body"
+request "$JU6" GET /ping.php
+check "U10: /ping.php con sesión renueva y responde 204 sin cuerpo" "204" "$CODE"
+request "$(new_jar)" GET /ping.php
+check "U10: sin sesión redirige al login (la página lo interpreta como «caducó»)" "302 /login.php" "$CODE $LOC"
+request "$JU6" GET /js/app.js
+contains "U10: app.js avisa 2 minutos antes y ofrece «Seguir conectado»" "Seguir conectado" "$TMP/body"
+request "$JU6" GET /css/tokens.css
+contains "U7: hay un tema oscuro (prefers-color-scheme: dark) solo para pantalla" "@media screen and (prefers-color-scheme: dark)" "$TMP/body"
+contains "U8: el texto base es de 16 px en móvil" "--fs-base: 1rem" "$TMP/body"
+request "$JU6" GET /css/base.css
+contains "U8: la fuente Inter se aloja en /fonts (la CSP solo permite 'self')" 'url("/fonts/inter-latin-wght-normal.woff2")' "$TMP/body"
+check "U8: y el archivo de la fuente se sirve (woff2)" "200 font/woff2" "$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$BASE/fonts/inter-latin-wght-normal.woff2")"
+check "U8: con su licencia (OFL) al lado" "1" "$(curl -s "$BASE/fonts/LICENSE-Inter.txt" | grep -c 'SIL Open Font License')"
+request "$JU6" GET /css/components.css
+contains "U9: la acción de la cabecera de una tarjeta queda a la derecha aunque baje de línea" "margin-inline-start: auto" "$TMP/body"
+contains "U11: las tarjetas informativas son planas y la elevación es de lo accionable" ".form-card, .card--raised { box-shadow: var(--sh-2); }" "$TMP/body"
 
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

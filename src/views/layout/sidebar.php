@@ -46,5 +46,5 @@ $espacioRol = is_array($currentUser) ? ($currentUser['espacio_rol'] ?? null) : n
         <form method="post" action="/logout.php" class="inline"><?= csrf_field() ?><?= Ui::iconButton('logout', 'Cerrar sesión', ['type' => 'submit']) ?></form>
     </div>
 </aside>
-<main class="main" id="contenido" tabindex="-1">
+<main class="main" id="contenido" tabindex="-1" data-session-ttl="<?= (int) SESSION_IDLE_TIMEOUT ?>">
     <div class="main__inner">
