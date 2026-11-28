@@ -309,13 +309,17 @@ final class MovimientoController
         $mime = $mov->adjuntoMime !== null && isset(AlmacenAdjuntos::MIMES_PERMITIDOS[$mov->adjuntoMime])
             ? $mov->adjuntoMime
             : 'application/octet-stream';
-        $descargar = ($_GET['descargar'] ?? '') === '1';
+        // M6: un PDF puede llevar JavaScript y se abriría en el origen de la aplicación: siempre se descarga. Las imágenes se muestran,
+        // pero con una CSP que no deja ejecutar ni cargar nada (sandbox sin permisos) aunque el archivo fuera algo más que una imagen.
+        $descargar = ($_GET['descargar'] ?? '') === '1' || $mime === 'application/pdf';
         $nombreDescarga = AlmacenAdjuntos::nombreSeguroDescarga($mov->adjuntoNombre ?? 'comprobante', $mime);
 
         header('Content-Type: ' . $mime);
         header('Content-Length: ' . (string) filesize($abs));
         header('Content-Disposition: ' . ($descargar ? 'attachment' : 'inline') . '; filename="' . $nombreDescarga . '"');
         header('X-Content-Type-Options: nosniff');
+        header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox");
+        header('Cross-Origin-Resource-Policy: same-origin');
         header('Cache-Control: private, no-store');
         readfile($abs);
         exit;
