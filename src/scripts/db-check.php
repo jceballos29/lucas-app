@@ -18,7 +18,7 @@ function environment(string $name): string
 $dsn = sprintf(
     'mysql:host=%s;port=%s;charset=utf8mb4',
     environment('DB_HOST'),
-    environment('DB_PORT')
+    environment('DB_PORT'),
 );
 
 try {
@@ -27,9 +27,9 @@ try {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
 
-    echo "Bases de datos disponibles:" . PHP_EOL;
+    echo 'Bases de datos disponibles:' . PHP_EOL;
     foreach ($pdo->query('SHOW DATABASES') as $fila) {
-        echo "- " . $fila['Database'] . PHP_EOL;
+        echo '- ' . $fila['Database'] . PHP_EOL;
     }
 } catch (PDOException $e) {
     fwrite(STDERR, 'Error de conexión: ' . $e->getMessage() . PHP_EOL);

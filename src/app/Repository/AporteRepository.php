@@ -52,7 +52,7 @@ final class AporteRepository
              JOIN metas_ahorro m ON m.id_meta = a.id_meta
              JOIN cuentas c ON c.id_cuenta = a.id_cuenta
              WHERE $scope AND a.id_meta = :id
-             ORDER BY a.fecha DESC, a.id_aporte DESC LIMIT :limit"
+             ORDER BY a.fecha DESC, a.id_aporte DESC LIMIT :limit",
         );
         if ($espacioId === null) {
             $stmt->bindValue('u', $userId, PDO::PARAM_INT);

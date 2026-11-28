@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-
 /**
  * Token CSRF (M6). CSRF (Cross-Site Request Forgery): el navegador adjunta la cookie de sesión a CUALQUIER
  * petición hacia la aplicación, también a una que origina otra página (un formulario oculto que se envía

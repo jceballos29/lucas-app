@@ -33,7 +33,7 @@ foreach (array_keys(Dinero::MONEDAS) as $codigo) {
     'Alterna entre tus finanzas personales y espacios compartidos con tu pareja, familia o socios',
     $espacioActivoId !== null
         ? Ui::postForm('/espacios.php', ['accion' => 'cambiar', 'id_espacio' => '0'], Ui::button('Volver a mi espacio personal', ['type' => 'submit', 'variant' => 'secondary']))
-        : null
+        : null,
 ) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
@@ -45,7 +45,7 @@ foreach (array_keys(Dinero::MONEDAS) as $codigo) {
                 <?= Ui::listItem(
                     $inv['espacio_nombre'],
                     'Rol asignado: ' . (Espacio::ROLES[$inv['rol']] ?? $inv['rol']) . ' · Moneda: ' . $inv['moneda'],
-                    Ui::postForm('/espacios.php', ['accion' => 'aceptar_invitacion', 'id_invitacion' => $inv['id_invitacion']], Ui::button('Aceptar y entrar', ['type' => 'submit', 'size' => 'sm', 'icon' => 'check']))
+                    Ui::postForm('/espacios.php', ['accion' => 'aceptar_invitacion', 'id_invitacion' => $inv['id_invitacion']], Ui::button('Aceptar y entrar', ['type' => 'submit', 'size' => 'sm', 'icon' => 'check'])),
                 ) ?>
             <?php endforeach; ?>
         <?= Ui::cardClose() ?>
@@ -58,7 +58,7 @@ foreach (array_keys(Dinero::MONEDAS) as $codigo) {
                 'Tus cuentas, movimientos, presupuestos y metas privadas',
                 $espacioActivoId === null
                     ? Ui::badge('En uso', 'neutral')
-                    : Ui::postForm('/espacios.php', ['accion' => 'cambiar', 'id_espacio' => '0'], Ui::button('Activar', ['type' => 'submit', 'variant' => 'secondary', 'size' => 'sm']))
+                    : Ui::postForm('/espacios.php', ['accion' => 'cambiar', 'id_espacio' => '0'], Ui::button('Activar', ['type' => 'submit', 'variant' => 'secondary', 'size' => 'sm'])),
             ) ?>
 
             <?php foreach ($espacios as $e): ?>
@@ -68,7 +68,7 @@ foreach (array_keys(Dinero::MONEDAS) as $codigo) {
                     $e->numMiembros . ($e->numMiembros === 1 ? ' miembro' : ' miembros') . ' · Moneda ' . $e->moneda . ' · Tu rol: ' . $e->rolTexto(),
                     $esActivo
                         ? Ui::badge('En uso', 'neutral')
-                        : Ui::postForm('/espacios.php', ['accion' => 'cambiar', 'id_espacio' => $e->id], Ui::button('Activar', ['type' => 'submit', 'variant' => 'primary', 'size' => 'sm']))
+                        : Ui::postForm('/espacios.php', ['accion' => 'cambiar', 'id_espacio' => $e->id], Ui::button('Activar', ['type' => 'submit', 'variant' => 'primary', 'size' => 'sm'])),
                 ) ?>
             <?php endforeach; ?>
         <?= Ui::cardClose() ?>
@@ -144,17 +144,17 @@ foreach (array_keys(Dinero::MONEDAS) as $codigo) {
                     'acciones' => Ui::actions($acciones),
                 ];
             }, $miembros);
-            ?>
+        ?>
 
             <?= Ui::table([
-                'caption' => 'Miembros de ' . $e->nombre,
-                'columns' => [
-                    ['key' => 'miembro', 'label' => 'Miembro'],
-                    ['key' => 'rol', 'label' => 'Rol en el espacio'],
-                    ['key' => 'acciones', 'label' => 'Acciones', 'kind' => 'actions'],
-                ],
-                'rows' => $filasMiembros,
-            ]) ?>
+            'caption' => 'Miembros de ' . $e->nombre,
+            'columns' => [
+                ['key' => 'miembro', 'label' => 'Miembro'],
+                ['key' => 'rol', 'label' => 'Rol en el espacio'],
+                ['key' => 'acciones', 'label' => 'Acciones', 'kind' => 'actions'],
+            ],
+            'rows' => $filasMiembros,
+        ]) ?>
 
             <?php if ($e->esPropietario()): ?>
                 <div class="grid-2">
@@ -177,7 +177,7 @@ foreach (array_keys(Dinero::MONEDAS) as $codigo) {
                                 <?= Ui::listItem(
                                     $inv['correo'],
                                     'Rol: ' . (Espacio::ROLES[$inv['rol']] ?? $inv['rol']),
-                                    Ui::postForm('/espacios.php', ['accion' => 'cancelar_invitacion', 'id_espacio' => $e->id, 'id_invitacion' => $inv['id_invitacion']], Ui::button('Cancelar', ['type' => 'submit', 'variant' => 'ghost', 'size' => 'sm']))
+                                    Ui::postForm('/espacios.php', ['accion' => 'cancelar_invitacion', 'id_espacio' => $e->id, 'id_invitacion' => $inv['id_invitacion']], Ui::button('Cancelar', ['type' => 'submit', 'variant' => 'ghost', 'size' => 'sm'])),
                                 ) ?>
                             <?php endforeach; ?>
                         <?php endif; ?>

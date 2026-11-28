@@ -11,7 +11,6 @@ use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Response;
 use App\Movimientos\ReglasMovimiento;
-use App\Recurrentes\GestionRecurrentes;
 use App\Support\Dinero;
 use App\Support\Frecuencia;
 use App\Support\Mes;
@@ -161,11 +160,12 @@ final class RecurrenteController
                             $data = $result['data'];
                             $etiqueta = $data['descripcion'] ?? ($data['tipo'] === 'ingreso' ? 'ingreso recurrente' : 'gasto fijo');
                             $mensaje = $recurrente === null
-                                ? "Se programó «{$etiqueta}» (" . Dinero::formatear($data['monto']) . ' · ' . (Frecuencia::ETIQUETAS[$data['frecuencia']] ?? $data['frecuencia']) . ")."
+                                ? "Se programó «{$etiqueta}» (" . Dinero::formatear($data['monto']) . ' · ' . (Frecuencia::ETIQUETAS[$data['frecuencia']] ?? $data['frecuencia']) . ').'
                                 : 'Se guardaron los cambios del movimiento recurrente.';
                             Flash::set('ok', $mensaje);
                             Response::redirect('/recurrentes.php');
 
+                            // no break
                         case ReglasMovimiento::TIPO_DISCORDANTE:
                             $errors['id_categoria'] = 'Esa categoría no es de ' . ($result['data']['tipo'] === 'ingreso' ? 'ingresos' : 'gastos') . '. Elige otra o cambia el tipo.';
                             break;
@@ -182,7 +182,7 @@ final class RecurrenteController
 
             $cuentas = array_values(array_filter(
                 $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta']
+                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
             ));
             $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
         } catch (RuntimeException $error) {

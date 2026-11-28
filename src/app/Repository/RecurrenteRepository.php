@@ -99,7 +99,7 @@ final class RecurrenteRepository
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO movimientos_recurrentes (id_usuario, id_espacio, id_cuenta, id_categoria, tipo, monto, frecuencia, proxima_fecha, descripcion, auto_aplicar)
-             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :freq, :fecha, :desc, :auto)'
+             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :freq, :fecha, :desc, :auto)',
         );
         $stmt->execute([
             'u' => $userId,
@@ -127,7 +127,7 @@ final class RecurrenteRepository
             "UPDATE movimientos_recurrentes
              SET id_cuenta = :cuenta, id_categoria = :cat, tipo = :tipo, monto = :monto, frecuencia = :freq,
                  proxima_fecha = :fecha, descripcion = :desc, auto_aplicar = :auto
-             WHERE id_recurrente = :id AND $scope"
+             WHERE id_recurrente = :id AND $scope",
         );
         $stmt->execute($params + [
             'cuenta' => $d['id_cuenta'],

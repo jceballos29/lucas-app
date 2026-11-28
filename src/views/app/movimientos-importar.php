@@ -62,7 +62,7 @@ foreach ($categorias as $k) {
             'avisos' => $avisos === [] ? '' : Html::join($avisos),
         ];
     }
-?>
+    ?>
 <?= Ui::cardOpen(['title' => 'Revisa antes de importar', 'subtitle' => count($preview['filas']) . ' movimientos leídos para «' . $preview['cuenta'] . '»', 'class' => 'form-card']) ?>
     <?php if (isset($errors['incluir'])): ?><?= Ui::notice($errors['incluir'], 'error') ?><?php endif; ?>
     <?php if ($preview['truncado']): ?><?= Ui::notice('El archivo tiene más de ' . App\Movimientos\ImportadorCsv::MAX_FILAS . ' filas: aquí solo se leyeron las primeras ' . App\Movimientos\ImportadorCsv::MAX_FILAS . '. Importa estas y luego repite con el resto.', 'warn') ?><?php endif; ?>
@@ -84,18 +84,18 @@ foreach ($categorias as $k) {
         <input type="hidden" name="id_categoria_ingreso" value="<?= escape($old['id_categoria_ingreso']) ?>">
         <textarea name="csv_texto" hidden><?= escape($old['csv_texto']) ?></textarea>
         <?= Ui::table([
-            'caption' => 'Movimientos que se importarán',
-            'columns' => [
-                ['key' => 'incluir', 'label' => 'Importar'],
-                ['key' => 'linea', 'label' => 'Línea'],
-                ['key' => 'fecha', 'label' => 'Fecha'],
-                ['key' => 'tipo', 'label' => 'Tipo'],
-                ['key' => 'descripcion', 'label' => 'Descripción'],
-                ['key' => 'monto', 'label' => 'Monto', 'align' => 'end'],
-                ['key' => 'avisos', 'label' => 'Avisos'],
-            ],
-            'rows' => $filasTabla,
-        ]) ?>
+                'caption' => 'Movimientos que se importarán',
+                'columns' => [
+                    ['key' => 'incluir', 'label' => 'Importar'],
+                    ['key' => 'linea', 'label' => 'Línea'],
+                    ['key' => 'fecha', 'label' => 'Fecha'],
+                    ['key' => 'tipo', 'label' => 'Tipo'],
+                    ['key' => 'descripcion', 'label' => 'Descripción'],
+                    ['key' => 'monto', 'label' => 'Monto', 'align' => 'end'],
+                    ['key' => 'avisos', 'label' => 'Avisos'],
+                ],
+                'rows' => $filasTabla,
+            ]) ?>
         <div class="form-actions">
             <button class="btn btn--primary" type="submit" name="accion" value="confirmar">Confirmar importación</button>
             <button class="btn btn--secondary" type="submit" name="accion" value="editar">Volver y editar</button>
@@ -119,21 +119,21 @@ foreach ($categorias as $k) {
         </div>
 
         <?= Ui::field([
-            'id' => 'csv_texto',
-            'type' => 'textarea',
-            'label' => 'Líneas CSV (Fecha;Descripción;Monto o Fecha;Tipo;Descripción;Monto)',
-            'value' => $old['csv_texto'],
-            'placeholder' => "2026-11-25;Supermercado Éxito;-185.000\n2026-11-25;Reembolso nómina;+2.500.000",
-            'hint' => 'Una fila por línea. Acepta fechas AAAA-MM-DD o DD/MM/AAAA, separadas por punto y coma (;) o coma (,). Un monto negativo (-185000) o tipo «gasto» se importa como gasto; un monto con «+» (+2500000) o tipo «ingreso», como ingreso.',
-            'error' => $errors['csv_texto'] ?? null,
-        ]) ?>
+                'id' => 'csv_texto',
+                'type' => 'textarea',
+                'label' => 'Líneas CSV (Fecha;Descripción;Monto o Fecha;Tipo;Descripción;Monto)',
+                'value' => $old['csv_texto'],
+                'placeholder' => "2026-11-25;Supermercado Éxito;-185.000\n2026-11-25;Reembolso nómina;+2.500.000",
+                'hint' => 'Una fila por línea. Acepta fechas AAAA-MM-DD o DD/MM/AAAA, separadas por punto y coma (;) o coma (,). Un monto negativo (-185000) o tipo «gasto» se importa como gasto; un monto con «+» (+2500000) o tipo «ingreso», como ingreso.',
+                'error' => $errors['csv_texto'] ?? null,
+            ]) ?>
 
         <?= Ui::field([
-            'id' => 'csv_archivo',
-            'label' => 'O sube un archivo .csv desde tu equipo (opcional)',
-            'type' => 'file',
-            'attrs' => ['accept' => '.csv,text/csv'],
-        ]) ?>
+                'id' => 'csv_archivo',
+                'label' => 'O sube un archivo .csv desde tu equipo (opcional)',
+                'type' => 'file',
+                'attrs' => ['accept' => '.csv,text/csv'],
+            ]) ?>
 
         <?php if ($erroresCsv !== []): ?>
             <?= Ui::notice(new Html('<strong>Líneas con problemas</strong> (corrígelas en el cuadro de arriba):<ul class="error-list">' . implode('', array_map(static fn (string $e): string => '<li>' . escape($e) . '</li>', $erroresCsv)) . '</ul>'), 'error') ?>

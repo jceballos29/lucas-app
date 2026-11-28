@@ -150,14 +150,14 @@ final class UsuarioRepository implements CredentialSource
             $this->pdo->prepare(
                 "UPDATE $tabla t JOIN espacios e ON e.id_espacio = t.id_espacio
                  SET t.id_usuario = e.id_creador
-                 WHERE t.id_usuario = :id AND t.id_espacio IS NOT NULL"
+                 WHERE t.id_usuario = :id AND t.id_espacio IS NOT NULL",
             )->execute(['id' => $id]);
         }
 
         $this->pdo->prepare(
-            "UPDATE pagos_deuda pd JOIN deudas d ON d.id_deuda = pd.id_deuda JOIN espacios e ON e.id_espacio = d.id_espacio
+            'UPDATE pagos_deuda pd JOIN deudas d ON d.id_deuda = pd.id_deuda JOIN espacios e ON e.id_espacio = d.id_espacio
              SET pd.id_usuario = e.id_creador
-             WHERE pd.id_usuario = :id AND d.id_espacio IS NOT NULL"
+             WHERE pd.id_usuario = :id AND d.id_espacio IS NOT NULL',
         )->execute(['id' => $id]);
 
         $stmtAdjPers = $this->pdo->prepare('SELECT adjunto_ruta FROM transacciones WHERE id_usuario = :id AND id_espacio IS NULL AND adjunto_ruta IS NOT NULL');
@@ -191,7 +191,7 @@ final class UsuarioRepository implements CredentialSource
         [$where, $params] = self::searchClause($q);
         $stmt = $this->pdo->prepare(
             'SELECT id_usuario, nombre, correo, rol, activo, creado_en FROM usuarios' . $where
-            . ' ORDER BY creado_en DESC, id_usuario DESC LIMIT :limit OFFSET :offset'
+            . ' ORDER BY creado_en DESC, id_usuario DESC LIMIT :limit OFFSET :offset',
         );
 
         foreach ($params as $name => $value) {

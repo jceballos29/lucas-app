@@ -7,8 +7,8 @@ namespace App\Auth;
 use App\Database\Transaction;
 use App\Domain\Usuario;
 use App\Logging\Logger;
-use App\Mail\MailException;
 use App\Mail\Mailer;
+use App\Mail\MailException;
 use App\Repository\NotificacionRepository;
 use App\Repository\UsuarioRepository;
 use App\Repository\VerificacionCorreoRepository;
@@ -71,7 +71,7 @@ final class VerificacionCorreo
 
         $enlace = rtrim($this->origen, '/') . '/verificar.php?token=' . $token;
         $cuerpo = "Hola {$usuario->nombre},\n\n"
-            . "Para confirmar que este correo es tuyo y activar las invitaciones y los avisos de Lucas, abre este enlace (vale "
+            . 'Para confirmar que este correo es tuyo y activar las invitaciones y los avisos de Lucas, abre este enlace (vale '
             . self::VIGENCIA_HORAS . " horas y solo se puede usar una vez):\n\n$enlace\n\n"
             . "Si no creaste una cuenta en Lucas, ignora este mensaje: no pasará nada.\n";
 

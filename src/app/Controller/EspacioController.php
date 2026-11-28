@@ -79,6 +79,7 @@ final class EspacioController
                         Flash::set('ok', "Cambiaste al espacio compartido «{$esp->nombre}».");
                         Response::redirect('/panel.php');
 
+                        // no break
                     case 'crear':
                         $val = (new EspacioValidator())->validateEspacio($_POST);
                         $errorsCrear = $val['errors'];
@@ -127,6 +128,7 @@ final class EspacioController
                                     Flash::set('ok', "Se envió la invitación a {$oldInvitar['correo']} para unirse a «{$res['espacioNombre']}».");
                                     Response::redirect('/espacios.php');
 
+                                    // no break
                                 case ReglasEspacio::YA_ES_MIEMBRO:
                                     $errorsInvitar['correo'] = 'Esa persona ya es miembro de este espacio compartido.';
                                     break;
@@ -153,6 +155,7 @@ final class EspacioController
                                 case ReglasEspacio::SIN_PERMISO:
                                     Response::plain(403, "Solo un propietario puede invitar personas al espacio.\n");
 
+                                    // no break
                                 default:
                                     Response::plain(404, "No encontrado.\n");
                             }
@@ -175,6 +178,7 @@ final class EspacioController
                         Flash::set('info', 'Se canceló la invitación.');
                         Response::redirect('/espacios.php');
 
+                        // no break
                     case 'aceptar_invitacion':
                         $invitacionId = self::id($_POST['id_invitacion'] ?? '');
                         if ($invitacionId < 1) {
@@ -192,6 +196,7 @@ final class EspacioController
                         Flash::set('ok', "Te uniste al espacio compartido «{$acepta['nombre']}» y quedó seleccionado como espacio activo.");
                         Response::redirect('/espacios.php');
 
+                        // no break
                     case 'cambiar_rol':
                         $espacioId = self::id($_POST['id_espacio'] ?? '');
                         $miembroId = self::id($_POST['id_usuario'] ?? '');
@@ -213,6 +218,7 @@ final class EspacioController
                         }
                         Response::redirect('/espacios.php');
 
+                        // no break
                     case 'retirar':
                     case 'salir':
                         $espacioId = self::id($_POST['id_espacio'] ?? '');
@@ -241,6 +247,7 @@ final class EspacioController
                         }
                         Response::redirect('/espacios.php');
 
+                        // no break
                     case 'eliminar_espacio':
                         $espacioId = self::id($_POST['id_espacio'] ?? '');
                         if ($espacioId < 1) {
@@ -259,6 +266,7 @@ final class EspacioController
                         Flash::set('ok', 'Se eliminó el espacio compartido y sus datos.');
                         Response::redirect('/espacios.php');
 
+                        // no break
                     default:
                         Response::plain(400, "Solicitud no válida.\n");
                 }

@@ -175,6 +175,7 @@ final class MovimientoController
                                 Flash::set($avisoTexto === '' ? 'ok' : 'warn', $avisoTexto === '' ? $mensaje : "$mensaje $avisoTexto");
                                 Response::redirect('/movimientos.php');
 
+                                // no break
                             case ReglasMovimiento::TIPO_DISCORDANTE:
                                 $errors['split'] = 'Alguna categoría de la división no coincide con el tipo (' . ($splitRes['base']['tipo'] === 'ingreso' ? 'ingresos' : 'gastos') . ').';
                                 break;
@@ -238,6 +239,7 @@ final class MovimientoController
                                 Flash::set($aviso === null ? 'ok' : 'warn', $aviso === null ? $mensaje : "$mensaje $aviso");
                                 Response::redirect('/movimientos.php');
 
+                                // no break
                             case ReglasMovimiento::TIPO_DISCORDANTE:
                                 $errors['id_categoria'] = 'Esa categoría no es de ' . ($result['data']['tipo'] === 'ingreso' ? 'ingresos' : 'gastos') . '. Elige otra o cambia el tipo.';
                                 break;
@@ -251,7 +253,7 @@ final class MovimientoController
                                 $errors['monto'] = "La cuenta «{$saved['cuenta']}» tiene $disponible disponibles: no alcanza para registrar este movimiento sin dejarla en negativo.";
                                 break;
 
-                            // Un movimiento, una cuenta o una categoría que no son tuyos: como si no existieran (RNF-04).
+                                // Un movimiento, una cuenta o una categoría que no son tuyos: como si no existieran (RNF-04).
                             default:
                                 Response::plain(404, "No encontrado.\n");
                         }
@@ -262,7 +264,7 @@ final class MovimientoController
             // Cuentas activas; si el movimiento está en una que ya no lo es, también esa (marcada), para que el formulario diga la verdad.
             $cuentas = array_values(array_filter(
                 $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta']
+                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
             ));
             $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
         } catch (RuntimeException $error) {
@@ -371,7 +373,7 @@ final class MovimientoController
         try {
             $cuentas = array_values(array_filter(
                 $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa
+                static fn (Cuenta $c): bool => $c->activa,
             ));
             $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
 
@@ -485,6 +487,7 @@ final class MovimientoController
                                             . ($omitidas > 0 ? ' Se omitieron ' . $omitidas . ($omitidas === 1 ? ' fila.' : ' filas.') : ''));
                                         Response::redirect('/movimientos.php');
 
+                                        // no break
                                     case ReglasMovimiento::SALDO_INSUFICIENTE:
                                         $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));
                                         $errors['incluir'] = "La cuenta «{$res['cuenta']}» tiene $disp disponibles y al aplicar los movimientos marcados quedaría en saldo negativo.";

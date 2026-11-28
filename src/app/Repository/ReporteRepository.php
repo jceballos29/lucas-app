@@ -32,7 +32,7 @@ final class ReporteRepository
             $stmt = $this->pdo->prepare(
                 "SELECT COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto END), 0) AS ingresos,
                         COALESCE(SUM(CASE WHEN tipo = 'gasto' THEN monto END), 0) AS gastos
-                 FROM transacciones WHERE $scope AND fecha >= :desde AND fecha < :hasta"
+                 FROM transacciones WHERE $scope AND fecha >= :desde AND fecha < :hasta",
             );
             $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
             $row = $stmt->fetch();
@@ -48,7 +48,7 @@ final class ReporteRepository
              FROM transacciones t
              JOIN cuentas c ON c.id_cuenta = t.id_cuenta
              WHERE $scope AND t.fecha >= :desde AND t.fecha < :hasta
-             GROUP BY c.moneda"
+             GROUP BY c.moneda",
         );
         $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 
@@ -79,7 +79,7 @@ final class ReporteRepository
                  FROM transacciones t JOIN categorias k ON k.id_categoria = t.id_categoria
                  WHERE $scope AND t.tipo = 'gasto' AND t.fecha >= :desde AND t.fecha < :hasta
                  GROUP BY k.id_categoria, k.nombre, k.color
-                 ORDER BY total DESC, k.nombre"
+                 ORDER BY total DESC, k.nombre",
             );
             $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 
@@ -92,7 +92,7 @@ final class ReporteRepository
              JOIN categorias k ON k.id_categoria = t.id_categoria
              JOIN cuentas c ON c.id_cuenta = t.id_cuenta
              WHERE $scope AND t.tipo = 'gasto' AND t.fecha >= :desde AND t.fecha < :hasta
-             GROUP BY k.id_categoria, k.nombre, k.color, c.moneda"
+             GROUP BY k.id_categoria, k.nombre, k.color, c.moneda",
         );
         $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 
@@ -134,7 +134,7 @@ final class ReporteRepository
                  WHERE $scope AND t.tipo = 'gasto' AND t.etiqueta IS NOT NULL AND t.etiqueta <> ''
                    AND t.fecha >= :desde AND t.fecha < :hasta
                  GROUP BY t.etiqueta
-                 ORDER BY total DESC, t.etiqueta"
+                 ORDER BY total DESC, t.etiqueta",
             );
             $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 
@@ -151,7 +151,7 @@ final class ReporteRepository
              JOIN cuentas c ON c.id_cuenta = t.id_cuenta
              WHERE $scope AND t.tipo = 'gasto' AND t.etiqueta IS NOT NULL AND t.etiqueta <> ''
                AND t.fecha >= :desde AND t.fecha < :hasta
-             GROUP BY t.etiqueta, c.moneda"
+             GROUP BY t.etiqueta, c.moneda",
         );
         $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 
@@ -200,7 +200,7 @@ final class ReporteRepository
                         COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN monto END), 0) AS ingresos,
                         COALESCE(SUM(CASE WHEN tipo = 'gasto' THEN monto END), 0) AS gastos
                  FROM transacciones WHERE $scope AND fecha >= :desde AND fecha < :hasta
-                 GROUP BY y, m"
+                 GROUP BY y, m",
             );
             $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 
@@ -216,7 +216,7 @@ final class ReporteRepository
                  FROM transacciones t
                  JOIN cuentas c ON c.id_cuenta = t.id_cuenta
                  WHERE $scope AND t.fecha >= :desde AND t.fecha < :hasta
-                 GROUP BY y, m, c.moneda"
+                 GROUP BY y, m, c.moneda",
             );
             $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 

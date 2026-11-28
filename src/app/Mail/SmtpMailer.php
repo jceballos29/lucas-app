@@ -64,7 +64,7 @@ final class SmtpMailer implements Mailer
             $subject,
             $body,
             date('D, d M Y H:i:s O'),
-            bin2hex(random_bytes(12)) . '@' . $domain
+            bin2hex(random_bytes(12)) . '@' . $domain,
         );
 
         $socket = @stream_socket_client(($this->encryption === 'tls' ? 'tls://' : 'tcp://') . $this->host . ':' . $this->port, $errno, $error, $this->timeout);

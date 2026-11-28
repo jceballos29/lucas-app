@@ -37,7 +37,7 @@ final class AdminController
             $totals = $stats->totals();
             $registrations = array_map(
                 static fn (array $m): array => ['label' => Fecha::mesCorto($m['month']), 'value' => $m['value']],
-                $stats->registrationsByMonth(12)
+                $stats->registrationsByMonth(12),
             );
             $latest = $stats->latestUsers(4);
             $semillaExpuesta = AdminSemilla::expuesto($this->container->usuarios()->findByEmail(AdminSemilla::CORREO), (string) getenv('APP_ENV'));

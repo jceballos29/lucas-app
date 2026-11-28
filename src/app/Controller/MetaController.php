@@ -158,6 +158,7 @@ final class MetaController
                             Flash::set('ok', 'Se aportaron ' . Dinero::formatear($data['monto']) . " a «{$meta->nombre}» desde «{$saved['cuenta']}»." . ($saved['lograda'] ? ' ¡Lograste tu meta!' : ''));
                             Response::redirect('/metas.php');
 
+                            // no break
                         case ReglasAporte::SALDO_INSUFICIENTE:
                             $errors['monto'] = "La cuenta «{$saved['cuenta']}» tiene " . Dinero::formatear((string) $saved['saldo']) . ': no alcanza para aportar ' . Dinero::formatear($data['monto']) . '.';
                             break;
@@ -170,7 +171,8 @@ final class MetaController
                             Flash::set('error', 'Esa meta ya no admite aportes.');
                             Response::redirect('/metas.php');
 
-                        // Una cuenta o una meta que no son tuyas: como si no existieran (RNF-04).
+                            // Una cuenta o una meta que no son tuyas: como si no existieran (RNF-04).
+                            // no break
                         default:
                             Response::plain(404, "No encontrado.\n");
                     }
@@ -180,7 +182,7 @@ final class MetaController
             // Cuentas activas; si el formulario trae una que ya no lo es, también esa (marcada), para que el error se vea en el campo.
             $cuentas = array_values(array_filter(
                 $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta']
+                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
             ));
             $historial = $this->container->aportes()->listByMeta($user['id'], $meta->id, 20, $espacioId);
         } catch (RuntimeException $error) {

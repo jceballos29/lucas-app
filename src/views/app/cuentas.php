@@ -155,38 +155,38 @@ $subtituloTotal = $tieneOtraMoneda
 
 <?php if ($cuentas !== [] || $tasas !== []): ?>
 <?php
-$monedaOrigenDef = $monedaBase === 'COP' ? 'USD' : 'COP';
-$filasTasas = array_map(static function (array $t) use ($puedeEscribir): array {
-    return [
-        'par' => new Html('<div>' . Ui::badge($t['moneda_origen'] . ' → ' . $t['moneda_destino'], 'brand') . '</div>'),
-        'tasa' => '1 ' . $t['moneda_origen'] . ' = ' . ConversorMoneda::formatearTasa($t['tasa_micros']) . ' ' . $t['moneda_destino'],
-        'actualizada' => Fecha::simple(substr($t['actualizado_en'], 0, 10)),
-        'acciones' => $puedeEscribir ? Ui::actions([
-            Ui::postForm('/cuentas.php', ['accion' => 'eliminar_tasa', 'id_tasa' => $t['id']], Ui::iconButton('trash', 'Eliminar tasa ' . $t['moneda_origen'] . ' a ' . $t['moneda_destino'], [
-                'type' => 'submit',
-                'tone' => 'danger',
-                'attrs' => [
-                    'data-confirm' => '¿Eliminar la tasa de cambio ' . $t['moneda_origen'] . ' → ' . $t['moneda_destino'] . '?',
-                    'data-confirm-ok' => 'Eliminar',
-                ],
-            ])),
-        ]) : new Html('<span class="muted-note">Solo lectura</span>'),
-    ];
-}, $tasas);
-?>
+    $monedaOrigenDef = $monedaBase === 'COP' ? 'USD' : 'COP';
+    $filasTasas = array_map(static function (array $t) use ($puedeEscribir): array {
+        return [
+            'par' => new Html('<div>' . Ui::badge($t['moneda_origen'] . ' → ' . $t['moneda_destino'], 'brand') . '</div>'),
+            'tasa' => '1 ' . $t['moneda_origen'] . ' = ' . ConversorMoneda::formatearTasa($t['tasa_micros']) . ' ' . $t['moneda_destino'],
+            'actualizada' => Fecha::simple(substr($t['actualizado_en'], 0, 10)),
+            'acciones' => $puedeEscribir ? Ui::actions([
+                Ui::postForm('/cuentas.php', ['accion' => 'eliminar_tasa', 'id_tasa' => $t['id']], Ui::iconButton('trash', 'Eliminar tasa ' . $t['moneda_origen'] . ' a ' . $t['moneda_destino'], [
+                    'type' => 'submit',
+                    'tone' => 'danger',
+                    'attrs' => [
+                        'data-confirm' => '¿Eliminar la tasa de cambio ' . $t['moneda_origen'] . ' → ' . $t['moneda_destino'] . '?',
+                        'data-confirm-ok' => 'Eliminar',
+                    ],
+                ])),
+            ]) : new Html('<span class="muted-note">Solo lectura</span>'),
+        ];
+    }, $tasas);
+    ?>
 <div id="tasas-cambio" class="mt-4">
     <?= Ui::cardOpen(['title' => 'Tasas de cambio de referencia', 'subtitle' => 'Convierten tus cuentas, reportes, presupuestos y transferencias multimoneda a tu moneda base (' . $monedaBase . ')']) ?>
         <?php if ($filasTasas !== []): ?>
             <?= Ui::table([
-                'caption' => 'Tasas de cambio guardadas',
-                'columns' => [
-                    ['key' => 'par', 'label' => 'Par'],
-                    ['key' => 'tasa', 'label' => 'Equivalencia'],
-                    ['key' => 'actualizada', 'label' => 'Actualizada'],
-                    ['key' => 'acciones', 'label' => 'Acciones', 'kind' => 'actions'],
-                ],
-                'rows' => $filasTasas,
-            ]) ?>
+                    'caption' => 'Tasas de cambio guardadas',
+                    'columns' => [
+                        ['key' => 'par', 'label' => 'Par'],
+                        ['key' => 'tasa', 'label' => 'Equivalencia'],
+                        ['key' => 'actualizada', 'label' => 'Actualizada'],
+                        ['key' => 'acciones', 'label' => 'Acciones', 'kind' => 'actions'],
+                    ],
+                    'rows' => $filasTasas,
+                ]) ?>
         <?php else: ?>
             <p class="muted">Aún no has registrado tasas de cambio. Si manejas cuentas en dólares, euros u otra moneda, guarda aquí la tasa de referencia para ver tu patrimonio consolidado.</p>
         <?php endif; ?>
@@ -200,14 +200,14 @@ $filasTasas = array_map(static function (array $t) use ($puedeEscribir): array {
                 <?= Ui::select(['id' => 'tasa_destino', 'name' => 'moneda_destino', 'label' => 'Equivale en (destino)', 'options' => Dinero::MONEDAS_NOMBRES, 'selected' => $monedaBase]) ?>
             </div>
             <?= Ui::field([
-                'id' => 'tasa_valor',
-                'name' => 'tasa',
-                'label' => 'Tasa de cambio',
-                'placeholder' => 'Ej.: 4.200 o 0,925',
-                'hint' => 'Se guarda en precisión exacta. También funciona en sentido inverso automáticamente.',
-                'required' => true,
-                'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off'],
-            ]) ?>
+                    'id' => 'tasa_valor',
+                    'name' => 'tasa',
+                    'label' => 'Tasa de cambio',
+                    'placeholder' => 'Ej.: 4.200 o 0,925',
+                    'hint' => 'Se guarda en precisión exacta. También funciona en sentido inverso automáticamente.',
+                    'required' => true,
+                    'attrs' => ['inputmode' => 'decimal', 'autocomplete' => 'off'],
+                ]) ?>
             <div class="form-actions">
                 <?= Ui::button('Guardar tasa', ['type' => 'submit', 'variant' => 'secondary', 'icon' => 'check']) ?>
             </div>

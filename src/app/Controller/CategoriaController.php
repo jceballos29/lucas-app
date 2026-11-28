@@ -103,6 +103,7 @@ final class CategoriaController
                         Flash::set($tone, $message);
                         Response::redirect($base);
 
+                        // no break
                     default:
                         Response::plain(400, "Solicitud no válida.\n");
                 }

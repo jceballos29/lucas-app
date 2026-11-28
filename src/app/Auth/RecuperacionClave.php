@@ -6,8 +6,8 @@ namespace App\Auth;
 
 use App\Database\Transaction;
 use App\Logging\Logger;
-use App\Mail\MailException;
 use App\Mail\Mailer;
+use App\Mail\MailException;
 use App\Repository\RestablecimientoRepository;
 use App\Repository\UsuarioRepository;
 use PDO;
@@ -57,7 +57,7 @@ final class RecuperacionClave
 
         $enlace = rtrim($this->origen, '/') . '/restablecer.php?token=' . $token;
         $cuerpo = "Hola {$usuario->nombre},\n\n"
-            . "Recibimos una solicitud para restablecer la contraseña de tu cuenta de Lucas. Para elegir una nueva, abre este enlace "
+            . 'Recibimos una solicitud para restablecer la contraseña de tu cuenta de Lucas. Para elegir una nueva, abre este enlace '
             . '(vale ' . self::VIGENCIA_MINUTOS . " minutos y solo se puede usar una vez):\n\n$enlace\n\n"
             . "Si tú no lo pediste, ignora este mensaje: tu contraseña sigue igual.\n";
 

@@ -43,7 +43,7 @@ final class SesionRepository
         $stmt = $this->pdo->prepare(
             'INSERT INTO sesiones_usuario (id_sesion, id_usuario, ip, user_agent, creado_en, ultimo_uso)
              VALUES (:id, :u, :ip, :ua, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-             ON DUPLICATE KEY UPDATE ip = VALUES(ip), user_agent = VALUES(user_agent), ultimo_uso = CURRENT_TIMESTAMP'
+             ON DUPLICATE KEY UPDATE ip = VALUES(ip), user_agent = VALUES(user_agent), ultimo_uso = CURRENT_TIMESTAMP',
         );
         $stmt->execute([
             'id' => $sessionHash,
@@ -60,7 +60,7 @@ final class SesionRepository
     {
         $stmt = $this->pdo->prepare(
             'SELECT id_sesion FROM sesiones_usuario WHERE id_usuario = :u AND id_sesion <> :actual
-             ORDER BY ultimo_uso DESC, creado_en DESC LIMIT 18446744073709551615 OFFSET ' . (self::MAX_SESIONES - 1)
+             ORDER BY ultimo_uso DESC, creado_en DESC LIMIT 18446744073709551615 OFFSET ' . (self::MAX_SESIONES - 1),
         );
         $stmt->execute(['u' => $userId, 'actual' => $actualHash]);
         $sobran = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -82,7 +82,7 @@ final class SesionRepository
         $stmt = $this->pdo->prepare(
             'SELECT creado_en > DATE_SUB(CURRENT_TIMESTAMP, INTERVAL :vida SECOND) AS vigente,
                     ultimo_uso < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL :refresco SECOND) AS refrescar
-             FROM sesiones_usuario WHERE id_sesion = :id AND id_usuario = :u'
+             FROM sesiones_usuario WHERE id_sesion = :id AND id_usuario = :u',
         );
         $stmt->bindValue('vida', self::VIDA_MAXIMA_SEGUNDOS, PDO::PARAM_INT);
         $stmt->bindValue('refresco', self::REFRESCO_SEGUNDOS, PDO::PARAM_INT);
@@ -102,7 +102,7 @@ final class SesionRepository
 
         if ((int) $fila['refrescar'] === 1) {
             $this->pdo->prepare(
-                'UPDATE sesiones_usuario SET ultimo_uso = CURRENT_TIMESTAMP WHERE id_sesion = :id AND id_usuario = :u'
+                'UPDATE sesiones_usuario SET ultimo_uso = CURRENT_TIMESTAMP WHERE id_sesion = :id AND id_usuario = :u',
             )->execute(['id' => $sessionHash, 'u' => $userId]);
         }
 
@@ -131,7 +131,7 @@ final class SesionRepository
             'SELECT id_sesion, ip, user_agent, creado_en, ultimo_uso
              FROM sesiones_usuario
              WHERE id_usuario = :u
-             ORDER BY ultimo_uso DESC, creado_en DESC'
+             ORDER BY ultimo_uso DESC, creado_en DESC',
         );
         $stmt->execute(['u' => $userId]);
 
@@ -150,7 +150,7 @@ final class SesionRepository
     public function eliminarDeUsuario(int $userId, string $sessionHash): bool
     {
         $stmt = $this->pdo->prepare(
-            'DELETE FROM sesiones_usuario WHERE id_sesion = :id AND id_usuario = :u'
+            'DELETE FROM sesiones_usuario WHERE id_sesion = :id AND id_usuario = :u',
         );
         $stmt->execute(['id' => $sessionHash, 'u' => $userId]);
 
@@ -163,7 +163,7 @@ final class SesionRepository
     public function eliminarOtrasDeUsuario(int $userId, string $exceptHash): int
     {
         $stmt = $this->pdo->prepare(
-            'DELETE FROM sesiones_usuario WHERE id_usuario = :u AND id_sesion <> :actual'
+            'DELETE FROM sesiones_usuario WHERE id_usuario = :u AND id_sesion <> :actual',
         );
         $stmt->execute(['u' => $userId, 'actual' => $exceptHash]);
 
@@ -178,7 +178,7 @@ final class SesionRepository
     public function purgarExpiradas(int $userId, int $ttlSeconds = 1800): void
     {
         $stmt = $this->pdo->prepare(
-            'DELETE FROM sesiones_usuario WHERE id_usuario = :u AND ultimo_uso < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL :ttl SECOND)'
+            'DELETE FROM sesiones_usuario WHERE id_usuario = :u AND ultimo_uso < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL :ttl SECOND)',
         );
         $stmt->bindValue('u', $userId, PDO::PARAM_INT);
         $stmt->bindValue('ttl', max(60, $ttlSeconds), PDO::PARAM_INT);

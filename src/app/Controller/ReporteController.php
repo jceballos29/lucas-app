@@ -78,7 +78,7 @@ final class ReporteController
             $presupuestos = $this->container->presupuestos()->listByMonth($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
             $cuentas = array_values(array_filter(
                 $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa
+                static fn (Cuenta $c): bool => $c->activa,
             ));
             $consolidado = ConversorMoneda::consolidarCuentas($cuentas, $monedaBase, $tasas);
         } catch (RuntimeException $error) {

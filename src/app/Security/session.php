@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-
 /**
  * Sesión de usuario. El servidor guarda QUIÉN eres en $_SESSION (un archivo en el contenedor
  * de PHP, en /tmp: se pierde si se recrea el contenedor y todos tienen que volver a entrar); el navegador

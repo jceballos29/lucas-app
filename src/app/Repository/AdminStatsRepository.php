@@ -28,7 +28,7 @@ final class AdminStatsRepository
                 (SELECT COUNT(*) FROM usuarios WHERE creado_en >= DATE_FORMAT(NOW(), '%Y-%m-01')) AS nuevos_mes,
                 (SELECT COUNT(*) FROM usuarios WHERE rol = 'admin' AND activo = 1) AS admins_activos,
                 (SELECT COUNT(*) FROM cuentas) AS cuentas,
-                (SELECT COUNT(*) FROM transacciones) AS movimientos"
+                (SELECT COUNT(*) FROM transacciones) AS movimientos",
         )->fetch();
 
         return [
@@ -55,7 +55,7 @@ final class AdminStatsRepository
             "SELECT DATE_FORMAT(creado_en, '%Y-%m') AS ym, COUNT(*) AS total
              FROM usuarios
              WHERE creado_en >= DATE_FORMAT(NOW() - INTERVAL $back MONTH, '%Y-%m-01')
-             GROUP BY ym"
+             GROUP BY ym",
         )->fetchAll();
 
         $counts = [];

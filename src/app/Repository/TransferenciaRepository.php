@@ -35,7 +35,7 @@ final class TransferenciaRepository
     {
         [$scope, $params] = self::scope($userId, $espacioId, 'tr');
         $stmt = $this->pdo->prepare(
-            self::SELECT . " WHERE $scope ORDER BY tr.fecha DESC, tr.id_transferencia DESC LIMIT :limit OFFSET :offset"
+            self::SELECT . " WHERE $scope ORDER BY tr.fecha DESC, tr.id_transferencia DESC LIMIT :limit OFFSET :offset",
         );
         foreach ($params as $k => $v) {
             $stmt->bindValue($k, $v, PDO::PARAM_INT);
@@ -73,7 +73,7 @@ final class TransferenciaRepository
              FROM transferencias tr
              JOIN cuentas co ON co.id_cuenta = tr.id_cuenta_origen
              WHERE $scope
-             GROUP BY co.moneda"
+             GROUP BY co.moneda",
         );
         $stmt->execute($params);
 
@@ -101,7 +101,7 @@ final class TransferenciaRepository
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO transferencias (id_usuario, id_espacio, id_cuenta_origen, id_cuenta_destino, monto, monto_destino, fecha, descripcion)
-             VALUES (:u, :e, :origen, :destino, :monto, :monto_destino, :fecha, :desc)'
+             VALUES (:u, :e, :origen, :destino, :monto, :monto_destino, :fecha, :desc)',
         );
         $stmt->execute([
             'u' => $userId,
@@ -123,7 +123,7 @@ final class TransferenciaRepository
         $stmt = $this->pdo->prepare(
             "UPDATE transferencias
              SET id_cuenta_origen = :origen, id_cuenta_destino = :destino, monto = :monto, monto_destino = :monto_destino, fecha = :fecha, descripcion = :desc
-             WHERE id_transferencia = :id AND $scope"
+             WHERE id_transferencia = :id AND $scope",
         );
         $stmt->execute($params + [
             'origen' => $origenId,

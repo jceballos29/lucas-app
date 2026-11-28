@@ -65,6 +65,7 @@ final class PerfilController
                         });
                         Response::redirect('/perfil.php');
 
+                        // no break
                     case 'dos_pasos_iniciar':
                         // El secreto de la configuración en curso vive solo en la sesión hasta que el usuario lo confirma con un código.
                         if ($usuario->dosPasos) {
@@ -74,10 +75,12 @@ final class PerfilController
                         $_SESSION['dos_pasos_config'] = \App\Auth\Totp::generarSecreto();
                         Response::redirect('/perfil.php#dos-pasos');
 
+                        // no break
                     case 'dos_pasos_cancelar':
                         unset($_SESSION['dos_pasos_config']);
                         Response::redirect('/perfil.php#dos-pasos');
 
+                        // no break
                     case 'dos_pasos_activar':
                         $secreto = is_string($_SESSION['dos_pasos_config'] ?? null) ? $_SESSION['dos_pasos_config'] : '';
                         if ($usuario->dosPasos || $secreto === '') {
@@ -140,6 +143,7 @@ final class PerfilController
                         Flash::set('ok', 'Se guardaron tus preferencias de notificaciones por correo.');
                         Response::redirect('/perfil.php');
 
+                        // no break
                     case 'resumen_prueba':
                         if (!$usuario->correoVerificado) {
                             Flash::set('error', 'Verifica tu correo antes de pedir el resumen de prueba.');
@@ -222,6 +226,7 @@ final class PerfilController
                         Flash::set('ok', 'Se cerró la sesión del dispositivo seleccionado.');
                         Response::redirect('/perfil.php');
 
+                        // no break
                     case 'cerrar_otras_sesiones':
                         $actualHash = \App\Repository\SesionRepository::hashId((string) session_id());
                         $cerradas = $this->container->sesiones()->eliminarOtrasDeUsuario($usuario->id, $actualHash);
@@ -230,6 +235,7 @@ final class PerfilController
                             : "Se cerraron las demás sesiones activas ($cerradas).");
                         Response::redirect('/perfil.php');
 
+                        // no break
                     case 'eliminar':
                         $errors = $this->verificarClave($usuario->correo, $usuario->contrasenaHash, self::field('eliminar_clave'), 'eliminar_clave');
 

@@ -7,8 +7,8 @@ namespace App\Database;
 use App\Config\Environment;
 use App\Exceptions\DatabaseConnectionException;
 use PDO;
-use PDOException;
 use Pdo\Mysql;
+use PDOException;
 
 /**
  * Construye la conexión PDO a partir de las variables de entorno. Es lo único que sabe CÓMO se conecta la
@@ -26,7 +26,7 @@ final class Connection
             'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
             Environment::get('DB_HOST'),
             Environment::get('DB_PORT'),
-            Environment::get('DB_DATABASE')
+            Environment::get('DB_DATABASE'),
         );
 
         $options = [

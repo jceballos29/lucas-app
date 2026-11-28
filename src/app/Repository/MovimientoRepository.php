@@ -95,7 +95,7 @@ final class MovimientoRepository
             $stmt = $this->pdo->prepare(
                 "SELECT COALESCE(SUM(CASE WHEN t.tipo = 'ingreso' THEN t.monto END), 0) AS ingresos,
                         COALESCE(SUM(CASE WHEN t.tipo = 'gasto' THEN t.monto END), 0) AS gastos
-                 FROM transacciones t" . $where
+                 FROM transacciones t" . $where,
             );
             $stmt->execute($params);
             $row = $stmt->fetch();
@@ -108,7 +108,7 @@ final class MovimientoRepository
                     COALESCE(SUM(CASE WHEN t.tipo = 'ingreso' THEN t.monto END), 0) AS ingresos,
                     COALESCE(SUM(CASE WHEN t.tipo = 'gasto' THEN t.monto END), 0) AS gastos
              FROM transacciones t
-             JOIN cuentas c ON c.id_cuenta = t.id_cuenta" . $where . ' GROUP BY c.moneda'
+             JOIN cuentas c ON c.id_cuenta = t.id_cuenta" . $where . ' GROUP BY c.moneda',
         );
         $stmt->execute($params);
 
@@ -152,7 +152,7 @@ final class MovimientoRepository
     ): int {
         $stmt = $this->pdo->prepare(
             'INSERT INTO transacciones (id_usuario, id_espacio, id_cuenta, id_categoria, tipo, monto, fecha, descripcion, etiqueta, grupo_split, num_cuotas, con_intereses, tasa_mensual_bps)
-             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :fecha, :desc, :etiqueta, :split, :cuotas, :con_int, :tasa)'
+             VALUES (:u, :e, :cuenta, :cat, :tipo, :monto, :fecha, :desc, :etiqueta, :split, :cuotas, :con_int, :tasa)',
         );
         $stmt->execute([
             'u' => $userId,
@@ -191,7 +191,7 @@ final class MovimientoRepository
         [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
             "UPDATE transacciones SET id_cuenta = :cuenta, id_categoria = :cat, tipo = :tipo, monto = :monto, fecha = :fecha, descripcion = :desc, etiqueta = :etiqueta, num_cuotas = :cuotas, con_intereses = :con_int, tasa_mensual_bps = :tasa
-             WHERE id_transaccion = :id AND $scope"
+             WHERE id_transaccion = :id AND $scope",
         );
         $stmt->execute($params + [
             'cuenta' => $cuentaId,
@@ -235,7 +235,7 @@ final class MovimientoRepository
     {
         return array_values(array_filter(
             $this->pdo->query('SELECT adjunto_ruta FROM transacciones WHERE adjunto_ruta IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN),
-            static fn (mixed $ruta): bool => is_string($ruta) && $ruta !== ''
+            static fn (mixed $ruta): bool => is_string($ruta) && $ruta !== '',
         ));
     }
 
@@ -250,7 +250,7 @@ final class MovimientoRepository
         [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
             "UPDATE transacciones SET adjunto_ruta = :ruta, adjunto_nombre = :nombre, adjunto_mime = :mime
-             WHERE id_transaccion = :id AND $scope"
+             WHERE id_transaccion = :id AND $scope",
         );
         $stmt->execute($params + [
             'ruta' => $ruta,
@@ -280,7 +280,7 @@ final class MovimientoRepository
     {
         [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
-            "SELECT DISTINCT etiqueta FROM transacciones WHERE $scope AND etiqueta IS NOT NULL AND etiqueta <> '' ORDER BY etiqueta"
+            "SELECT DISTINCT etiqueta FROM transacciones WHERE $scope AND etiqueta IS NOT NULL AND etiqueta <> '' ORDER BY etiqueta",
         );
         $stmt->execute($params);
 

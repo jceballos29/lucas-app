@@ -133,7 +133,7 @@ same('la clave del correo no lleva el correo en claro', false, str_contains(App\
 same('la clave del correo ignora mayúsculas y espacios', App\Auth\LimitadorIntentos::claveCorreo('ana@correo.com'), App\Auth\LimitadorIntentos::claveCorreo(' ANA@correo.com '));
 
 section('Autenticador (con un origen de datos falso)');
-$fake = new class implements App\Auth\CredentialSource {
+$fake = new class () implements App\Auth\CredentialSource {
     /** @var array<string, App\Domain\Usuario> */
     public array $users = [];
     public ?string $newHash = null;
@@ -187,6 +187,7 @@ same('hasta 3 envíos por hora y enlaces de 48 h', [3, 3600, 48], [App\Auth\Veri
 
 section('AdminSemilla (C1)');
 use App\Security\AdminSemilla as Semilla;
+
 $semilla = static fn (string $hash = Semilla::HASH_PUBLICO, bool $activo = true, string $rol = 'admin'): App\Domain\Usuario => new App\Domain\Usuario(1, 'Administrador', Semilla::CORREO, $hash, 'COP', $rol, $activo);
 same('en producción, el admin activo con la clave pública está expuesto', true, Semilla::expuesto($semilla(), 'production'));
 same('con APP_ENV vacío (no definido) también se considera expuesto', true, Semilla::expuesto($semilla(), ''));
@@ -198,6 +199,7 @@ same('si no existe el usuario, no está expuesto', false, Semilla::expuesto(null
 
 section('HuerfanosAdjuntos (M3)');
 use App\Support\HuerfanosAdjuntos as Huerf;
+
 $hBase = sys_get_temp_dir() . '/lucas-huerfanos-' . bin2hex(random_bytes(4));
 mkdir($hBase . '/2026/11', 0775, true);
 $hViejo = '2026/11/' . str_repeat('a', 32) . '.png';
@@ -217,10 +219,13 @@ same('faltantes: filas que apuntan a un archivo inexistente', ['2026/11/' . str_
 foreach (array_merge(glob($hBase . '/2026/11/*') ?: [], [$hBase . '/.gitkeep']) as $f) {
     @unlink($f);
 }
-@rmdir($hBase . '/2026/11'); @rmdir($hBase . '/2026'); @rmdir($hBase);
+@rmdir($hBase . '/2026/11');
+@rmdir($hBase . '/2026');
+@rmdir($hBase);
 
 section('ReglasAdmin (RF-33)');
 use App\Admin\ReglasAdmin as R;
+
 $u = static fn (int $id, string $rol = 'usuario', bool $activo = true): App\Domain\Usuario => new App\Domain\Usuario($id, "U$id", "u$id@x.com", 'h', 'COP', $rol, $activo);
 same('desactivar a otro usuario', R::OK, R::evaluar([1], 1, $u(2), 'desactivar'));
 same('activar a un usuario inactivo', R::OK, R::evaluar([1], 1, $u(2, 'usuario', false), 'activar'));
@@ -278,6 +283,7 @@ same('una fecha inválida se devuelve igual', 'nada', App\View\Fecha::dia('nada'
 
 section('Dinero::parse()');
 use App\Support\Dinero as D;
+
 same('entero simple', '1950000.00', D::parse('1950000'));
 same('miles con punto', '1950000.00', D::parse('1.950.000'));
 same('miles con punto y decimales con coma', '1950000.50', D::parse('1.950.000,5'));
@@ -374,6 +380,7 @@ same('descripción de 150 caracteres', [], $mv->validate(['descripcion' => str_r
 
 section('ReglasMovimiento (D8)');
 use App\Movimientos\ReglasMovimiento as RM;
+
 $cat = static fn (?int $dueño, string $tipo): App\Domain\Categoria => new App\Domain\Categoria(1, $dueño, 'X', $tipo, '#000000');
 $activa = ['activa' => true, 'tipo' => 'efectivo'];
 $tarjetaActiva = ['activa' => true, 'tipo' => 'tarjeta_credito'];
@@ -391,6 +398,7 @@ same('lo ajeno se detecta antes que lo discordante (no se revela que existe)', R
 
 section('Filtros del listado');
 use App\Movimientos\Filtros as F;
+
 same('sin parámetros no hay filtros', ['desde' => '', 'hasta' => '', 'cuenta' => 0, 'categoria' => 0, 'tipo' => '', 'etiqueta' => ''], F::desde([]));
 same('filtros válidos', ['desde' => '2026-11-01', 'hasta' => '2026-11-30', 'cuenta' => 3, 'categoria' => 8, 'tipo' => 'gasto', 'etiqueta' => ''], F::desde(['desde' => '2026-11-01', 'hasta' => '2026-11-30', 'cuenta' => '3', 'categoria' => '8', 'tipo' => 'gasto']));
 same('una fecha inválida se ignora', '', F::desde(['desde' => '2026-13-45'])['desde']);
@@ -428,6 +436,7 @@ same('muestra el error y lo enlaza', true, str_contains($sel, 'id="e-c"') && str
 
 section('Mes');
 use App\Support\Mes as M;
+
 $hoy = new DateTimeImmutable('2026-11-24');
 same('sin parámetros es el mes actual', ['mes' => 11, 'anio' => 2026], M::desde([], $hoy));
 same('un mes válido', ['mes' => 3, 'anio' => 2027], M::desde(['mes' => '3', 'anio' => '2027'], $hoy));
@@ -450,6 +459,7 @@ same('una fecha inválida no tiene mes', null, M::deFecha('mañana'));
 
 section('Progreso de un presupuesto (RF-16, RF-17)');
 use App\Support\Progreso as P;
+
 $pp = static fn (string $g, string $l): array => P::presupuesto($g, $l);
 same('sin gastar', ['percent' => 0, 'estado' => 'ok', 'tone' => 'ok', 'restante' => '400000.00'], $pp('0', '400000'));
 same('79,99 % sigue en orden', ['ok', 79], [$pp('79.99', '100')['estado'], $pp('79.99', '100')['percent']]);
@@ -474,6 +484,7 @@ same('pasarse del objetivo: faltante nunca es negativo', [150, '0.00', true], ar
 
 section('ReglasPresupuesto');
 use App\Presupuestos\ReglasPresupuesto as RP;
+
 same('una categoría de gasto predeterminada', RP::OK, RP::evaluar($cat(null, 'gasto'), 5));
 same('una categoría de gasto propia', RP::OK, RP::evaluar($cat(5, 'gasto'), 5));
 same('una categoría de ingreso no sirve', RP::NO_ES_GASTO, RP::evaluar($cat(null, 'ingreso'), 5));
@@ -483,6 +494,7 @@ same('lo ajeno se detecta antes que el tipo', RP::CATEGORIA_AJENA, RP::evaluar($
 
 section('ReglasAporte (D8)');
 use App\Metas\ReglasAporte as RA;
+
 $cuentaOk = ['activa' => true];
 $metaOk = ['estado' => 'en_curso'];
 same('un aporte válido', RA::OK, RA::evaluar($cuentaOk, $metaOk, '500000.00', '100000.00'));
@@ -543,6 +555,7 @@ same('nombre del mes', ['enero', 'diciembre'], [App\View\Fecha::mesNombre(1), Ap
 
 section('Csv: inyección de fórmulas (RF-23)');
 use App\Export\Csv as C;
+
 same('una fórmula con = se neutraliza', "'=1+1", C::texto('=1+1'));
 same('una con + se neutraliza', "'+cmd", C::texto('+cmd'));
 same('una con - se neutraliza', "'-2", C::texto('-2'));
@@ -592,6 +605,7 @@ same('un mes imposible se devuelve igual', '2026-13-03', App\View\Fecha::diaMes(
 
 section('Reportes\Categorias::agrupar');
 use App\Reportes\Categorias as K;
+
 $fila = static fn (string $n, string $t): array => ['nombre' => $n, 'total' => $t];
 $g3 = K::agrupar([$fila('A', '500.00'), $fila('B', '300.00'), $fila('C', '200.00')]);
 same('tres categorías van sueltas', ['A', 'B', 'C'], array_column($g3['items'], 'label'));
@@ -608,6 +622,7 @@ same('con total cero no divide por cero', 0.0, K::agrupar([$fila('A', '0.00')])[
 
 section('Mail\Message: construcción de correos (RF-04)');
 use App\Mail\Message as Msg;
+
 $fecha = 'Tue, 24 Nov 2026 10:00:00 -0500';
 $msg = Msg::build('lucas@ejemplo.com', 'Lucas', 'ana@correo.com', 'Restablece tu contraseña', "Hola María,\n.línea con punto\nFin", $fecha, 'abc123@ejemplo.com');
 [$cabeceras, $cuerpo] = explode("\r\n\r\n", $msg, 2);
@@ -667,6 +682,7 @@ same('un punto en medio de la línea no se toca', "a.b\r\n.\r\n", Msg::forData('
 
 section('ClaveValidator, tokens y huella de sesión');
 use App\Validation\ClaveValidator as CV;
+
 same('una contraseña válida', [], CV::errores('secreta123', 'secreta123'));
 same('muy corta', ['clave'], array_keys(CV::errores('corta', 'corta')));
 same('de 8 caracteres exactos', [], CV::errores('12345678', '12345678'));
@@ -676,6 +692,7 @@ same('que no coincide', ['clave2'], array_keys(CV::errores('secreta123', 'otra-c
 same('con otros nombres de campo', ['clave_nueva2'], array_keys(CV::errores('secreta123', 'x', 'clave_nueva', 'clave_nueva2')));
 same('el registro usa las mismas reglas', true, CV::MIN === App\Validation\RegistroValidator::CLAVE_MIN && CV::MAX_BYTES === App\Validation\RegistroValidator::CLAVE_MAX_BYTES);
 use App\Auth\RecuperacionClave as RC;
+
 same('un token de 64 hexadecimales tiene forma válida', true, RC::formaValida(str_repeat('ab12', 16)));
 same('uno corto no', false, RC::formaValida('abc'));
 same('uno con mayúsculas no', false, RC::formaValida(str_repeat('AB12', 16)));
@@ -721,7 +738,8 @@ same('toda moneda del perfil tiene símbolo', true, array_reduce(array_values(D:
 
 section('SqlScript');
 use App\Database\SqlScript as SQ;
-same('parte en sentencias y quita comentarios', ['CREATE TABLE a (x INT)', "INSERT INTO a VALUES (1)"], SQ::statements("-- comentario\nCREATE TABLE a (x INT);\n\n-- otro\nINSERT INTO a VALUES (1);\n"));
+
+same('parte en sentencias y quita comentarios', ['CREATE TABLE a (x INT)', 'INSERT INTO a VALUES (1)'], SQ::statements("-- comentario\nCREATE TABLE a (x INT);\n\n-- otro\nINSERT INTO a VALUES (1);\n"));
 same('ignora lo vacío', [], SQ::statements("-- nada\n\n;\n"));
 same('una sentencia sin «;» final', ['SELECT 1'], SQ::statements('SELECT 1'));
 same('un «;» dentro de una línea no corta', ["INSERT INTO t VALUES ('a;b')"], SQ::statements("INSERT INTO t VALUES ('a;b');"));
@@ -729,6 +747,7 @@ same('las migraciones del proyecto se parten bien', true, count(SQ::statements((
 
 section('TransferenciaValidator y ReglasTransferencia (Fase 8)');
 use App\Transferencias\ReglasTransferencia as RT;
+
 $tv = new App\Validation\TransferenciaValidator();
 $tb = ['id_cuenta_origen' => '1', 'id_cuenta_destino' => '2', 'monto' => '150.000,50', 'fecha' => '2026-11-25', 'descripcion' => '  Pago   tarjeta '];
 $tr = $tv->validate($tb);
@@ -755,6 +774,7 @@ same('cuenta destino inactiva', RT::DESTINO_INACTIVA, RT::evaluar($cActiva, $cIn
 
 section('Frecuencia y RecurrenteValidator (Fase 9)');
 use App\Support\Frecuencia as FQ;
+
 same('semanal suma 7 días', '2026-11-10', FQ::siguiente('2026-11-03', 'semanal'));
 same('quincenal suma 15 días', '2026-11-18', FQ::siguiente('2026-11-03', 'quincenal'));
 same('mensual normal mantiene el día', '2026-12-15', FQ::siguiente('2026-11-15', 'mensual'));
@@ -776,6 +796,7 @@ same('proxima_fecha inválida se rechaza', true, isset($rv->validate(['proxima_f
 
 section('ReglasEspacio y EspacioValidator (Fase 10)');
 use App\Espacios\ReglasEspacio as RE;
+
 same('invitación dentro de todos los límites', RE::OK, RE::evaluarLimitesInvitacion(0, 0, 0, false));
 same('9 enviadas hoy aún permite la décima', RE::OK, RE::evaluarLimitesInvitacion(9, 0, 0, false));
 same('10 enviadas hoy: límite por usuario', RE::LIMITE_USUARIO, RE::evaluarLimitesInvitacion(10, 0, 0, false));
@@ -803,10 +824,11 @@ same('invitación válida', [], $ev->validateInvitacion(['correo' => 'Pareja@Cor
 same('invitación con rol propietario no se permite directamente', true, isset($ev->validateInvitacion(['correo' => 'a@b.com', 'rol' => 'propietario'])['errors']['rol']));
 
 section('Deuda, ReglasPagoDeuda y PlanificadorDeudas: Bola de Nieve vs. Avalancha (Fase 11)');
-use App\Domain\Deuda;
-use App\Deudas\ReglasPagoDeuda as RPD;
 use App\Deudas\PlanificadorDeudas as PD;
+use App\Deudas\ReglasPagoDeuda as RPD;
+use App\Domain\Deuda;
 use App\Validation\DeudaValidator;
+
 same('parseTasaBps convierte porcentaje mensual a puntos básicos enteros', [185, 200, 0, 50], [
     DeudaValidator::parseTasaBps('1,85'),
     DeudaValidator::parseTasaBps('2 %'),
@@ -838,14 +860,17 @@ $dGrandeCara = new Deuda(2, 1, 'Tarjeta (cara)', null, '1200000.00', 250, '15000
 $comp = PD::comparar([$dPequenaBarata, $dGrandeCara], '100000.00');
 same('Bola de Nieve ataca primero la deuda más pequeña', 'Tienda (pequeña)', $comp['bolaNieve']['primeraDeuda']);
 same('Avalancha ataca primero la deuda con mayor tasa de interés', 'Tarjeta (cara)', $comp['avalancha']['primeraDeuda']);
-same('Avalancha paga menos o igual intereses totales que Bola de Nieve y que solo mínimos', true,
+same(
+    'Avalancha paga menos o igual intereses totales que Bola de Nieve y que solo mínimos',
+    true,
     D::aCentavos($comp['avalancha']['intereses']) <= D::aCentavos($comp['bolaNieve']['intereses'])
-    && D::aCentavos($comp['bolaNieve']['intereses']) < D::aCentavos($comp['minimos']['intereses'])
+    && D::aCentavos($comp['bolaNieve']['intereses']) < D::aCentavos($comp['minimos']['intereses']),
 );
 
 section('Asistente503020: distribución entera 50/30/20 (Fase 12)');
-use App\Presupuestos\Asistente503020 as A50;
 use App\Domain\Categoria as Cat;
+use App\Presupuestos\Asistente503020 as A50;
+
 $cats50 = [
     new Cat(1, null, 'Alimentación', 'gasto', '#E4572E'),
     new Cat(2, null, 'Vivienda', 'gasto', '#7A5195'),
@@ -861,6 +886,7 @@ same('la suma de las sugerencias por categoría cuadra al centavo con 50 % + 30 
 
 section('ImportadorCsv: parseo de texto CSV bancario (Fase 13)');
 use App\Movimientos\ImportadorCsv as IC;
+
 $csvSample = "Fecha;Descripción;Monto\n2026-11-20;Supermercado Éxito;-185.000,50\n25/11/2026;Nómina quincenal;+2.500.000";
 $resCsv = IC::parsearTexto($csvSample);
 same('parsearTexto con cabecera y 2 líneas válidas no da errores', [], $resCsv['errores']);
@@ -876,11 +902,14 @@ same('reconoce ingreso con signo + y fecha DD/MM/AAAA', ['2026-11-25', 'ingreso'
     $resCsv['filas'][1]['monto'],
     $resCsv['filas'][1]['descripcion'],
 ]);
-same('una fecha inválida en CSV reporta la línea con error', 1, count(IC::parsearTexto("2026-02-31;Raro;-100")['errores']));
+same('una fecha inválida en CSV reporta la línea con error', 1, count(IC::parsearTexto('2026-02-31;Raro;-100')['errores']));
 same('M8: «1.234» es ambiguo; «1.234,50», «1234», «12.50», «1.234.567» y «$ 5.000,00» no', [true, false, false, false, false, false, true], [
     IC::esAmbiguo('1.234'), IC::esAmbiguo('1.234,50'), IC::esAmbiguo('1234'), IC::esAmbiguo('12.50'), IC::esAmbiguo('1.234.567'), IC::esAmbiguo('$ 5.000,00'), IC::esAmbiguo('-185.000'),
 ]);
-same('M8: las filas traen el monto crudo y si es ambiguo', ['-1.234', true, 'gasto', '1234.00'], (static function (): array { $f = IC::parsearTexto('2026-11-20;Café;-1.234')['filas'][0]; return [$f['monto_crudo'], $f['ambiguo'], $f['tipo'], $f['monto']]; })());
+same('M8: las filas traen el monto crudo y si es ambiguo', ['-1.234', true, 'gasto', '1234.00'], (static function (): array {
+    $f = IC::parsearTexto('2026-11-20;Café;-1.234')['filas'][0];
+    return [$f['monto_crudo'], $f['ambiguo'], $f['tipo'], $f['monto']];
+})());
 same('U4: todos los errores se devuelven con su número de línea', ['Línea 1', 'Línea 2'], array_map(static fn (string $e): string => mb_substr($e, 0, 7), IC::parsearTexto("mala;x;-5\n2026-11-20;y;abc\n2026-11-20;z;-1")['errores']));
 $muchas = implode("\n", array_map(static fn (int $i): string => "2026-11-20;Fila $i;-100", range(1, IC::MAX_FILAS + 5)));
 $resMuchas = IC::parsearTexto($muchas);
@@ -952,8 +981,9 @@ same('validateSplit exige al menos 2 partes', true, isset($valSplitUnaSola['erro
 same('Filtros::desde incluye y normaliza la etiqueta', 'vacaciones-2026', App\Movimientos\Filtros::desde(['etiqueta' => '#Vacaciones 2026'])['etiqueta']);
 
 section('PlanCuotas y CicloTarjeta: compras a cuotas, fecha de corte y fecha de pago (Fase 15)');
-use App\Tarjetas\PlanCuotas as PC;
 use App\Tarjetas\CicloTarjeta as CT;
+use App\Tarjetas\PlanCuotas as PC;
+
 $cuotas3 = PC::generar('100000.00', 3, '2026-11-10', 15);
 same('100.000 en 3 cuotas reparte los centavos exactos: 33.333,34 + 33.333,33 + 33.333,33', [
     '33333.34',
@@ -1071,8 +1101,9 @@ same('todos los iconos declarados en manifest.webmanifest existen en public/', t
 })());
 
 section('DispositivoSesion y SesionRepository::hashId (Fase 17)');
-use App\Support\DispositivoSesion as DS;
 use App\Repository\SesionRepository as SR;
+use App\Support\DispositivoSesion as DS;
+
 same('DispositivoSesion::describir reconoce navegadores y sistemas operativos', [
     'Firefox en Linux',
     'Chrome en Android',
@@ -1088,13 +1119,16 @@ same('DispositivoSesion::describir reconoce navegadores y sistemas operativos', 
     DS::describir('curl/8.5.0'),
     DS::describir('   '),
 ]);
-same('SesionRepository::hashId genera un SHA-256 de 64 hex distinto del session_id en claro', true,
-    strlen(SR::hashId('sesion-secreta')) === 64 && SR::hashId('sesion-secreta') !== 'sesion-secreta'
+same(
+    'SesionRepository::hashId genera un SHA-256 de 64 hex distinto del session_id en claro',
+    true,
+    strlen(SR::hashId('sesion-secreta')) === 64 && SR::hashId('sesion-secreta') !== 'sesion-secreta',
 );
 
 section('Multimoneda: Dinero::formatearEn, ConversorMoneda y validadores (Fase 18)');
-use App\Support\ConversorMoneda as CM;
 use App\Domain\Cuenta as Cta;
+use App\Support\ConversorMoneda as CM;
+
 D::usarMoneda('COP');
 same('Dinero::monedaActual y formatearEn formatean cada moneda con su símbolo sin cambiar la moneda base', [
     'COP',
@@ -1204,6 +1238,7 @@ same('TransferenciaValidator rechaza monto_destino y tasa_cambio inválidos', [t
 
 section('AlmacenAdjuntos: validación por firma binaria, nombres seguros y sin path traversal (Fase 19)');
 use App\Support\AlmacenAdjuntos as AA;
+
 $pngMinimo = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', true);
 $pdfMinimo = "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n";
 same('detectarMimePorFirma reconoce JPG, PNG, WebP y PDF y rechaza PHP/HTML/SVG', [
@@ -1260,7 +1295,12 @@ same('rutaLegible (R/M6): archivo normal sí; enlace simbólico hacia fuera, rut
     AA::rutaLegible('../../etc/passwd', $legBase),
     AA::rutaLegible('2026/11/' . str_repeat('d', 32) . '.pdf', $legBase),
 ]);
-@unlink($legBase . '/' . $legEnl); @unlink($legBase . '/' . $legRuta); @unlink(sys_get_temp_dir() . '/lucas_secreto_' . getmypid()); @rmdir($legBase . '/2026/11'); @rmdir($legBase . '/2026'); @rmdir($legBase);
+@unlink($legBase . '/' . $legEnl);
+@unlink($legBase . '/' . $legRuta);
+@unlink(sys_get_temp_dir() . '/lucas_secreto_' . getmypid());
+@rmdir($legBase . '/2026/11');
+@rmdir($legBase . '/2026');
+@rmdir($legBase);
 $tmpPng = sys_get_temp_dir() . '/lucas_png_' . bin2hex(random_bytes(4));
 $tmpPhp = sys_get_temp_dir() . '/lucas_php_' . bin2hex(random_bytes(4));
 file_put_contents($tmpPng, (string) $pngMinimo);
@@ -1318,9 +1358,32 @@ $cif = new CS(str_repeat('k', 40));
 $cifrado = $cif->cifrar($sec);
 same('el secreto cifrado no contiene el secreto y se descifra igual', [false, $sec], [str_contains($cifrado, $sec), $cif->descifrar($cifrado)]);
 same('cifrar dos veces lo mismo da textos distintos (nonce aleatorio)', true, $cif->cifrar($sec) !== $cifrado);
-same('con otra clave no se puede descifrar', 'excepción', (static function () use ($cifrado): string { try { (new CS(str_repeat('z', 40)))->descifrar($cifrado); return 'sin error'; } catch (RuntimeException) { return 'excepción'; } })());
-same('un dato alterado no se descifra', 'excepción', (static function () use ($cif, $cifrado): string { try { $x = base64_decode($cifrado); $x[-1] = $x[-1] === 'a' ? 'b' : 'a'; $cif->descifrar(base64_encode($x)); return 'sin error'; } catch (RuntimeException) { return 'excepción'; } })());
-same('APP_KEY demasiado corta se rechaza', 'excepción', (static function (): string { try { new CS('corta'); return 'sin error'; } catch (RuntimeException) { return 'excepción'; } })());
+same('con otra clave no se puede descifrar', 'excepción', (static function () use ($cifrado): string {
+    try {
+        (new CS(str_repeat('z', 40)))->descifrar($cifrado);
+        return 'sin error';
+    } catch (RuntimeException) {
+        return 'excepción';
+    }
+})());
+same('un dato alterado no se descifra', 'excepción', (static function () use ($cif, $cifrado): string {
+    try {
+        $x = base64_decode($cifrado);
+        $x[-1] = $x[-1] === 'a' ? 'b' : 'a';
+        $cif->descifrar(base64_encode($x));
+        return 'sin error';
+    } catch (RuntimeException) {
+        return 'excepción';
+    }
+})());
+same('APP_KEY demasiado corta se rechaza', 'excepción', (static function (): string {
+    try {
+        new CS('corta');
+        return 'sin error';
+    } catch (RuntimeException) {
+        return 'excepción';
+    }
+})());
 
 same('código de recuperación: formato XXXX-XXXX-XXXX-XXXX sin caracteres ambiguos', true, preg_match('/^([A-HJ-NP-Z2-9]{4}-){3}[A-HJ-NP-Z2-9]{4}$/', DP2::generarCodigoRecuperacion()) === 1);
 same('el hash del código ignora mayúsculas, guiones y espacios', true, DP2::hashCodigo('abcd-efgh-jklm-npqr') === DP2::hashCodigo(' ABCD EFGH JKLM NPQR '));

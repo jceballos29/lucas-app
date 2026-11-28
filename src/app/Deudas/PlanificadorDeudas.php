@@ -37,7 +37,7 @@ final class PlanificadorDeudas
     {
         $activas = array_values(array_filter(
             $deudas,
-            static fn (Deuda $d): bool => $d->activa() && Dinero::aCentavos($d->saldoCapital()) > 0
+            static fn (Deuda $d): bool => $d->activa() && Dinero::aCentavos($d->saldoCapital()) > 0,
         ));
 
         $deudaTotal = Dinero::sumar(array_map(static fn (Deuda $d): string => $d->saldoCapital(), $activas));

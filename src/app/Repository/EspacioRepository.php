@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Repository;
 
-use App\Domain\Espacio;
 use App\Database\Esquema;
+use App\Domain\Espacio;
 use PDO;
 
 /**
@@ -30,7 +30,7 @@ final class EspacioRepository
              FROM espacios e
              JOIN espacio_miembros em ON em.id_espacio = e.id_espacio
              WHERE em.id_usuario = :u
-             ORDER BY e.nombre ASC, e.id_espacio ASC'
+             ORDER BY e.nombre ASC, e.id_espacio ASC',
         );
         $stmt->execute(['u' => $userId]);
 
@@ -47,7 +47,7 @@ final class EspacioRepository
                     (SELECT COUNT(*) FROM espacio_miembros m WHERE m.id_espacio = e.id_espacio) AS num_miembros
              FROM espacios e
              JOIN espacio_miembros em ON em.id_espacio = e.id_espacio
-             WHERE e.id_espacio = :id AND em.id_usuario = :u'
+             WHERE e.id_espacio = :id AND em.id_usuario = :u',
         );
         $stmt->execute(['id' => $espacioId, 'u' => $userId]);
         $row = $stmt->fetch();
@@ -65,7 +65,7 @@ final class EspacioRepository
              FROM espacios e
              JOIN espacio_miembros em ON em.id_espacio = e.id_espacio
              WHERE e.id_espacio = :id AND em.id_usuario = :u
-             FOR UPDATE'
+             FOR UPDATE',
         );
         $stmt->execute(['id' => $espacioId, 'u' => $userId]);
         $row = $stmt->fetch();
@@ -102,7 +102,7 @@ final class EspacioRepository
         $stmtAdj->execute(['e' => $espacioId]);
         $adjuntosABorrar = array_values(array_filter(
             $stmtAdj->fetchAll(PDO::FETCH_COLUMN),
-            static fn (mixed $ruta): bool => is_string($ruta) && $ruta !== ''
+            static fn (mixed $ruta): bool => is_string($ruta) && $ruta !== '',
         ));
 
         Esquema::borrarEspacio($this->pdo, $espacioId);
@@ -145,7 +145,7 @@ final class EspacioRepository
     {
         $stmt = $this->pdo->prepare(
             'SELECT COUNT(*) FROM espacio_miembros em JOIN usuarios u ON u.id_usuario = em.id_usuario
-             WHERE em.id_espacio = :e AND u.correo = :c'
+             WHERE em.id_espacio = :e AND u.correo = :c',
         );
         $stmt->execute(['e' => $espacioId, 'c' => $correo]);
 
@@ -160,7 +160,7 @@ final class EspacioRepository
     public function lockOwnerIds(int $espacioId): array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT id_usuario FROM espacio_miembros WHERE id_espacio = :e AND rol = 'propietario' ORDER BY id_usuario FOR UPDATE"
+            "SELECT id_usuario FROM espacio_miembros WHERE id_espacio = :e AND rol = 'propietario' ORDER BY id_usuario FOR UPDATE",
         );
         $stmt->execute(['e' => $espacioId]);
 
@@ -177,7 +177,7 @@ final class EspacioRepository
              FROM espacio_miembros em
              JOIN usuarios u ON u.id_usuario = em.id_usuario
              WHERE em.id_espacio = :e
-             ORDER BY FIELD(em.rol, 'propietario', 'editor', 'lector'), u.nombre ASC"
+             ORDER BY FIELD(em.rol, 'propietario', 'editor', 'lector'), u.nombre ASC",
         );
         $stmt->execute(['e' => $espacioId]);
 
@@ -240,7 +240,7 @@ final class EspacioRepository
 
         $stmt = $this->pdo->prepare(
             'INSERT INTO espacio_invitaciones (id_espacio, correo, rol, token_hash, expira_en)
-             VALUES (:e, :c, :r, :h, TIMESTAMPADD(SECOND, :ttl, CURRENT_TIMESTAMP))'
+             VALUES (:e, :c, :r, :h, TIMESTAMPADD(SECOND, :ttl, CURRENT_TIMESTAMP))',
         );
         $stmt->bindValue('e', $espacioId, PDO::PARAM_INT);
         $stmt->bindValue('c', $correo);
@@ -263,7 +263,7 @@ final class EspacioRepository
             'SELECT id_invitacion, correo, rol, expira_en
              FROM espacio_invitaciones
              WHERE id_espacio = :e AND expira_en > CURRENT_TIMESTAMP
-             ORDER BY creado_en DESC, id_invitacion DESC'
+             ORDER BY creado_en DESC, id_invitacion DESC',
         );
         $stmt->execute(['e' => $espacioId]);
 
@@ -287,7 +287,7 @@ final class EspacioRepository
              FROM espacio_invitaciones i
              JOIN espacios e ON e.id_espacio = i.id_espacio
              WHERE i.correo = :c AND i.expira_en > CURRENT_TIMESTAMP
-             ORDER BY i.creado_en DESC, i.id_invitacion DESC'
+             ORDER BY i.creado_en DESC, i.id_invitacion DESC',
         );
         $stmt->execute(['c' => strtolower(trim($correo))]);
 
@@ -313,7 +313,7 @@ final class EspacioRepository
              FROM espacio_invitaciones i
              JOIN espacios e ON e.id_espacio = i.id_espacio
              WHERE i.id_invitacion = :id AND i.correo = :c AND i.expira_en > CURRENT_TIMESTAMP
-             FOR UPDATE'
+             FOR UPDATE',
         );
         $stmt->execute(['id' => $invitacionId, 'c' => strtolower(trim($correo))]);
         $row = $stmt->fetch();
@@ -338,7 +338,7 @@ final class EspacioRepository
              FROM espacio_invitaciones i
              JOIN espacios e ON e.id_espacio = i.id_espacio
              WHERE i.token_hash = :h AND i.correo = :c AND i.expira_en > CURRENT_TIMESTAMP
-             FOR UPDATE'
+             FOR UPDATE',
         );
         $stmt->execute(['h' => $tokenHash, 'c' => strtolower(trim($correo))]);
         $row = $stmt->fetch();

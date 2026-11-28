@@ -72,7 +72,7 @@ final class CuentaRepository
         $esTarjeta = $tipo === 'tarjeta_credito';
         $stmt = $this->pdo->prepare(
             'INSERT INTO cuentas (id_usuario, id_espacio, nombre, tipo, moneda, saldo_inicial, dia_corte, dia_pago_limite, tasa_mensual_bps)
-             VALUES (:u, :e, :n, :t, :m, :s, :dc, :dp, :tasa)'
+             VALUES (:u, :e, :n, :t, :m, :s, :dc, :dp, :tasa)',
         );
         $stmt->execute([
             'u' => $userId,
@@ -106,7 +106,7 @@ final class CuentaRepository
         [$scope, $params] = self::scope($userId, $espacioId);
         $stmt = $this->pdo->prepare(
             "UPDATE cuentas SET nombre = :n, tipo = :t, moneda = :m, saldo_inicial = :s, dia_corte = :dc, dia_pago_limite = :dp, tasa_mensual_bps = :tasa
-             WHERE id_cuenta = :id AND $scope"
+             WHERE id_cuenta = :id AND $scope",
         );
         $stmt->execute($params + [
             'n' => $nombre,

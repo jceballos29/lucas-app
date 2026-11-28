@@ -152,7 +152,7 @@ final class PresupuestoRepository
              FROM transacciones t
              JOIN cuentas c ON c.id_cuenta = t.id_cuenta
              WHERE $scope AND t.tipo = 'gasto' AND t.fecha >= :desde AND t.fecha < :hasta$filtroCat
-             GROUP BY t.id_categoria, c.moneda"
+             GROUP BY t.id_categoria, c.moneda",
         );
         $stmt->execute($params + ['desde' => $desde, 'hasta' => $hasta]);
 

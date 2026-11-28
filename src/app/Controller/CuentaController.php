@@ -255,10 +255,12 @@ final class CuentaController
                             Flash::set('ok', "Se concilió el saldo de «{$cuenta->nombre}» registrando $tipoTxt por " . Dinero::formatearEn($res['diferencia'], $cuenta->moneda) . '.');
                             Response::redirect('/cuentas.php');
 
+                            // no break
                         case \App\Cuentas\ConciliacionCuenta::SIN_DIFERENCIA:
                             Flash::set('info', "El saldo de «{$cuenta->nombre}» ya coincide con " . Dinero::formatearEn($saldoReal, $cuenta->moneda) . ': no hizo falta ningún ajuste.');
                             Response::redirect('/cuentas.php');
 
+                            // no break
                         case \App\Cuentas\ConciliacionCuenta::SALDO_NEGATIVO_NO_PERMITIDO:
                             $errors['saldo_real'] = 'El saldo de esta cuenta no puede ser negativo.';
                             break;

@@ -49,7 +49,7 @@ final class TransferenciaController
             $montoTotal = $repo->totalByUser($user['id'], $espacioId, $monedaBase, $tasas);
             $cuentasActivas = array_values(array_filter(
                 $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa
+                static fn (Cuenta $c): bool => $c->activa,
             ));
         } catch (RuntimeException $error) {
             self::fail($error);
@@ -141,6 +141,7 @@ final class TransferenciaController
                             Flash::set('ok', $mensaje);
                             Response::redirect('/transferencias.php');
 
+                            // no break
                         case ReglasTransferencia::MISMA_CUENTA:
                             $errors['id_cuenta_destino'] = 'La cuenta de destino debe ser distinta de la cuenta de origen.';
                             break;
@@ -174,7 +175,7 @@ final class TransferenciaController
                 $this->container->cuentas()->listByUser($user['id'], $espacioId),
                 static fn (Cuenta $c): bool => $c->activa
                     || (string) $c->id === $old['id_cuenta_origen']
-                    || (string) $c->id === $old['id_cuenta_destino']
+                    || (string) $c->id === $old['id_cuenta_destino'],
             ));
             $tasasMapa = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
         } catch (RuntimeException $error) {

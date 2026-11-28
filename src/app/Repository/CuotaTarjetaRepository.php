@@ -31,7 +31,7 @@ final class CuotaTarjetaRepository
 
         $stmt = $this->pdo->prepare(
             'INSERT INTO cuotas_tarjeta (id_transaccion, id_cuenta, numero, fecha_cobro, monto_capital, monto_interes, monto_total)
-             VALUES (:t, :c, :n, :f, :cap, :int, :tot)'
+             VALUES (:t, :c, :n, :f, :cap, :int, :tot)',
         );
 
         foreach ($cuotas as $c) {
@@ -70,7 +70,7 @@ final class CuotaTarjetaRepository
                     COALESCE(SUM(monto_interes), 0) AS interes,
                     COUNT(*) AS cantidad
              FROM cuotas_tarjeta
-             WHERE id_cuenta = :c AND fecha_cobro >= :desde AND fecha_cobro <= :hasta'
+             WHERE id_cuenta = :c AND fecha_cobro >= :desde AND fecha_cobro <= :hasta',
         );
         $stmtCiclo->execute(['c' => $cuentaId, 'desde' => $desde, 'hasta' => $hasta]);
         $rowCiclo = $stmtCiclo->fetch() ?: ['total' => '0.00', 'capital' => '0.00', 'interes' => '0.00', 'cantidad' => 0];
@@ -80,7 +80,7 @@ final class CuotaTarjetaRepository
                     COALESCE(SUM(monto_capital), 0) AS capital_futuro,
                     COALESCE(SUM(monto_interes), 0) AS interes_futuro
              FROM cuotas_tarjeta
-             WHERE id_cuenta = :c AND fecha_cobro > :hasta'
+             WHERE id_cuenta = :c AND fecha_cobro > :hasta',
         );
         $stmtFuturo->execute(['c' => $cuentaId, 'hasta' => $hasta]);
         $rowFuturo = $stmtFuturo->fetch() ?: ['futuro' => '0.00', 'capital_futuro' => '0.00', 'interes_futuro' => '0.00'];

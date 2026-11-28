@@ -65,7 +65,7 @@ final class DeudaRepository
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO deudas (id_usuario, id_espacio, nombre, acreedor, monto_inicial, tasa_mensual_bps, cuota_minima, dia_pago)
-             VALUES (:u, :e, :n, :a, :m, :t, :c, :d)'
+             VALUES (:u, :e, :n, :a, :m, :t, :c, :d)',
         );
         $stmt->execute([
             'u' => $userId,
@@ -90,7 +90,7 @@ final class DeudaRepository
         $stmt = $this->pdo->prepare(
             "UPDATE deudas
              SET nombre = :n, acreedor = :a, monto_inicial = :m, tasa_mensual_bps = :t, cuota_minima = :c, dia_pago = :d
-             WHERE id_deuda = :id AND $scope"
+             WHERE id_deuda = :id AND $scope",
         );
         $stmt->execute($params + [
             'n' => $d['nombre'],
@@ -135,7 +135,7 @@ final class DeudaRepository
     ): int {
         $stmt = $this->pdo->prepare(
             'INSERT INTO pagos_deuda (id_deuda, id_cuenta, id_usuario, monto_total, abono_capital, pago_interes, fecha, descripcion)
-             VALUES (:d, :c, :u, :mt, :ac, :pi, :f, :desc)'
+             VALUES (:d, :c, :u, :mt, :ac, :pi, :f, :desc)',
         );
         $stmt->execute([
             'd' => $deudaId,
@@ -166,7 +166,7 @@ final class DeudaRepository
              JOIN usuarios u ON u.id_usuario = pd.id_usuario
              WHERE $scope AND pd.id_deuda = :id
              ORDER BY pd.fecha DESC, pd.id_pago DESC
-             LIMIT :limit"
+             LIMIT :limit",
         );
         foreach ($params as $k => $v) {
             $stmt->bindValue($k, $v, PDO::PARAM_INT);

@@ -52,7 +52,7 @@ foreach (Categoria::TIPOS as $tipo => $titulo) {
 ?>
 <?= Ui::pageHead(
     $isAdmin ? 'Categorías predeterminadas' : 'Categorías',
-    $isAdmin ? 'Las ven todas las personas al registrar movimientos' : 'Organiza tus ingresos y gastos'
+    $isAdmin ? 'Las ven todas las personas al registrar movimientos' : 'Organiza tus ingresos y gastos',
 ) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>

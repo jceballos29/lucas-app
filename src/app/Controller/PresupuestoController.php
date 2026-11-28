@@ -133,11 +133,12 @@ final class PresupuestoController
                             Flash::set('ok', "Se creó el presupuesto de «{$categoria?->nombre}» para " . Mes::etiqueta($data['mes'], $data['anio']) . '.');
                             Response::redirect(self::listUrl($data['mes'], $data['anio']));
 
+                            // no break
                         case ReglasPresupuesto::NO_ES_GASTO:
                             $errors['id_categoria'] = 'Los presupuestos son solo para categorías de gastos.';
                             break;
 
-                        // Una categoría de otra persona o inexistente: como si no existiera (RNF-04).
+                            // Una categoría de otra persona o inexistente: como si no existiera (RNF-04).
                         default:
                             Response::plain(404, "No encontrado.\n");
                     }
@@ -146,7 +147,7 @@ final class PresupuestoController
 
             $categorias = array_values(array_filter(
                 $this->container->categorias()->listVisible($user['id'], $espacioId),
-                static fn (Categoria $c): bool => $c->tipo === 'gasto'
+                static fn (Categoria $c): bool => $c->tipo === 'gasto',
             ));
         } catch (RuntimeException $error) {
             self::fail($error);
@@ -172,7 +173,7 @@ final class PresupuestoController
         try {
             $categorias = array_values(array_filter(
                 $this->container->categorias()->listVisible($user['id'], $espacioId),
-                static fn (Categoria $c): bool => $c->tipo === 'gasto'
+                static fn (Categoria $c): bool => $c->tipo === 'gasto',
             ));
 
             // Estimar ingreso mensual a partir de los ingresos recurrentes fijos o los ingresos del mes.

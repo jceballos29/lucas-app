@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Domain\Deuda;
 use App\Support\Dinero;
-use App\View\Html;
 use App\View\Ui;
 
 /**
@@ -31,7 +30,7 @@ $activas = array_values(array_filter($deudas, static fn (Deuda $d): bool => $d->
 <?= Ui::pageHead(
     'Deudas y plan de salida',
     'Controla tus préstamos, conoce cuánto pagas en intereses y compáralos con los métodos Bola de Nieve y Avalancha',
-    $puedeEscribir ? Ui::button('Nueva deuda', ['href' => '/deuda-form.php', 'icon' => 'plus']) : null
+    $puedeEscribir ? Ui::button('Nueva deuda', ['href' => '/deuda-form.php', 'icon' => 'plus']) : null,
 ) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>

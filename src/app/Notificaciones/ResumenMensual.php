@@ -72,7 +72,7 @@ final class ResumenMensual
         $lineas[] = '';
         $excedidos = array_values(array_filter(
             $this->presupuestos->listByMonth($usuario->id, $mes, $anio, null, $moneda, $tasas),
-            static fn ($p): bool => $p->progreso()['estado'] === 'excedido'
+            static fn ($p): bool => $p->progreso()['estado'] === 'excedido',
         ));
         $lineas[] = 'Presupuestos excedidos:';
 

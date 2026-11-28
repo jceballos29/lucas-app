@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-
 /**
  * Corta la petición con un 403 si no viene del propio sitio. Se llama al principio de todo
  * procesamiento POST (create.php, edit.php y delete.php): es una capa extra contra peticiones
@@ -21,7 +20,7 @@ function reject_foreign_origin(): void
         $allowed = is_allowed_origin(
             $_SERVER['HTTP_ORIGIN'] ?? null,
             $_SERVER['HTTP_REFERER'] ?? null,
-            \App\Config\Environment::get('APP_ORIGIN')
+            \App\Config\Environment::get('APP_ORIGIN'),
         );
     } catch (RuntimeException $error) {
         \App\Logging\Logger::exception('config', $error);

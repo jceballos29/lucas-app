@@ -25,12 +25,12 @@ final class CategoriaRepository
     {
         if ($espacioId === null) {
             $stmt = $this->pdo->prepare(
-                'SELECT ' . self::COLUMNS . " FROM categorias WHERE (id_usuario IS NULL AND id_espacio IS NULL) OR (id_usuario = :u AND id_espacio IS NULL) ORDER BY tipo = 'gasto' DESC, nombre, id_categoria"
+                'SELECT ' . self::COLUMNS . " FROM categorias WHERE (id_usuario IS NULL AND id_espacio IS NULL) OR (id_usuario = :u AND id_espacio IS NULL) ORDER BY tipo = 'gasto' DESC, nombre, id_categoria",
             );
             $stmt->execute(['u' => $userId]);
         } else {
             $stmt = $this->pdo->prepare(
-                'SELECT ' . self::COLUMNS . " FROM categorias WHERE (id_usuario IS NULL AND id_espacio IS NULL) OR id_espacio = :e ORDER BY tipo = 'gasto' DESC, nombre, id_categoria"
+                'SELECT ' . self::COLUMNS . " FROM categorias WHERE (id_usuario IS NULL AND id_espacio IS NULL) OR id_espacio = :e ORDER BY tipo = 'gasto' DESC, nombre, id_categoria",
             );
             $stmt->execute(['e' => $espacioId]);
         }
@@ -63,12 +63,12 @@ final class CategoriaRepository
     {
         if ($espacioId !== null) {
             $stmt = $this->pdo->prepare(
-                'SELECT COUNT(*) FROM categorias WHERE nombre = :n AND tipo = :t AND ((id_usuario IS NULL AND id_espacio IS NULL) OR id_espacio = :e) AND id_categoria <> :ex'
+                'SELECT COUNT(*) FROM categorias WHERE nombre = :n AND tipo = :t AND ((id_usuario IS NULL AND id_espacio IS NULL) OR id_espacio = :e) AND id_categoria <> :ex',
             );
             $stmt->execute(['n' => $nombre, 't' => $tipo, 'e' => $espacioId, 'ex' => $exceptId ?? 0]);
         } else {
             $stmt = $this->pdo->prepare(
-                'SELECT COUNT(*) FROM categorias WHERE nombre = :n AND tipo = :t AND id_espacio IS NULL AND (id_usuario IS NULL OR id_usuario <=> :u) AND id_categoria <> :ex'
+                'SELECT COUNT(*) FROM categorias WHERE nombre = :n AND tipo = :t AND id_espacio IS NULL AND (id_usuario IS NULL OR id_usuario <=> :u) AND id_categoria <> :ex',
             );
             $stmt->execute(['n' => $nombre, 't' => $tipo, 'u' => $ownerId, 'ex' => $exceptId ?? 0]);
         }

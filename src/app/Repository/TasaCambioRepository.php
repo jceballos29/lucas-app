@@ -25,7 +25,7 @@ final class TasaCambioRepository
             "SELECT id_tasa, moneda_origen, moneda_destino, tasa_micros, actualizado_en
              FROM tasas_cambio
              WHERE $scope
-             ORDER BY moneda_origen, moneda_destino, id_tasa"
+             ORDER BY moneda_origen, moneda_destino, id_tasa",
         );
         $stmt->execute($params);
 
@@ -60,7 +60,7 @@ final class TasaCambioRepository
         $stmt = $this->pdo->prepare(
             "SELECT id_tasa FROM tasas_cambio
              WHERE $scope AND moneda_origen = :orig AND moneda_destino = :dest
-             LIMIT 1"
+             LIMIT 1",
         );
         $stmt->execute($params + ['orig' => $origen, 'dest' => $destino]);
         $existente = $stmt->fetchColumn();
@@ -68,7 +68,7 @@ final class TasaCambioRepository
         if ($existente !== false) {
             $id = (int) $existente;
             $upd = $this->pdo->prepare(
-                "UPDATE tasas_cambio SET tasa_micros = :tasa WHERE id_tasa = :id AND $scope"
+                "UPDATE tasas_cambio SET tasa_micros = :tasa WHERE id_tasa = :id AND $scope",
             );
             $upd->execute($params + ['tasa' => $tasaMicros, 'id' => $id]);
 
@@ -77,7 +77,7 @@ final class TasaCambioRepository
 
         $ins = $this->pdo->prepare(
             'INSERT INTO tasas_cambio (id_usuario, id_espacio, moneda_origen, moneda_destino, tasa_micros)
-             VALUES (:u, :e, :orig, :dest, :tasa)'
+             VALUES (:u, :e, :orig, :dest, :tasa)',
         );
         $ins->execute([
             'u' => $userId,

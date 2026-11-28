@@ -203,6 +203,7 @@ final class DeudaController
                             Flash::set('ok', $msg);
                             Response::redirect('/deudas.php');
 
+                            // no break
                         case ReglasPagoDeuda::SALDO_INSUFICIENTE:
                             $disp = Dinero::formatear((string) ($saved['saldo_cuenta'] ?? '0.00'));
                             $errors['monto_total'] = "La cuenta «{$saved['cuenta']}» tiene $disp disponibles: no alcanza para realizar este pago.";
@@ -221,6 +222,7 @@ final class DeudaController
                             Flash::set('info', 'Esa deuda ya está pagada.');
                             Response::redirect('/deudas.php');
 
+                            // no break
                         default:
                             Response::plain(404, "No encontrado.\n");
                     }
@@ -229,7 +231,7 @@ final class DeudaController
 
             $cuentas = array_values(array_filter(
                 $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta']
+                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
             ));
             $historial = $this->container->deudas()->listPagos($user['id'], $deuda->id, 30, $espacioId);
         } catch (RuntimeException $error) {

@@ -40,7 +40,7 @@ $admin = new PDO(
     sprintf('mysql:host=%s;port=%s;charset=utf8mb4', Environment::get('DB_HOST'), Environment::get('DB_PORT')),
     Environment::get('DB_USERNAME'),
     Environment::get('DB_PASSWORD'),
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
 );
 
 try {
@@ -153,7 +153,7 @@ for ($i = 0; $i < LimitadorIntentos::MAX_POR_IP; $i++) {
 }
 same('20 intentos desde una IP la bloquean aunque los correos sean distintos', true, $limitador->bloqueado('registro', 'nuevo@correo.com', '10.9.9.9'));
 
-$pdo->exec("UPDATE intentos_acceso SET creado_en = NOW() - INTERVAL 16 MINUTE");
+$pdo->exec('UPDATE intentos_acceso SET creado_en = NOW() - INTERVAL 16 MINUTE');
 same('los intentos de hace más de 15 minutos ya no cuentan', false, $limitador->bloqueado('registro', 'nuevo@correo.com', '10.9.9.9'));
 $container->intentos()->purgeOlderThan(900);
 same('purgeOlderThan borra los viejos', 0, (int) $pdo->query('SELECT COUNT(*) FROM intentos_acceso')->fetchColumn());
@@ -798,7 +798,7 @@ same('otro usuario no recibe los míos', 2, count($movs->searchAfter($jaime, $si
 // ---- Recuperación de contraseña (RF-04) ---------------------------------------------------------------------------------
 
 section('RecuperacionClave: pedir el enlace');
-$correos = new class implements App\Mail\Mailer {
+$correos = new class () implements App\Mail\Mailer {
     /** @var list<array{to: string, subject: string, body: string}> */
     public array $enviados = [];
     public bool $fallar = false;
@@ -1460,20 +1460,20 @@ same('eliminarOtrasDeUsuario cierra todas menos la sesión actual h1', [1, true,
 
 // M5: tope de sesiones, vida máxima y escritura de ultimo_uso limitada.
 $sesRepo->eliminarOtrasDeUsuario($sesUser, $h1);
-$pdo->exec("UPDATE sesiones_usuario SET ultimo_uso = NOW() - INTERVAL 5 MINUTE WHERE id_sesion = " . $pdo->quote($h1));
+$pdo->exec('UPDATE sesiones_usuario SET ultimo_uso = NOW() - INTERVAL 5 MINUTE WHERE id_sesion = ' . $pdo->quote($h1));
 $sesRepo->validarYRenovar($sesUser, $h1);
-same('M5: una sesión sin tocar más de 1 min refresca ultimo_uso', true, (int) $pdo->query("SELECT ultimo_uso > NOW() - INTERVAL 30 SECOND FROM sesiones_usuario WHERE id_sesion = " . $pdo->quote($h1))->fetchColumn() === 1);
-$pdo->exec("UPDATE sesiones_usuario SET ultimo_uso = NOW() - INTERVAL 20 SECOND WHERE id_sesion = " . $pdo->quote($h1));
+same('M5: una sesión sin tocar más de 1 min refresca ultimo_uso', true, (int) $pdo->query('SELECT ultimo_uso > NOW() - INTERVAL 30 SECOND FROM sesiones_usuario WHERE id_sesion = ' . $pdo->quote($h1))->fetchColumn() === 1);
+$pdo->exec('UPDATE sesiones_usuario SET ultimo_uso = NOW() - INTERVAL 20 SECOND WHERE id_sesion = ' . $pdo->quote($h1));
 $sesRepo->validarYRenovar($sesUser, $h1);
-same('M5: dentro del minuto NO se escribe de nuevo (sin escritura por petición)', true, (int) $pdo->query("SELECT ultimo_uso < NOW() - INTERVAL 10 SECOND FROM sesiones_usuario WHERE id_sesion = " . $pdo->quote($h1))->fetchColumn() === 1);
-$pdo->exec("UPDATE sesiones_usuario SET creado_en = NOW() - INTERVAL 13 HOUR WHERE id_sesion = " . $pdo->quote($h1));
+same('M5: dentro del minuto NO se escribe de nuevo (sin escritura por petición)', true, (int) $pdo->query('SELECT ultimo_uso < NOW() - INTERVAL 10 SECOND FROM sesiones_usuario WHERE id_sesion = ' . $pdo->quote($h1))->fetchColumn() === 1);
+$pdo->exec('UPDATE sesiones_usuario SET creado_en = NOW() - INTERVAL 13 HOUR WHERE id_sesion = ' . $pdo->quote($h1));
 same('M5: pasada la vida máxima (12 h) la sesión deja de valer aunque esté activa', false, $sesRepo->validarYRenovar($sesUser, $h1));
-same('M5: y se borra de la tabla', 0, (int) $pdo->query("SELECT COUNT(*) FROM sesiones_usuario WHERE id_sesion = " . $pdo->quote($h1))->fetchColumn());
+same('M5: y se borra de la tabla', 0, (int) $pdo->query('SELECT COUNT(*) FROM sesiones_usuario WHERE id_sesion = ' . $pdo->quote($h1))->fetchColumn());
 $primera = App\Repository\SesionRepository::hashId('tope-0');
 for ($i = 0; $i < App\Repository\SesionRepository::MAX_SESIONES + 4; $i++) {
     $hh = App\Repository\SesionRepository::hashId("tope-$i");
     $sesRepo->registrar($sesUser, $hh, '10.0.0.' . $i, 'Navegador ' . $i);
-    $pdo->exec("UPDATE sesiones_usuario SET ultimo_uso = NOW() - INTERVAL " . (100 - $i) . " SECOND WHERE id_sesion = " . $pdo->quote($hh));
+    $pdo->exec('UPDATE sesiones_usuario SET ultimo_uso = NOW() - INTERVAL ' . (100 - $i) . ' SECOND WHERE id_sesion = ' . $pdo->quote($hh));
 }
 $ultima = App\Repository\SesionRepository::hashId('tope-' . (App\Repository\SesionRepository::MAX_SESIONES + 3));
 same('M5: nunca hay más de 10 sesiones por usuario', App\Repository\SesionRepository::MAX_SESIONES, count($sesRepo->listByUser($sesUser)));
@@ -1505,7 +1505,10 @@ same('…y no la segunda', null, $dp->comprobar($dpUser, $dpCodigos[0], $dpAhora
 same('quedan 9 códigos', 9, $dp->codigosDisponibles($dpUser));
 $dpNuevos = $dp->regenerarCodigos($dpUser);
 same('regenerar da 10 nuevos y los anteriores dejan de valer', [10, null, 10], [count($dpNuevos), $dp->comprobar($dpUser, $dpCodigos[1], $dpAhora), $dp->codigosDisponibles($dpUser)]);
-same('un usuario no puede usar los códigos de otro', null, (function () use ($dp, $dpNuevos, $usuarios): ?string { $otro = (int) $usuarios->create('Otro DP', 'otro.dp@correo.com', 'x'); return $dp->comprobar($otro, $dpNuevos[0], 1700000000); })());
+same('un usuario no puede usar los códigos de otro', null, (function () use ($dp, $dpNuevos, $usuarios): ?string {
+    $otro = (int) $usuarios->create('Otro DP', 'otro.dp@correo.com', 'x');
+    return $dp->comprobar($otro, $dpNuevos[0], 1700000000);
+})());
 same('con otra APP_KEY el secreto guardado no se puede leer: comprobar falla de forma controlada', null, (new App\Auth\DosPasos($pdo, new App\Repository\DosPasosRepository($pdo), new App\Security\CifradoSecreto(str_repeat('x', 40))))->comprobar($dpUser, $cod($dpAhora + 60), $dpAhora + 60));
 $dp->desactivar($dpUser);
 same('desactivar quita el secreto, el estado y los códigos', [false, false, 0, 0], [
@@ -1537,10 +1540,18 @@ same('enviar por la cola solo inserta una fila pendiente (no habla con el SMTP)'
 same('un destinatario inválido o con saltos de línea se rechaza al encolar (no se guarda)', [2, 2, 1], (static function () use ($colaMailer, $pdo): array {
     $n = 0;
     foreach (['no-es-correo', "a@b.co\nBcc: x@y.co", 'a b@c.co'] as $malo) {
-        try { $colaMailer->send($malo, 'Asunto', 'x'); } catch (App\Mail\MailException) { $n++; }
+        try {
+            $colaMailer->send($malo, 'Asunto', 'x');
+        } catch (App\Mail\MailException) {
+            $n++;
+        }
     }
     $asunto = 0;
-    try { $colaMailer->send('ok@correo.com', "Asunto\nBcc: x@y.co", 'x'); } catch (App\Mail\MailException) { $asunto++; }
+    try {
+        $colaMailer->send('ok@correo.com', "Asunto\nBcc: x@y.co", 'x');
+    } catch (App\Mail\MailException) {
+        $asunto++;
+    }
     return [$n === 3 ? 2 : $n, $asunto === 1 ? 2 : $asunto, (int) $pdo->query('SELECT COUNT(*) FROM cola_correo')->fetchColumn()];
 })());
 $lote = $cola->reclamar(10);
@@ -1576,9 +1587,14 @@ same('tras 5 intentos fallidos pasa a «fallido», sin cuerpo y sin más reinten
     (string) $pdo->query("SELECT cuerpo FROM cola_correo WHERE destinatario = 'beto@correo.com'")->fetchColumn(),
     $cola->reclamar(10),
 ]);
-$colaMailer->send('c1@correo.com', 'A', 'x'); $colaMailer->send('c2@correo.com', 'A', 'x'); $colaMailer->send('c3@correo.com', 'A', 'x');
+$colaMailer->send('c1@correo.com', 'A', 'x');
+$colaMailer->send('c2@correo.com', 'A', 'x');
+$colaMailer->send('c3@correo.com', 'A', 'x');
 same('reclamar respeta el máximo pedido y el orden', ['c1@correo.com', 'c2@correo.com'], array_column($cola->reclamar(2), 'destinatario'));
-same('el resumen cuenta por estado', [1, 1, 3], (static function () use ($cola): array { $r = $cola->resumen(); return [$r['enviado'], $r['fallido'], $r['pendiente']]; })());
+same('el resumen cuenta por estado', [1, 1, 3], (static function () use ($cola): array {
+    $r = $cola->resumen();
+    return [$r['enviado'], $r['fallido'], $r['pendiente']];
+})());
 $pdo->exec("UPDATE cola_correo SET procesado_en = NOW() - INTERVAL 8 DAY WHERE estado = 'enviado'");
 $pdo->exec("UPDATE cola_correo SET procesado_en = NOW() - INTERVAL 8 DAY WHERE estado = 'fallido'");
 same('purgar borra los enviados de más de 7 días pero no los fallidos de menos de 30', [1, 0, 1], [$cola->purgar(), (int) $pdo->query("SELECT COUNT(*) FROM cola_correo WHERE estado = 'enviado'")->fetchColumn(), (int) $pdo->query("SELECT COUNT(*) FROM cola_correo WHERE estado = 'fallido'")->fetchColumn()]);
@@ -1586,8 +1602,12 @@ $pdo->exec('DELETE FROM cola_correo');
 
 section('Esquema: una sola lista de tablas, y ninguna tabla con datos de usuario sin tratar (R2)');
 use App\Database\Esquema;
+
 $tablasBd = array_map('strval', $pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN));
-$ordenar = static function (array $a): array { sort($a); return $a; };
+$ordenar = static function (array $a): array {
+    sort($a);
+    return $a;
+};
 same('Esquema::TODAS es exactamente el conjunto de tablas de 01-schema.sql', $ordenar($tablasBd), $ordenar(Esquema::TODAS));
 preg_match('/^APP_TABLES="([^"]+)"/m', (string) file_get_contents(dirname(__DIR__, 2) . '/database/03-users.sh'), $mApp);
 same('APP_TABLES de database/03-users.sh (permisos de la aplicación) coincide con Esquema::TODAS', $ordenar(Esquema::TODAS), $ordenar(explode(' ', $mApp[1] ?? '')));
@@ -1787,7 +1807,7 @@ same('y los de otro espacio no se tocan', true, is_file((string) $eaAbsB));
 same('un espacio que no existe responde no_existe y no borra nada', ['no_existe', true], [$ge->eliminarEspacio($esProp, $eaA), is_file((string) $eaAbsB)]);
 same('sin huérfanos tras borrar el espacio (los archivos del otro espacio tienen fila)', [], array_values(array_filter(
     App\Support\HuerfanosAdjuntos::huerfanos($movs->todasLasRutasAdjuntos(), 0),
-    static fn (string $r): bool => str_ends_with((string) $eaAbs1, $r) || str_ends_with((string) $eaAbs2, $r)
+    static fn (string $r): bool => str_ends_with((string) $eaAbs1, $r) || str_ends_with((string) $eaAbs2, $r),
 )));
 same('el detector sí marca como huérfano un archivo sin fila', true, (static function () use ($pdfBytes, $movs): bool {
     $solo = App\Support\AlmacenAdjuntos::guardarDesdeContenido($pdfBytes, 'application/pdf', 'suelto.pdf');
@@ -1946,8 +1966,11 @@ same('enviar a una cuenta ya verificada no hace nada', ['ya_verificado', 0], [$v
 same('enviar a una cuenta sin verificar manda un correo', ['ok', 1], [$vc->enviar($usuarios->findById($vOk)), count($correos->enviados)]);
 $vMail = $correos->enviados[0];
 $vTok1 = $vTokenDe($vMail);
-same('el correo va a su dirección, con enlace de 64 hex hacia el origen y avisa de las 48 horas', true,
-    $vMail['to'] === 'valeria.ver@correo.com' && strlen($vTok1) === 64 && str_contains($vMail['body'], '/verificar.php?token=') && str_contains($vMail['body'], '48 horas') && str_contains($vMail['body'], 'Hola Valeria'));
+same(
+    'el correo va a su dirección, con enlace de 64 hex hacia el origen y avisa de las 48 horas',
+    true,
+    $vMail['to'] === 'valeria.ver@correo.com' && strlen($vTok1) === 64 && str_contains($vMail['body'], '/verificar.php?token=') && str_contains($vMail['body'], '48 horas') && str_contains($vMail['body'], 'Hola Valeria'),
+);
 same('en la BD solo está el HASH del token, no el token', [0, 1], [
     (int) $pdo->query("SELECT COUNT(*) FROM verificaciones_correo WHERE token_hash = '$vTok1'")->fetchColumn(),
     (int) $pdo->query('SELECT COUNT(*) FROM verificaciones_correo WHERE token_hash = ' . $pdo->quote(hash('sha256', $vTok1)))->fetchColumn(),
