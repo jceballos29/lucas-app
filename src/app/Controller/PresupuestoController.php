@@ -9,6 +9,7 @@ use App\Domain\Categoria;
 use App\Domain\Presupuesto;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Presupuestos\ReglasPresupuesto;
 use App\Support\Dinero;
@@ -111,7 +112,7 @@ final class PresupuestoController
                     'id_categoria' => (string) ($data['id_categoria'] ?: ''),
                     'mes' => (string) ($data['mes'] ?: ''),
                     'anio' => (string) ($data['anio'] ?: ''),
-                    'monto_limite' => is_string($_POST['monto_limite'] ?? null) ? trim($_POST['monto_limite']) : '',
+                    'monto_limite' => Peticion::post('monto_limite'),
                 ];
 
                 if ($errors === []) {
@@ -193,7 +194,7 @@ final class PresupuestoController
                 $ingresoEstimado = '3000000.00';
             }
 
-            $ingresoInput = is_string($_GET['ingreso'] ?? null) ? trim($_GET['ingreso']) : '';
+            $ingresoInput = Peticion::get('ingreso');
             $ingresoBase = ($ingresoInput !== '' ? Dinero::parse($ingresoInput) : null) ?? $ingresoEstimado;
             if (Dinero::aCentavos($ingresoBase) <= 0) {
                 $ingresoBase = $ingresoEstimado;
@@ -255,7 +256,7 @@ final class PresupuestoController
         reject_foreign_origin();
         require_csrf();
 
-        $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+        $accion = Peticion::postSinRecortar('accion');
 
         if ($accion === 'clonar_anterior') {
             $res = $this->container->clonadorPresupuestos()->clonarDelMesAnterior($userId, $mes, $anio, $espacioId);
@@ -268,7 +269,7 @@ final class PresupuestoController
             Response::redirect(self::listUrl($mes, $anio));
         }
 
-        $id = is_string($_POST['id'] ?? null) && ctype_digit($_POST['id']) ? (int) $_POST['id'] : 0;
+        $id = Peticion::postEntero('id');
 
         if ($id < 1 || $accion !== 'eliminar') {
             Response::plain(400, "Solicitud no válida.\n");

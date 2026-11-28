@@ -11,6 +11,7 @@ use App\Deudas\ReglasPagoDeuda;
 use App\Domain\Cuenta;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Support\Dinero;
 use App\Validation\DeudaValidator;
@@ -42,7 +43,7 @@ final class DeudaController
             self::fail($error);
         }
 
-        $extraTexto = is_string($_GET['extra'] ?? null) ? trim($_GET['extra']) : '';
+        $extraTexto = Peticion::get('extra');
         $extraMonto = ($extraTexto !== '' ? Dinero::parse($extraTexto) : null) ?? '0.00';
         if (str_starts_with($extraMonto, '-')) {
             $extraMonto = '0.00';
@@ -108,10 +109,10 @@ final class DeudaController
                 $old = [
                     'nombre' => $data['nombre'],
                     'acreedor' => $data['acreedor'] ?? '',
-                    'monto_inicial' => is_string($_POST['monto_inicial'] ?? null) ? trim($_POST['monto_inicial']) : '',
-                    'tasa_mensual' => is_string($_POST['tasa_mensual'] ?? null) ? trim($_POST['tasa_mensual']) : '0',
-                    'cuota_minima' => is_string($_POST['cuota_minima'] ?? null) ? trim($_POST['cuota_minima']) : '',
-                    'dia_pago' => is_string($_POST['dia_pago'] ?? null) ? trim($_POST['dia_pago']) : '',
+                    'monto_inicial' => Peticion::post('monto_inicial'),
+                    'tasa_mensual' => Peticion::post('tasa_mensual', '0'),
+                    'cuota_minima' => Peticion::post('cuota_minima'),
+                    'dia_pago' => Peticion::post('dia_pago'),
                 ];
 
                 if ($errors === []) {
@@ -186,9 +187,9 @@ final class DeudaController
                 $data = $result['data'];
                 $old = [
                     'id_cuenta' => (string) ($data['id_cuenta'] ?: ''),
-                    'monto_total' => is_string($_POST['monto_total'] ?? null) ? trim($_POST['monto_total']) : '',
+                    'monto_total' => Peticion::post('monto_total'),
                     'modo_pago' => $data['modo_pago'],
-                    'fecha' => is_string($_POST['fecha'] ?? null) ? trim($_POST['fecha']) : '',
+                    'fecha' => Peticion::post('fecha'),
                     'descripcion' => $data['descripcion'] ?? '',
                 ];
 
@@ -253,7 +254,7 @@ final class DeudaController
         require_csrf();
 
         $id = self::id($_POST['id'] ?? '');
-        $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+        $accion = Peticion::postSinRecortar('accion');
 
         if ($id < 1 || $accion !== 'eliminar') {
             Response::plain(400, "Solicitud no válida.\n");

@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Container;
 use App\Http\Failure;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Logging\Logger;
 use App\Validation\ClaveValidator;
@@ -33,7 +34,7 @@ final class RecuperacionController
         reject_foreign_origin();
         require_csrf();
 
-        $correo = is_string($_POST['correo'] ?? null) ? trim($_POST['correo']) : '';
+        $correo = Peticion::post('correo');
         $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
 
         try {
@@ -88,8 +89,8 @@ final class RecuperacionController
                 reject_foreign_origin();
                 require_csrf();
 
-                $clave = is_string($_POST['clave'] ?? null) ? $_POST['clave'] : '';
-                $clave2 = is_string($_POST['clave2'] ?? null) ? $_POST['clave2'] : '';
+                $clave = Peticion::postSinRecortar('clave');
+                $clave2 = Peticion::postSinRecortar('clave2');
                 $errors = ClaveValidator::errores($clave, $clave2);
 
                 if ($errors === [] && $servicio->restablecer($token, $clave)) {

@@ -8,6 +8,7 @@ use App\Container;
 use App\Domain\Categoria;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Validation\CategoriaValidator;
 use App\View\View;
@@ -56,8 +57,8 @@ final class CategoriaController
                 reject_foreign_origin();
                 require_csrf();
 
-                $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
-                $id = is_string($_POST['id'] ?? null) && ctype_digit($_POST['id']) ? (int) $_POST['id'] : 0;
+                $accion = Peticion::postSinRecortar('accion');
+                $id = Peticion::postEntero('id');
 
                 switch ($accion) {
                     case 'crear':

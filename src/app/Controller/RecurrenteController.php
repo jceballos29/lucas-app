@@ -9,6 +9,7 @@ use App\Domain\Cuenta;
 use App\Domain\Recurrente;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Movimientos\ReglasMovimiento;
 use App\Support\Dinero;
@@ -142,9 +143,9 @@ final class RecurrenteController
                 $errors = $result['errors'];
                 $old = [
                     'tipo' => $result['data']['tipo'],
-                    'monto' => is_string($_POST['monto'] ?? null) ? trim($_POST['monto']) : '',
+                    'monto' => Peticion::post('monto'),
                     'frecuencia' => $result['data']['frecuencia'],
-                    'proxima_fecha' => is_string($_POST['proxima_fecha'] ?? null) ? trim($_POST['proxima_fecha']) : '',
+                    'proxima_fecha' => Peticion::post('proxima_fecha'),
                     'id_cuenta' => (string) ($result['data']['id_cuenta'] ?: ''),
                     'id_categoria' => (string) ($result['data']['id_categoria'] ?: ''),
                     'descripcion' => $result['data']['descripcion'] ?? '',
@@ -202,8 +203,8 @@ final class RecurrenteController
         reject_foreign_origin();
         require_csrf();
 
-        $id = is_string($_POST['id'] ?? null) && ctype_digit($_POST['id']) ? (int) $_POST['id'] : 0;
-        $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+        $id = Peticion::postEntero('id');
+        $accion = Peticion::postSinRecortar('accion');
 
         if ($id < 1 || !in_array($accion, ['aplicar', 'saltar', 'pausar', 'activar', 'eliminar'], true)) {
             Response::plain(400, "Solicitud no válida.\n");

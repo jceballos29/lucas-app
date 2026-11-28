@@ -8,6 +8,7 @@ use App\Container;
 use App\Domain\Cuenta;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Movimientos\Filtros;
 use App\Movimientos\FormularioMovimiento;
@@ -185,7 +186,7 @@ final class MovimientoController
         reject_foreign_origin();
         require_csrf();
 
-        $id = is_string($_POST['id'] ?? null) && ctype_digit($_POST['id']) ? (int) $_POST['id'] : 0;
+        $id = Peticion::postEntero('id');
 
         if ($id < 1) {
             Response::plain(400, "Solicitud no válida.\n");
@@ -202,7 +203,7 @@ final class MovimientoController
         }
 
         // Se vuelve a los mismos filtros y página: solo se aceptan los parámetros conocidos y ya limpios.
-        parse_str(is_string($_POST['volver'] ?? null) ? $_POST['volver'] : '', $previos);
+        parse_str(Peticion::postSinRecortar('volver'), $previos);
         $filtros = Filtros::desde($previos);
         $query = Filtros::query($filtros, self::page($previos['pagina'] ?? 1));
 
@@ -250,10 +251,10 @@ final class MovimientoController
                 reject_foreign_origin();
                 require_csrf();
 
-                $cuentaId = is_string($_POST['id_cuenta'] ?? null) && ctype_digit($_POST['id_cuenta']) ? (int) $_POST['id_cuenta'] : 0;
-                $catGastoId = is_string($_POST['id_categoria_gasto'] ?? null) && ctype_digit($_POST['id_categoria_gasto']) ? (int) $_POST['id_categoria_gasto'] : 0;
-                $catIngresoId = is_string($_POST['id_categoria_ingreso'] ?? null) && ctype_digit($_POST['id_categoria_ingreso']) ? (int) $_POST['id_categoria_ingreso'] : 0;
-                $csvTexto = is_string($_POST['csv_texto'] ?? null) ? trim($_POST['csv_texto']) : '';
+                $cuentaId = Peticion::postEntero('id_cuenta');
+                $catGastoId = Peticion::postEntero('id_categoria_gasto');
+                $catIngresoId = Peticion::postEntero('id_categoria_ingreso');
+                $csvTexto = Peticion::post('csv_texto');
 
                 // Si subió un archivo .csv, usar su contenido si es válido.
                 if (isset($_FILES['csv_archivo']) && is_array($_FILES['csv_archivo']) && ($_FILES['csv_archivo']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
@@ -285,7 +286,7 @@ final class MovimientoController
                 }
 
                 // M8/U4: primero una VISTA PREVIA; solo «confirmar» guarda. «editar» vuelve al formulario con el texto.
-                $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : 'previsualizar';
+                $accion = Peticion::postSinRecortar('accion', 'previsualizar');
 
                 if ($accion === 'editar') {
                     $errors = [];

@@ -9,6 +9,7 @@ use App\Domain\Espacio;
 use App\Espacios\ReglasEspacio;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Validation\EspacioValidator;
 use App\View\View;
@@ -61,7 +62,7 @@ final class EspacioController
                 reject_foreign_origin();
                 require_csrf();
 
-                $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+                $accion = Peticion::postSinRecortar('accion');
 
                 switch ($accion) {
                     case 'cambiar':
@@ -200,7 +201,7 @@ final class EspacioController
                     case 'cambiar_rol':
                         $espacioId = self::id($_POST['id_espacio'] ?? '');
                         $miembroId = self::id($_POST['id_usuario'] ?? '');
-                        $nuevoRol = is_string($_POST['rol'] ?? null) ? $_POST['rol'] : '';
+                        $nuevoRol = Peticion::postSinRecortar('rol');
                         if ($espacioId < 1 || $miembroId < 1 || !array_key_exists($nuevoRol, Espacio::ROLES)) {
                             Response::plain(400, "Solicitud no válida.\n");
                         }

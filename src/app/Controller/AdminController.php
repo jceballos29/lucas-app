@@ -8,6 +8,7 @@ use App\Admin\ReglasAdmin;
 use App\Container;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Security\AdminSemilla;
 use App\View\Fecha;
@@ -90,8 +91,8 @@ final class AdminController
         reject_foreign_origin();
         require_csrf();
 
-        $id = is_string($_POST['id'] ?? null) && ctype_digit($_POST['id']) ? (int) $_POST['id'] : 0;
-        $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+        $id = Peticion::postEntero('id');
+        $accion = Peticion::postSinRecortar('accion');
 
         if ($id < 1 || !in_array($accion, ReglasAdmin::ACCIONES, true)) {
             Response::plain(400, "Solicitud no válida.\n");

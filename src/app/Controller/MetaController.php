@@ -8,6 +8,7 @@ use App\Container;
 use App\Domain\Cuenta;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Metas\GestionMetas;
 use App\Metas\ReglasAporte;
@@ -84,7 +85,7 @@ final class MetaController
                 $data = $result['data'];
                 $old = [
                     'nombre' => $data['nombre'],
-                    'monto_objetivo' => is_string($_POST['monto_objetivo'] ?? null) ? trim($_POST['monto_objetivo']) : '',
+                    'monto_objetivo' => Peticion::post('monto_objetivo'),
                     'fecha_limite' => $data['fecha_limite'] ?? '',
                 ];
 
@@ -146,7 +147,7 @@ final class MetaController
                 $data = $result['data'];
                 $old = [
                     'id_cuenta' => (string) ($data['id_cuenta'] ?: ''),
-                    'monto' => is_string($_POST['monto'] ?? null) ? trim($_POST['monto']) : '',
+                    'monto' => Peticion::post('monto'),
                     'fecha' => $data['fecha'],
                 ];
 
@@ -199,7 +200,7 @@ final class MetaController
         require_csrf();
 
         $id = self::id($_POST['id'] ?? '');
-        $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+        $accion = Peticion::postSinRecortar('accion');
 
         if ($id < 1 || !in_array($accion, ['cancelar', 'eliminar'], true)) {
             Response::plain(400, "Solicitud no válida.\n");

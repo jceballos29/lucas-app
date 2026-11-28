@@ -8,6 +8,7 @@ use App\Container;
 use App\Domain\Cuenta;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Support\Dinero;
 use App\Transferencias\GestionTransferencias;
@@ -118,10 +119,10 @@ final class TransferenciaController
                 $old = [
                     'id_cuenta_origen' => (string) ($data['id_cuenta_origen'] ?: ''),
                     'id_cuenta_destino' => (string) ($data['id_cuenta_destino'] ?: ''),
-                    'monto' => is_string($_POST['monto'] ?? null) ? trim($_POST['monto']) : '',
-                    'monto_destino' => is_string($_POST['monto_destino'] ?? null) ? trim($_POST['monto_destino']) : '',
-                    'tasa_cambio' => is_string($_POST['tasa_cambio'] ?? null) ? trim($_POST['tasa_cambio']) : '',
-                    'fecha' => is_string($_POST['fecha'] ?? null) ? trim($_POST['fecha']) : '',
+                    'monto' => Peticion::post('monto'),
+                    'monto_destino' => Peticion::post('monto_destino'),
+                    'tasa_cambio' => Peticion::post('tasa_cambio'),
+                    'fecha' => Peticion::post('fecha'),
                     'descripcion' => $data['descripcion'] ?? '',
                 ];
 
@@ -199,7 +200,7 @@ final class TransferenciaController
         require_csrf();
 
         $id = self::id($_POST['id'] ?? '');
-        $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+        $accion = Peticion::postSinRecortar('accion');
 
         if ($id < 1 || $accion !== 'eliminar') {
             Response::plain(400, "Solicitud no válida.\n");

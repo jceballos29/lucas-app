@@ -9,6 +9,7 @@ use App\Auth\LimitadorIntentos;
 use App\Container;
 use App\Domain\Usuario;
 use App\Http\Failure;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Logging\Logger;
 use App\Validation\RegistroValidator;
@@ -276,10 +277,7 @@ final class AuthController
     /** Un campo de texto del POST; lo que no sea texto (`campo[]=x`) cuenta como vacío. */
     private static function field(string $name, bool $trim = true): string
     {
-        $value = $_POST[$name] ?? '';
-        $value = is_string($value) ? $value : '';
-
-        return $trim ? trim($value) : $value;
+        return $trim ? Peticion::post($name) : Peticion::postSinRecortar($name);
     }
 
     private static function ip(): string

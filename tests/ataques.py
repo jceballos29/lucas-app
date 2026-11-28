@@ -654,12 +654,13 @@ def pruebas_dos_pasos(eh: str) -> None:
     mal = '000000' if totp(secreto, 1) != '000000' else '111111'
     r = c.post('/login-2fa.php', {'codigo': mal}, '/login-2fa.php')
     chk('un código incorrecto no entra y explica el error', r.status == 200 and 'no es correcto' in r.texto and c.get('/panel.php').status == 302)
-    r = c.post('/login-2fa.php', {'codigo': totp(secreto, 1)}, '/login-2fa.php')
+    cod_usado = totp(secreto, 1)   # se guarda: si el reloj cruza un paso de 30 s entre el uso y la repetición, «el mismo código» seguiría siendo el mismo
+    r = c.post('/login-2fa.php', {'codigo': cod_usado}, '/login-2fa.php')
     chk('el código correcto abre la sesión', r.status == 302 and 'panel' in r.location and c.get('/panel.php').status == 200, f'HTTP {r.status} {r.location}')
     chk('el id de sesión cambia al completar el segundo paso (anti-fijación)', c.cookie() != sid_reto and sin_cookies('/panel.php', sid_reto).status == 302)
 
     c2, _ = iniciar(eh)
-    r = c2.post('/login-2fa.php', {'codigo': totp(secreto, 1)}, '/login-2fa.php')
+    r = c2.post('/login-2fa.php', {'codigo': cod_usado}, '/login-2fa.php')
     chk('un código TOTP ya usado no sirve otra vez (repetición bloqueada)', r.status == 200 and c2.get('/panel.php').status == 302, f'HTTP {r.status}')
     mysql(f"UPDATE usuarios SET totp_ultimo_paso = NULL WHERE correo='{eh}'")
 

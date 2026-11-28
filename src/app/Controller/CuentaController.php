@@ -8,6 +8,7 @@ use App\Container;
 use App\Domain\Cuenta;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Support\ConversorMoneda;
 use App\Support\Dinero;
@@ -112,11 +113,11 @@ final class CuentaController
                 $old = [
                     'nombre' => $data['nombre'],
                     'tipo' => $data['tipo'],
-                    'moneda' => is_string($_POST['moneda'] ?? null) ? strtoupper(trim($_POST['moneda'])) : '',
-                    'saldo_inicial' => is_string($_POST['saldo_inicial'] ?? null) ? trim($_POST['saldo_inicial']) : '',
-                    'dia_corte' => is_string($_POST['dia_corte'] ?? null) ? trim($_POST['dia_corte']) : '',
-                    'dia_pago_limite' => is_string($_POST['dia_pago_limite'] ?? null) ? trim($_POST['dia_pago_limite']) : '',
-                    'tasa_mensual' => is_string($_POST['tasa_mensual'] ?? null) ? trim($_POST['tasa_mensual']) : '',
+                    'moneda' => strtoupper(Peticion::post('moneda')),
+                    'saldo_inicial' => Peticion::post('saldo_inicial'),
+                    'dia_corte' => Peticion::post('dia_corte'),
+                    'dia_pago_limite' => Peticion::post('dia_pago_limite'),
+                    'tasa_mensual' => Peticion::post('tasa_mensual'),
                 ];
 
                 if (!isset($errors['nombre']) && $repo->nameTaken($user['id'], $data['nombre'], $cuenta?->id, $espacioId)) {
@@ -212,11 +213,11 @@ final class CuentaController
                 reject_foreign_origin();
                 require_csrf();
 
-                $saldoTexto = is_string($_POST['saldo_real'] ?? null) ? trim($_POST['saldo_real']) : '';
-                $catGastoId = is_string($_POST['id_categoria_gasto'] ?? null) && ctype_digit($_POST['id_categoria_gasto']) ? (int) $_POST['id_categoria_gasto'] : $catGastoDef;
-                $catIngresoId = is_string($_POST['id_categoria_ingreso'] ?? null) && ctype_digit($_POST['id_categoria_ingreso']) ? (int) $_POST['id_categoria_ingreso'] : $catIngresoDef;
-                $fecha = is_string($_POST['fecha'] ?? null) ? trim($_POST['fecha']) : '';
-                $descripcion = is_string($_POST['descripcion'] ?? null) ? trim($_POST['descripcion']) : '';
+                $saldoTexto = Peticion::post('saldo_real');
+                $catGastoId = Peticion::postEntero('id_categoria_gasto', $catGastoDef);
+                $catIngresoId = Peticion::postEntero('id_categoria_ingreso', $catIngresoDef);
+                $fecha = Peticion::post('fecha');
+                $descripcion = Peticion::post('descripcion');
 
                 $old = [
                     'saldo_real' => $saldoTexto,
@@ -288,12 +289,12 @@ final class CuentaController
         reject_foreign_origin();
         require_csrf();
 
-        $accion = is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '';
+        $accion = Peticion::postSinRecortar('accion');
 
         if ($accion === 'guardar_tasa') {
-            $origen = is_string($_POST['moneda_origen'] ?? null) ? strtoupper(trim($_POST['moneda_origen'])) : '';
-            $destino = is_string($_POST['moneda_destino'] ?? null) ? strtoupper(trim($_POST['moneda_destino'])) : '';
-            $tasaTexto = is_string($_POST['tasa'] ?? null) ? trim($_POST['tasa']) : '';
+            $origen = strtoupper(Peticion::post('moneda_origen'));
+            $destino = strtoupper(Peticion::post('moneda_destino'));
+            $tasaTexto = Peticion::post('tasa');
             $tasaMicros = ConversorMoneda::parseTasaMicros($tasaTexto);
 
             if (!isset(Dinero::MONEDAS[$origen], Dinero::MONEDAS[$destino]) || $origen === $destino) {
@@ -311,7 +312,7 @@ final class CuentaController
         }
 
         if ($accion === 'eliminar_tasa') {
-            $idTasa = is_string($_POST['id_tasa'] ?? null) && ctype_digit($_POST['id_tasa']) ? (int) $_POST['id_tasa'] : 0;
+            $idTasa = Peticion::postEntero('id_tasa');
             if ($idTasa < 1) {
                 Response::plain(400, "Solicitud no válida.\n");
             }
@@ -322,7 +323,7 @@ final class CuentaController
             Response::redirect('/cuentas.php#tasas-cambio');
         }
 
-        $id = is_string($_POST['id'] ?? null) && ctype_digit($_POST['id']) ? (int) $_POST['id'] : 0;
+        $id = Peticion::postEntero('id');
 
         if ($id < 1 || !in_array($accion, ['activar', 'desactivar'], true)) {
             Response::plain(400, "Solicitud no válida.\n");

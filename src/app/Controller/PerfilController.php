@@ -8,6 +8,7 @@ use App\Auth\VerificacionCorreo;
 use App\Container;
 use App\Http\Failure;
 use App\Http\Flash;
+use App\Http\Peticion;
 use App\Http\Response;
 use App\Mail\MailException;
 use App\Support\Mes;
@@ -44,7 +45,7 @@ final class PerfilController
                 reject_foreign_origin();
                 require_csrf();
 
-                switch (is_string($_POST['accion'] ?? null) ? $_POST['accion'] : '') {
+                switch (Peticion::postSinRecortar('accion')) {
                     case 'datos':
                         $result = (new PerfilValidator())->validate($_POST);
                         $errors = $result['errors'];
@@ -339,6 +340,6 @@ final class PerfilController
 
     private static function field(string $name): string
     {
-        return is_string($_POST[$name] ?? null) ? $_POST[$name] : '';
+        return Peticion::postSinRecortar($name);
     }
 }
