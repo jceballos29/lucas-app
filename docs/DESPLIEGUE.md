@@ -85,7 +85,7 @@ administración muestra un aviso rojo. Se resuelve entrando con tu administrador
 ### Qué cambia con `APP_ENV=production`
 
 Los errores van solo al log (`docker compose logs php`), `status.php` responde 404 y no se carga la configuración de desarrollo
-(`php.local.ini`, Xdebug).
+(`php.local.ini`) y la imagen se construye **sin Xdebug** (`INSTALL_XDEBUG=0`; además `XDEBUG_MODE=off` como segunda barrera), y `salud.php` falla si sigue activo el administrador de desarrollo con su clave pública.
 
 ## 5. Actualizar
 

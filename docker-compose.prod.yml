@@ -11,11 +11,15 @@ services:
       args:
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
+        # Sin Xdebug en la imagen de producción (M2 de docs/AUDITORIA.md): cargado y sin XDEBUG_MODE arrancaría en modo «develop».
+        INSTALL_XDEBUG: "0"
     restart: unless-stopped
     volumes:
       - ./src:/var/www/html
     environment:
       APP_ENV: production
+      # Segunda barrera: si alguien reconstruyera con Xdebug, queda apagado.
+      XDEBUG_MODE: "off"
       # Con https:// la cookie de sesión se marca «Secure» y los POST solo se aceptan desde este origen.
       APP_ORIGIN: ${APP_ORIGIN:?Falta APP_ORIGIN (p. ej. https://lucas.tudominio.com)}
       PHP_INI_SCAN_DIR: /usr/local/etc/php/conf.d:/usr/local/etc/php/env/production

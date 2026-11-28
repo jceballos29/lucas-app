@@ -5,6 +5,7 @@ services:
       args:
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
+        INSTALL_XDEBUG: ${INSTALL_XDEBUG:-1}
     volumes:
       - ./src:/var/www/html
       # Esquema y seed, de solo lectura: tests/integration.php crea con ellos una BD temporal.

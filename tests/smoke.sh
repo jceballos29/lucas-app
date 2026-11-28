@@ -105,6 +105,10 @@ check "la seed que corre en producción no crea usuarios" "0" "$(grep -c -E 'INT
 check "docker-compose.prod.yml no pasa APP_ENV al servicio db (04-dev-admin.sh no actúa)" "0" "$(sed -n '/^  db:/,$p' docker-compose.prod.yml | grep -c 'APP_ENV')"
 check "04-dev-admin.sh no crea nada con APP_ENV=production" "0" "$(docker compose exec -T -e APP_ENV=production db bash /docker-entrypoint-initdb.d/04-dev-admin.sh 2>&1 | grep -c 'creado')"
 
+echo; echo "== La imagen de producción no lleva Xdebug (M2)"
+check "docker-compose.prod.yml construye la imagen PHP con INSTALL_XDEBUG=0" "1" "$(sed -n '/^  php:/,/^  nginx:/p' docker-compose.prod.yml | grep -c -E 'INSTALL_XDEBUG: *"?0"?')"
+check "docker-compose.prod.yml fija XDEBUG_MODE=off en el servicio php" "1" "$(sed -n '/^  php:/,/^  nginx:/p' docker-compose.prod.yml | grep -c -E 'XDEBUG_MODE: *"?off"?')"
+check "el Dockerfile solo instala Xdebug con INSTALL_XDEBUG=1" "1" "$(grep -c 'if \[ "\$INSTALL_XDEBUG" = "1" \]; then install-php-extensions xdebug' docker/php/Dockerfile)"
 echo; echo "== Sin sesión"
 J="$(new_jar)"
 request "$J" GET /;                 check "/ redirige a login" "302 /login.php" "$CODE $LOC"

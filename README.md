@@ -143,6 +143,7 @@ Todo sale de `.env` (nunca se versiona; la plantilla es `.env.example`).
 | `DB_ROOT_PASSWORD` | root de MySQL | — |
 | `HOST_UID` · `HOST_GID` | Dueño de los archivos en Linux/WSL (`id -u`, `id -g`) | `1000` |
 | `XDEBUG_MODE` | `off`, `debug`, `develop`… (puerto 9003) | `off` |
+| `INSTALL_XDEBUG` | Argumento de construcción: `1` instala Xdebug en la imagen PHP (desarrollo); producción usa `0` | `1` (dev) / `0` (prod) |
 
 ## Estructura
 

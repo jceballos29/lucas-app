@@ -17,7 +17,7 @@ flowchart LR
 | Servicio | Imagen | Puerto local |
 |---|---|---|
 | `nginx` | nginx 1.30 alpine | `127.0.0.1:8090` |
-| `php` | `docker/php/Dockerfile` (php 8.4-fpm + pdo_mysql, intl, zip, opcache, xdebug) | — |
+| `php` | `docker/php/Dockerfile` (php 8.4-fpm + pdo_mysql, intl, zip, opcache; xdebug solo en desarrollo, `INSTALL_XDEBUG`) | — |
 | `db` | mysql 8.4 | — (solo red interna) |
 | `adminer` | adminer 6.3 | `127.0.0.1:8091` |
 | `mailpit` | axllent/mailpit 1.21 (solo desarrollo: captura los correos sin enviarlos) | `127.0.0.1:8025` |
