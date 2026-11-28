@@ -204,7 +204,9 @@ Para empezar de cero (borra los datos): `docker compose down -v && docker compos
 
 ## Seed
 
-### Administrador inicial
+### Administrador de desarrollo
+Lo crea `04-dev-admin.sh` (con `dev/admin.sql`) **solo si el servicio `db` recibe `APP_ENV=local`**, que únicamente define `docker-compose.yml`. Con `docker-compose.prod.yml` el volumen nace sin administradores y se crea uno con `scripts/create-admin.php`.
+
 | Campo | Valor (solo desarrollo) |
 |---|---|
 | nombre | `Administrador` |
@@ -213,11 +215,11 @@ Para empezar de cero (borra los datos): `docker compose down -v && docker compos
 | rol / activo | `admin` / `1` |
 
 - `02-seed.sql` empieza con `SET NAMES utf8mb4`: el cliente `mysql` de la imagen arranca en `latin1` y, sin eso, las tildes de las categorías se guardarían mal («AlimentaciÃ³n»).
-- El hash lo genera `password_hash()` y se escribe en `02-seed.sql` con `INSERT IGNORE`. La seed está pensada para ejecutarse **una sola vez** (volumen vacío): el admin no se duplica gracias al `UNIQUE` del correo, pero las categorías (`categorias` no tiene clave única, y con `NULL` MySQL permite repetidos) sí se duplicarían si se lanzara a mano otra vez.
+- El hash lo genera `password_hash()` y se escribe en `dev/admin.sql` con `INSERT IGNORE`. La seed (`02-seed.sql`) está pensada para ejecutarse **una sola vez** (volumen vacío): el admin no se duplica gracias al `UNIQUE` del correo, pero las categorías (`categorias` no tiene clave única, y con `NULL` MySQL permite repetidos) sí se duplicarían si se lanzara a mano otra vez.
 - Es una clave **conocida y pública**: sirve para entrar la primera vez en local. Cámbiala desde el perfil o crea otro administrador
   y desactiva este antes de exponer la app (RNF-23).
 - Para un entorno real, el administrador se crea con `bin/as-migrator php scripts/create-admin.php correo ["Nombre"]`, que pide la
-  contraseña por terminal (sin mostrarla), y `02-seed.sql` no se usa para ese dato.
+  contraseña por terminal (sin mostrarla). Si un entorno que no es local arranca con `admin@lucas.local` activo y su clave pública, `salud.php` responde 503 y el dashboard de administración lo avisa (`App\Security\AdminSemilla`).
 
 ### Categorías predeterminadas (RF-08)
 `id_usuario = NULL`, visibles para todos y editables solo por un administrador (RF-34):

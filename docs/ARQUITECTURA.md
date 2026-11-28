@@ -58,7 +58,7 @@ Petición → public/*.php → Controller → (Validator) → Repository → MyS
 lucas-app/
 ├── docker-compose.yml  .env(.example)  bin/as-migrator
 ├── docker/{nginx,php}/         configuración de nginx (CSP, cabeceras) y PHP (ini seguro + ini de desarrollo, xdebug)
-├── database/                   01-schema.sql · 02-seed.sql · 03-users.sh · migrations/
+├── database/                   01-schema.sql · 02-seed.sql · 03-users.sh · 04-dev-admin.sh · dev/ · migrations/
 ├── docs/                       esta documentación
 ├── tests/                      smoke.sh (curl) y run-all.sh (todas las suites)
 └── src/

@@ -60,6 +60,9 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_DATABASE}
+      # Solo desarrollo: database/04-dev-admin.sh crea el administrador de la seed (clave pública) únicamente si esto vale «local».
+      # docker-compose.prod.yml NO define APP_ENV en el servicio db, así que producción nunca nace con esa cuenta (C1, docs/AUDITORIA.md).
+      APP_ENV: ${APP_ENV:-local}
       # Sin MYSQL_USER/MYSQL_PASSWORD: la imagen daría ALL sobre la base a ese usuario. Los usuarios se crean con
       # permisos mínimos en database/03-users.sh, que lee estas variables (ver ahí qué puede hacer cada uno).
       DB_USERNAME: ${DB_USERNAME}

@@ -100,6 +100,11 @@ echo; echo "== La seed y el juego de caracteres"
 check "las tildes de la seed se guardaron bien (utf8mb4, no latin1)" "1" "$(sql "SELECT COUNT(*) FROM categorias WHERE id_usuario IS NULL AND nombre IN ('Alimentación','Educación')" | awk '{print ($1==2)}')"
 check "no hay texto con doble codificación en la BD" "0" "$(sql "SELECT COUNT(*) FROM categorias WHERE HEX(nombre) LIKE '%C383%'")"
 
+echo; echo "== El administrador de la seed no existe en producción (C1)"
+check "la seed que corre en producción no crea usuarios" "0" "$(grep -c -E 'INTO usuarios|Admin#2026dev' database/02-seed.sql)"
+check "docker-compose.prod.yml no pasa APP_ENV al servicio db (04-dev-admin.sh no actúa)" "0" "$(sed -n '/^  db:/,$p' docker-compose.prod.yml | grep -c 'APP_ENV')"
+check "04-dev-admin.sh no crea nada con APP_ENV=production" "0" "$(docker compose exec -T -e APP_ENV=production db bash /docker-entrypoint-initdb.d/04-dev-admin.sh 2>&1 | grep -c 'creado')"
+
 echo; echo "== Sin sesión"
 J="$(new_jar)"
 request "$J" GET /;                 check "/ redirige a login" "302 /login.php" "$CODE $LOC"

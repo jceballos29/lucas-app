@@ -19,7 +19,6 @@ INSERT INTO categorias (id_usuario, nombre, tipo, color) VALUES
   (NULL, 'Intereses',             'ingreso', '#4C78A8'),
   (NULL, 'Otros ingresos',        'ingreso', '#8DA0AB');
 
--- Administrador inicial: SOLO DESARROLLO. Clave conocida y pública «Admin#2026dev» (aquí solo su hash bcrypt).
--- Cámbiala o crea otro admin con scripts/create-admin.php antes de exponer la app (RNF-23).
-INSERT IGNORE INTO usuarios (nombre, correo, contrasena_hash, rol, activo) VALUES
-  ('Administrador', 'admin@lucas.local', '$2y$12$sIpi.EhC27iIqx2CgHUppuMiS8/IP67c5bVybuAVVIQ/jxBd/4Una', 'admin', 1);
+-- El administrador de DESARROLLO ya no se crea aquí (hallazgo C1 de docs/AUDITORIA.md): este archivo se ejecuta también en
+-- producción y no debe dejar una cuenta admin con la clave publicada. Ahora lo crea database/04-dev-admin.sh, solo con APP_ENV=local.
+-- En un entorno real, el administrador se crea con scripts/create-admin.php (docs/DESPLIEGUE.md).

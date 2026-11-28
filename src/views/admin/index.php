@@ -12,9 +12,13 @@ use App\View\Ui;
  * @var list<array{label: string, value: int}> $registrations Registros por mes (últimos 12).
  * @var list<array{id: int, nombre: string, correo: string, activo: bool, creado_en: string}> $latest
  * @var string $month Mes actual en texto («noviembre 2026»).
+ * @var bool $semillaExpuesta true si admin@lucas.local sigue activo con la clave pública fuera de un entorno local (C1).
  */
 $n = static fn (int $value): string => number_format($value, 0, ',', '.');
 ?>
+<?php if ($semillaExpuesta): ?>
+<?= Ui::notice('Seguridad: la cuenta admin@lucas.local sigue activa con la contraseña pública de desarrollo. Cambia su contraseña o desactívala en Usuarios ahora mismo: cualquiera que conozca el repositorio puede entrar como administrador.', 'error') ?>
+<?php endif; ?>
 <?= Ui::pageHead('Dashboard', 'Resumen general de la aplicación · ' . $month, Ui::button('Gestionar usuarios', ['href' => '/admin/usuarios.php', 'icon' => 'users'])) ?>
 
 <div class="dashboard">

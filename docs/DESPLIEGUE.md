@@ -66,10 +66,21 @@ curl -fsS https://$APP_DOMAIN/salud.php                # {"estado":"ok"}
 Con el volumen de MySQL vacío, `database/02-seed.sql` crea las categorías predeterminadas **y un administrador de desarrollo
 (`admin@lucas.local`, clave pública)**. En producción:
 
-1. Crea tu administrador real: `COMPOSE_FILE=docker-compose.prod.yml bin/as-migrator php scripts/create-admin.php tu@correo.com "Tu nombre"`
-   (pide la contraseña por la terminal, sin mostrarla).
-2. Entra con él y, desde **Administración → Usuarios**, **desactiva** `admin@lucas.local` (RNF-23). No se puede borrar desde la
-   interfaz, pero desactivado no puede iniciar sesión.
+En producción **no existe ningún administrador al arrancar**: `database/02-seed.sql` solo crea las categorías predeterminadas, y el
+administrador de desarrollo (`admin@lucas.local`, clave pública) lo crea `database/04-dev-admin.sh` únicamente si el servicio `db`
+recibe `APP_ENV=local`, algo que solo define `docker-compose.yml` (desarrollo). Crea el tuyo:
+
+```bash
+COMPOSE_FILE=docker-compose.prod.yml bin/as-migrator php scripts/create-admin.php tu@correo.com "Tu nombre"
+```
+
+(pide la contraseña por la terminal, sin mostrarla).
+
+**Si tu base viene de una versión anterior, o restauraste un volcado de desarrollo**, puede traer `admin@lucas.local` con la clave
+pública. Lucas te avisa: con `APP_ENV` distinto de `local`, `salud.php` responde **503** (el contenedor `nginx` aparece
+«unhealthy» y se registra `[seguridad] admin@lucas.local sigue activo…` en `docker compose logs php`) y el dashboard de
+administración muestra un aviso rojo. Se resuelve entrando con tu administrador real y **desactivando** esa cuenta en
+**Administración → Usuarios** (no se puede borrar desde la interfaz, pero desactivada no inicia sesión), o cambiando su clave.
 
 ### Qué cambia con `APP_ENV=production`
 

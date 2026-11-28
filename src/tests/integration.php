@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Pruebas de integración: repositorios y servicios contra una BASE DE DATOS TEMPORAL (D6). Crea `<base>_test_<azar>`
- * con database/01-schema.sql y 02-seed.sql, corre las pruebas y la borra al terminar. Nunca toca la base de la aplicación.
+ * con database/01-schema.sql, 02-seed.sql y dev/admin.sql, corre las pruebas y la borra al terminar. Nunca toca la base de la aplicación.
  *
  * Necesita el usuario de migraciones (puede crear bases `<base>_test%`), por eso se lanza con bin/as-migrator:
  *
@@ -57,7 +57,8 @@ register_shutdown_function(static function () use ($admin, $dbName): void {
 putenv("DB_DATABASE=$dbName");
 $pdo = Connection::create();
 
-foreach (['01-schema.sql', '02-seed.sql'] as $file) {
+// 'dev/admin.sql': el administrador de DESARROLLO ya no está en 02-seed.sql (C1); la base de pruebas lo carga a propósito.
+foreach (['01-schema.sql', '02-seed.sql', 'dev/admin.sql'] as $file) {
     foreach (SqlScript::statements((string) file_get_contents(dirname(__DIR__, 2) . '/database/' . $file)) as $statement) {
         $pdo->exec($statement);
     }

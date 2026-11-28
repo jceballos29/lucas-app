@@ -154,10 +154,29 @@ $viejo = $auth->authenticate('vieja@correo.com', 'secreta123');
 same('un hash viejo se rehashea al entrar', 3, $viejo?->id);
 same('y el usuario devuelto lleva ya el hash NUEVO (la huella de sesión debe coincidir con la BD)', $fake->newHash, $viejo?->contrasenaHash);
 same('el hash nuevo es válido y más fuerte', true, $fake->newHash !== null && password_verify('secreta123', $fake->newHash) && !password_needs_rehash($fake->newHash, PASSWORD_DEFAULT));
-same('el hash de la seed del admin corresponde a la clave documentada', true, (static function (): bool {
-    preg_match("/'(\\\$2y\\\$[^']+)'/", (string) file_get_contents(dirname(__DIR__, 2) . '/database/02-seed.sql'), $m);
+same('el hash del admin de desarrollo (database/dev/admin.sql) corresponde a la clave documentada', true, (static function (): bool {
+    preg_match("/'(\\\$2y\\\$[^']+)'/", (string) file_get_contents(dirname(__DIR__, 2) . '/database/dev/admin.sql'), $m);
     return isset($m[1]) && password_verify('Admin#2026dev', $m[1]);
 })());
+same('AdminSemilla::HASH_PUBLICO es el hash de database/dev/admin.sql', true, str_contains((string) file_get_contents(dirname(__DIR__, 2) . '/database/dev/admin.sql'), \App\Security\AdminSemilla::HASH_PUBLICO));
+same('02-seed.sql (que también corre en producción) NO crea ningún usuario ni menciona la clave pública (C1)', true, (static function (): bool {
+    $seed = (string) file_get_contents(dirname(__DIR__, 2) . '/database/02-seed.sql');
+    return !str_contains($seed, 'INTO usuarios') && !str_contains($seed, '$2y$') && !str_contains($seed, 'Admin#2026dev');
+})());
+same('el admin de desarrollo está fuera del primer nivel de database/ (initdb no lo ejecuta solo)', true, !is_file(dirname(__DIR__, 2) . '/database/admin.sql') && is_file(dirname(__DIR__, 2) . '/database/04-dev-admin.sh'));
+same('04-dev-admin.sh solo actúa con APP_ENV=local', true, str_contains((string) file_get_contents(dirname(__DIR__, 2) . '/database/04-dev-admin.sh'), '"${APP_ENV:-}" != "local"'));
+
+section('AdminSemilla (C1)');
+use App\Security\AdminSemilla as Semilla;
+$semilla = static fn (string $hash = Semilla::HASH_PUBLICO, bool $activo = true, string $rol = 'admin'): App\Domain\Usuario => new App\Domain\Usuario(1, 'Administrador', Semilla::CORREO, $hash, 'COP', $rol, $activo);
+same('en producción, el admin activo con la clave pública está expuesto', true, Semilla::expuesto($semilla(), 'production'));
+same('con APP_ENV vacío (no definido) también se considera expuesto', true, Semilla::expuesto($semilla(), ''));
+same('en local no es un riesgo', false, Semilla::expuesto($semilla(), 'local'));
+same('si cambió la contraseña, ya no está expuesto', false, Semilla::expuesto($semilla(password_hash('otra-clave-9', PASSWORD_DEFAULT)), 'production'));
+same('si está desactivado, no está expuesto', false, Semilla::expuesto($semilla(Semilla::HASH_PUBLICO, false), 'production'));
+same('si ya no es admin, no está expuesto', false, Semilla::expuesto($semilla(Semilla::HASH_PUBLICO, true, 'usuario'), 'production'));
+same('si no existe el usuario, no está expuesto', false, Semilla::expuesto(null, 'production'));
+
 
 section('ReglasAdmin (RF-33)');
 use App\Admin\ReglasAdmin as R;

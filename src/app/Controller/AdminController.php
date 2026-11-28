@@ -9,6 +9,7 @@ use App\Container;
 use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Response;
+use App\Security\AdminSemilla;
 use App\View\Fecha;
 use App\View\View;
 use DateTimeImmutable;
@@ -39,6 +40,7 @@ final class AdminController
                 $stats->registrationsByMonth(12)
             );
             $latest = $stats->latestUsers(4);
+            $semillaExpuesta = AdminSemilla::expuesto($this->container->usuarios()->findByEmail(AdminSemilla::CORREO), (string) getenv('APP_ENV'));
         } catch (RuntimeException $error) {
             self::fail($error);
         }
@@ -48,6 +50,7 @@ final class AdminController
             'registrations' => $registrations,
             'latest' => $latest,
             'month' => Fecha::mesAnio(new DateTimeImmutable('now')),
+            'semillaExpuesta' => $semillaExpuesta,
         ], 'Dashboard', $user, 'admin', 'dashboard');
     }
 
