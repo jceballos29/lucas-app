@@ -11,6 +11,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../bootstrap.php';
 
 use App\Container;
+use App\Logging\Logger;
 
 if (PHP_SAPI !== 'cli') {
     exit(1);
@@ -22,21 +23,27 @@ if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $hoy) !== 1) {
     exit(1);
 }
 
-$container = Container::shared();
-$usuarios = $container->recurrentes()->usersWithDueAuto($hoy);
-$totalAplicados = 0;
-$totalRetenidos = 0;
+try {
+    $container = Container::shared();
+    $usuarios = $container->recurrentes()->usersWithDueAuto($hoy);
+    $totalAplicados = 0;
+    $totalRetenidos = 0;
 
-foreach ($usuarios as $userId) {
-    $res = $container->gestionRecurrentes()->procesarVencidos($userId, $hoy);
-    $totalAplicados += $res['aplicados'];
-    $totalRetenidos += $res['retenidosPorSaldo'];
-}
+    foreach ($usuarios as $userId) {
+        $res = $container->gestionRecurrentes()->procesarVencidos($userId, $hoy);
+        $totalAplicados += $res['aplicados'];
+        $totalRetenidos += $res['retenidosPorSaldo'];
+    }
 
-foreach ($container->recurrentes()->espaciosWithDueAuto($hoy) as $item) {
-    $res = $container->gestionRecurrentes()->procesarVencidos($item['id_usuario'], $hoy, $item['id_espacio']);
-    $totalAplicados += $res['aplicados'];
-    $totalRetenidos += $res['retenidosPorSaldo'];
+    foreach ($container->recurrentes()->espaciosWithDueAuto($hoy) as $item) {
+        $res = $container->gestionRecurrentes()->procesarVencidos($item['id_usuario'], $hoy, $item['id_espacio']);
+        $totalAplicados += $res['aplicados'];
+        $totalRetenidos += $res['retenidosPorSaldo'];
+    }
+} catch (RuntimeException $e) {
+    Logger::exception('recurrentes', $e);
+    fwrite(STDERR, $e->getMessage() . "\n");
+    exit(1);
 }
 
 fwrite(STDOUT, "Recurrentes procesados ($hoy): $totalAplicados aplicados, $totalRetenidos retenidos por saldo/cuenta.\n");

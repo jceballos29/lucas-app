@@ -39,12 +39,13 @@ $filasCategorias = array_map(static fn (array $i): array => [
     'porcentaje' => number_format($i['percent'], 1, ',', '') . ' %',
 ], $categorias['items']);
 
+/** @var list<array{etiqueta: string, total: string, cantidad: int}> $etiquetasMes */
 $etiquetasMes = $etiquetasMes ?? [];
-$filasEtiquetas = array_map(static fn (array $e): array => [
+$filasEtiquetas = array_values(array_map(static fn (array $e): array => [
     'etiqueta' => new Html('<a href="/movimientos.php?etiqueta=' . urlencode($e['etiqueta']) . '">' . Ui::badge('#' . $e['etiqueta'], 'brand') . '</a>'),
     'movimientos' => $e['cantidad'] . ($e['cantidad'] === 1 ? ' movimiento' : ' movimientos'),
     'gasto' => Ui::money($e['total'], 'out'),
-], $etiquetasMes);
+], $etiquetasMes));
 
 $barras = array_map(static fn (array $m): array => [
     'label' => Fecha::mesCorto($m['mes']),

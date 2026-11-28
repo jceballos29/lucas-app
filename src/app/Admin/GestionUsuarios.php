@@ -33,7 +33,7 @@ final class GestionUsuarios
                     'activar' => $this->usuarios->setActivo($objetivo->id, true),
                     'desactivar' => $this->usuarios->setActivo($objetivo->id, false),
                     'hacer_admin' => $this->usuarios->setRol($objetivo->id, 'admin'),
-                    'quitar_admin' => $this->usuarios->setRol($objetivo->id, 'usuario'),
+                    default => $this->usuarios->setRol($objetivo->id, 'usuario'),
                 };
             }
 

@@ -25,7 +25,11 @@ final class Html implements Stringable
         return $this->html;
     }
 
-    /** Une varios fragmentos (o textos, que se escapan) en uno solo. */
+    /**
+     * Une varios fragmentos (o textos, que se escapan) en uno solo.
+     *
+     * @param iterable<string|int|float|self|null> $parts
+     */
     public static function join(iterable $parts): self
     {
         $out = '';

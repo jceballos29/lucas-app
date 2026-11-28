@@ -231,6 +231,7 @@ final class MovimientoRepository
         ], $stmt->fetchAll());
     }
 
+    /** @return list<string> */
     public function todasLasRutasAdjuntos(): array
     {
         return array_values(array_filter(

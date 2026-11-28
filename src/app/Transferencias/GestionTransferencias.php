@@ -45,8 +45,8 @@ final class GestionTransferencias
             $ids = array_unique(array_filter([
                 $datos['id_cuenta_origen'],
                 $datos['id_cuenta_destino'],
-                $anterior?->idCuentaOrigen ?? 0,
-                $anterior?->idCuentaDestino ?? 0,
+                $anterior !== null ? $anterior->idCuentaOrigen : 0,
+                $anterior !== null ? $anterior->idCuentaDestino : 0,
             ]));
             sort($ids);
 
@@ -64,7 +64,7 @@ final class GestionTransferencias
 
             $saldoDisponibleOrigen = '0.00';
             if ($origen !== null) {
-                $saldoActual = (string) ($this->cuentas->findOwned($userId, $datos['id_cuenta_origen'], $espacioId)?->saldo ?? '0.00');
+                $saldoActual = $this->cuentas->findOwned($userId, $datos['id_cuenta_origen'], $espacioId)->saldo ?? '0.00';
                 $ajustePrevio = '0.00';
                 if ($anterior !== null) {
                     if ($anterior->idCuentaOrigen === $datos['id_cuenta_origen']) {

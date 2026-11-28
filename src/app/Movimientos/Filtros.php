@@ -16,7 +16,7 @@ final class Filtros
     public const POR_PAGINA = 20;
 
     /**
-     * @param array<string, mixed> $src Normalmente $_GET (desde, hasta, cuenta, categoria, tipo, etiqueta).
+     * @param array<int|string, mixed> $src Normalmente $_GET (desde, hasta, cuenta, categoria, tipo, etiqueta).
      * @return array{desde: string, hasta: string, cuenta: int, categoria: int, tipo: string, etiqueta: string}
      */
     public static function desde(array $src): array
@@ -53,7 +53,11 @@ final class Filtros
         return http_build_query($params);
     }
 
-    /** ¿Hay algún filtro puesto? @param array{desde: string, hasta: string, cuenta: int, categoria: int, tipo: string, etiqueta?: string} $f */
+    /**
+     * ¿Hay algún filtro puesto?
+     *
+     * @param array{desde: string, hasta: string, cuenta: int, categoria: int, tipo: string, etiqueta?: string} $f
+     */
     public static function hayAlguno(array $f): bool
     {
         return self::query($f) !== '';

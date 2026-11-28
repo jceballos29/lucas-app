@@ -115,7 +115,7 @@ foreach (array_keys(Dinero::MONEDAS) as $codigo) {
 
                 if ($e->esPropietario() && !$esYo) {
                     $otroRol = $m['rol'] === 'editor' ? 'lector' : 'editor';
-                    $acciones[] = Ui::postForm('/espacios.php', ['accion' => 'cambiar_rol', 'id_espacio' => $e->id, 'id_usuario' => $m['id_usuario'], 'rol' => $otroRol], Ui::button('Pasar a ' . (Espacio::ROLES[$otroRol] ?? $otroRol), [
+                    $acciones[] = Ui::postForm('/espacios.php', ['accion' => 'cambiar_rol', 'id_espacio' => $e->id, 'id_usuario' => $m['id_usuario'], 'rol' => $otroRol], Ui::button('Pasar a ' . Espacio::ROLES[$otroRol], [
                         'type' => 'submit',
                         'variant' => 'ghost',
                         'size' => 'sm',

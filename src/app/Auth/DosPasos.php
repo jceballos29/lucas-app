@@ -65,6 +65,7 @@ final class DosPasos
         return hash('sha256', strtoupper(preg_replace('/[\s-]+/', '', $codigo) ?? ''));
     }
 
+    /** Solo pruebas: comprueba en la base de datos si el usuario tiene el segundo factor activado. */
     public function estaActivo(int $idUsuario): bool
     {
         return $this->repo->datos($idUsuario) !== null;
@@ -95,7 +96,11 @@ final class DosPasos
         });
     }
 
-    /** Genera 10 códigos nuevos (los anteriores dejan de valer) y los devuelve en claro. @return list<string> */
+    /**
+     * Genera 10 códigos nuevos (los anteriores dejan de valer) y los devuelve en claro.
+     *
+     * @return list<string>
+     */
     public function regenerarCodigos(int $idUsuario): array
     {
         return Transaction::run($this->pdo, fn (): array => $this->nuevosCodigos($idUsuario));

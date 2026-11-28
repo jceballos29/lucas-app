@@ -14,8 +14,8 @@ final class CuentaValidator
     public const NOMBRE_MAX = 60;
 
     /**
-     * @param array<string, mixed> $input Normalmente $_POST (nombre, tipo, saldo_inicial, dia_corte, dia_pago_limite).
-     * @return array{data: array{nombre: string, tipo: string, saldo_inicial: string, dia_corte: int|null, dia_pago_limite: int|null}, errors: array<string, string>}
+     * @param array<string, mixed> $input Normalmente $_POST (nombre, tipo, moneda, saldo_inicial, dia_corte, dia_pago_limite, tasa_mensual).
+     * @return array{data: array{nombre: string, tipo: string, moneda: string|null, saldo_inicial: string, dia_corte: int|null, dia_pago_limite: int|null, tasa_mensual_bps: int}, errors: array<string, string>}
      */
     public function validate(array $input): array
     {

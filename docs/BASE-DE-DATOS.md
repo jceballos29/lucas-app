@@ -12,71 +12,39 @@ erDiagram
     USUARIOS ||--o{ TRANSACCIONES : registra
     USUARIOS ||--o{ PRESUPUESTOS : define
     USUARIOS ||--o{ METAS_AHORRO : fija
+    USUARIOS ||--o{ DEUDAS : contrae
+    USUARIOS ||--o{ TRANSFERENCIAS : ordena
+    USUARIOS ||--o{ MOVIMIENTOS_RECURRENTES : programa
+    USUARIOS ||--o{ TASAS_CAMBIO : configura
+    USUARIOS ||--o{ ESPACIO_MIEMBROS : participa
+    USUARIOS ||--o{ SESIONES_USUARIO : mantiene
+    USUARIOS ||--o{ RESTABLECIMIENTOS : solicita
+    USUARIOS ||--o{ VERIFICACIONES_CORREO : confirma
+    USUARIOS ||--o{ CODIGOS_RECUPERACION : respalda
+    USUARIOS ||--o{ NOTIFICACIONES_ENVIADAS : recibe
+    ESPACIOS ||--o{ ESPACIO_MIEMBROS : integra
+    ESPACIOS ||--o{ ESPACIO_INVITACIONES : invita
+    ESPACIOS ||--o{ CUENTAS : agrupa
+    ESPACIOS ||--o{ CATEGORIAS : agrupa
+    ESPACIOS ||--o{ TRANSACCIONES : agrupa
+    ESPACIOS ||--o{ PRESUPUESTOS : agrupa
+    ESPACIOS ||--o{ METAS_AHORRO : agrupa
+    ESPACIOS ||--o{ DEUDAS : agrupa
+    ESPACIOS ||--o{ TRANSFERENCIAS : agrupa
+    ESPACIOS ||--o{ MOVIMIENTOS_RECURRENTES : agrupa
+    ESPACIOS ||--o{ TASAS_CAMBIO : agrupa
     CUENTAS ||--o{ TRANSACCIONES : contiene
+    CUENTAS ||--o{ CUOTAS_TARJETA : difiere
+    CUENTAS ||--o{ APORTES_META : origina
+    CUENTAS ||--o{ PAGOS_DEUDA : debita
+    CUENTAS ||--o{ TRANSFERENCIAS : mueve
+    CUENTAS ||--o{ MOVIMIENTOS_RECURRENTES : afecta
+    TRANSACCIONES ||--o{ CUOTAS_TARJETA : desglosa
     CATEGORIAS ||--o{ TRANSACCIONES : clasifica
     CATEGORIAS ||--o{ PRESUPUESTOS : limita
+    CATEGORIAS ||--o{ MOVIMIENTOS_RECURRENTES : clasifica
     METAS_AHORRO ||--o{ APORTES_META : recibe
-    CUENTAS ||--o{ APORTES_META : origina
-
-    USUARIOS {
-        int id_usuario PK
-        varchar nombre
-        varchar correo UK
-        varchar contrasena_hash
-        varchar moneda
-        enum rol "usuario | admin"
-        boolean activo
-        timestamp creado_en
-    }
-    CUENTAS {
-        int id_cuenta PK
-        int id_usuario FK
-        varchar nombre
-        enum tipo
-        decimal saldo_inicial
-        boolean activa
-    }
-    CATEGORIAS {
-        int id_categoria PK
-        int id_usuario FK "NULL = predeterminada"
-        varchar nombre
-        enum tipo
-        varchar color
-    }
-    TRANSACCIONES {
-        int id_transaccion PK
-        int id_usuario FK
-        int id_cuenta FK
-        int id_categoria FK
-        enum tipo
-        decimal monto
-        date fecha
-        varchar descripcion
-        timestamp creado_en
-    }
-    PRESUPUESTOS {
-        int id_presupuesto PK
-        int id_usuario FK
-        int id_categoria FK
-        tinyint mes
-        smallint anio
-        decimal monto_limite
-    }
-    METAS_AHORRO {
-        int id_meta PK
-        int id_usuario FK
-        varchar nombre
-        decimal monto_objetivo
-        date fecha_limite
-        enum estado
-    }
-    APORTES_META {
-        int id_aporte PK
-        int id_meta FK
-        int id_cuenta FK
-        decimal monto
-        date fecha
-    }
+    DEUDAS ||--o{ PAGOS_DEUDA : amortiza
 ```
 
 ## Diccionario de datos
@@ -208,6 +176,109 @@ No tiene relaciones: es una tabla de apoyo, sin FK, que se purga sola.
 | monto | DECIMAL(12,2) | | Valor aportado |
 | fecha | DATE | | Fecha del aporte |
 
+**espacios** (espacios compartidos / cuenta familiar, Fase 10)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_espacio | INT AUTO_INCREMENT | PK | Identificador del espacio compartido |
+| nombre | VARCHAR(80) | | Nombre del espacio (p. ej. «Hogar Familia») |
+| id_creador | INT | FK → usuarios | Usuario que creó el espacio |
+| moneda | CHAR(3) | | Moneda base del espacio (`COP`, `USD`, `EUR`, `MXN`) |
+| creado_en | TIMESTAMP | | Fecha de creación |
+
+**espacio_miembros** (miembros y roles de cada espacio compartido, Fase 10)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_espacio | INT | PK, FK → espacios (CASCADE) | Espacio compartido |
+| id_usuario | INT | PK, FK → usuarios (CASCADE) | Miembro del espacio |
+| rol | ENUM('propietario','editor','lector') | | Nivel de permiso dentro del espacio |
+| unido_en | TIMESTAMP | | Fecha de ingreso |
+
+**espacio_invitaciones** (invitaciones pendientes por correo a un espacio, Fase 10 / A2 / B2)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_invitacion | INT AUTO_INCREMENT | PK | Identificador |
+| id_espacio | INT | FK → espacios (CASCADE) | Espacio al que se invita |
+| correo | VARCHAR(120) | INDEX | Correo invitado |
+| rol | ENUM('editor','lector') | | Rol ofrecido |
+| token_hash | CHAR(64) | UNIQUE | SHA-256 del token del enlace |
+| creado_en · expira_en | TIMESTAMP | | Vigencia de la invitación |
+
+**cuotas_tarjeta** (desglose de compras a cuotas con tarjeta de crédito, Fase 15)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_cuota | INT AUTO_INCREMENT | PK | Identificador |
+| id_transaccion | INT | FK → transacciones (CASCADE) | Compra diferida |
+| id_cuenta | INT | FK → cuentas (CASCADE), INDEX con `fecha_cobro` | Tarjeta de crédito |
+| numero | TINYINT | | Número de cuota (1..36) |
+| fecha_cobro | DATE | | Fecha del corte en que vence la cuota |
+| monto_capital · monto_interes · monto_total | DECIMAL(12,2) | | Capital, interés del periodo y cuota total |
+
+**deudas** (préstamos y obligaciones por amortizar, Fase 11)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_deuda | INT AUTO_INCREMENT | PK | Identificador |
+| id_usuario · id_espacio | INT · INT NULL | FK → usuarios / espacios (CASCADE) | Dueño o espacio compartido |
+| nombre · acreedor | VARCHAR(80) | | Nombre de la deuda y entidad/acreedor |
+| monto_inicial · cuota_minima | DECIMAL(12,2) | | Capital inicial y pago mínimo mensual |
+| tasa_mensual_bps | INT | | Tasa mensual en puntos básicos (0..2000) |
+| dia_pago | TINYINT NULL | | Día del mes de vencimiento (1..31) |
+| estado | ENUM('activa','pagada') | | Estado actual |
+| creado_en | TIMESTAMP | | Fecha de creación |
+
+**pagos_deuda** (abonos a capital e intereses de una deuda, Fase 11)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_pago | INT AUTO_INCREMENT | PK | Identificador |
+| id_deuda | INT | FK → deudas (CASCADE) | Deuda abonada |
+| id_cuenta | INT | FK → cuentas | Cuenta desde la que se pagó |
+| id_usuario | INT | FK → usuarios (CASCADE) | Autor del pago |
+| monto_total · abono_capital · pago_interes | DECIMAL(12,2) | | Desglose del pago |
+| fecha · descripcion · creado_en | DATE · VARCHAR(150) · TIMESTAMP | | Fecha y nota del abono |
+
+**transferencias** (movimientos entre cuentas propias o pago de tarjeta, Fase 8 / Fase 18)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_transferencia | INT AUTO_INCREMENT | PK | Identificador |
+| id_usuario · id_espacio | INT · INT NULL | FK → usuarios / espacios (CASCADE) | Autor y ámbito |
+| id_cuenta_origen · id_cuenta_destino | INT | FK → cuentas | Cuentas distintas (`origen <> destino`) |
+| monto · monto_destino | DECIMAL(12,2) · DECIMAL(12,2) NULL | | Monto debitado y monto acreditado (si cambia la moneda) |
+| fecha · descripcion · creado_en | DATE · VARCHAR(150) · TIMESTAMP | INDEX por `(id_usuario, fecha)` y `(id_espacio, fecha)` | Fecha y detalle |
+
+**tasas_cambio** (tasas de conversión multimoneda por usuario o espacio, Fase 18)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_tasa | INT AUTO_INCREMENT | PK | Identificador |
+| id_usuario · id_espacio | INT · INT NULL | FK → usuarios / espacios (CASCADE), INDEX | Ámbito de la tasa |
+| moneda_origen · moneda_destino | CHAR(3) | | Par de monedas (`origen <> destino`) |
+| tasa_micros | BIGINT UNSIGNED | | Tasa multiplicada por `1.000.000` (sin `float`) |
+| actualizado_en | TIMESTAMP | | Última actualización |
+
+**movimientos_recurrentes** (plantillas de ingresos y gastos fijos programados, Fase 9)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_recurrente | INT AUTO_INCREMENT | PK | Identificador |
+| id_usuario · id_espacio | INT · INT NULL | FK → usuarios / espacios (CASCADE) | Autor y ámbito |
+| id_cuenta · id_categoria | INT | FK → cuentas / categorias | Cuenta y categoría afectadas |
+| tipo · monto · frecuencia | ENUM · DECIMAL(12,2) · ENUM | | `ingreso`/`gasto`, valor y periodicidad (`semanal`, `quincenal`, `mensual`, `anual`) |
+| proxima_fecha · descripcion | DATE · VARCHAR(150) | INDEX con `activo` | Próximo vencimiento |
+| auto_aplicar · activo · creado_en | BOOLEAN · BOOLEAN · TIMESTAMP | | Si se aplica solo o espera confirmación |
+
+**sesiones_usuario** (sesiones activas y cierre remoto, Fase 17 / M5)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_sesion | CHAR(64) | PK | SHA-256 del `session_id` (nunca el identificador en claro) |
+| id_usuario | INT | FK → usuarios (CASCADE), INDEX con `ultimo_uso` | Dueño de la sesión |
+| ip · user_agent | VARCHAR(45) · VARCHAR(255) | | Dirección IP y navegador/dispositivo |
+| creado_en · ultimo_uso | TIMESTAMP | | Caducidad absoluta (12 h) e inactividad (30 min); tope de 10 sesiones |
+
+**notificaciones_enviadas** (deduplicación de alertas por correo y cupo de invitaciones, Fase 20 / A2)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_notificacion | INT AUTO_INCREMENT | PK | Identificador |
+| id_usuario · id_espacio | INT · INT NULL | FK → usuarios / espacios (CASCADE), INDEX | Usuario y espacio opcional |
+| clave_dedup | VARCHAR(100) | UNIQUE | Clave única de deduplicación o contador de ventana móvil |
+| enviado_en | TIMESTAMP | | Momento del registro |
+
 ## Relaciones
 
 | Relación | Cardinalidad | Explicación |
@@ -278,7 +349,7 @@ Lo crea `04-dev-admin.sh` (con `dev/admin.sql`) **solo si el servicio `db` recib
 
 | Usuario | Para qué | Permisos |
 |---|---|---|
-| `lucas_app` | PHP, en cada petición | `SELECT, INSERT, UPDATE, DELETE` solo sobre las 9 tablas. Sin DDL (tampoco sobre `migraciones`). |
+| `lucas_app` | PHP, en cada petición | `SELECT, INSERT, UPDATE, DELETE` solo sobre las 21 tablas (`Esquema::TODAS`). Sin DDL (tampoco sobre `migraciones`). |
 | `lucas_migrator` | Migraciones, scripts, pruebas | Todo sobre la base `lucas` y sobre las bases temporales `lucas_test%` de las pruebas de integración; nada más. PHP no conoce su clave (`bin/as-migrator`). |
 | `root` | Administrar el servidor | Solo `DB_ROOT_PASSWORD`; la app no lo usa. |
 

@@ -22,7 +22,8 @@ final class Logger
     {
         $targetError = $error->getPrevious() ?? $error;
         $code = self::sanitize((string) $targetError->getCode());
-        $uri = self::sanitize($requestUri);
+        // N1: igual que en el access_log de nginx (B2), los tokens que viajan en la URL (?token=…) nunca se escriben en claro en el log.
+        $uri = preg_replace('/([?&]token=)[^&\s]*/i', '$1oculto', self::sanitize($requestUri)) ?? '';
         $detail = self::sanitize($targetError->getMessage());
 
         // En errores de consulta getCode() es el SQLSTATE como TEXTO ('42S02'), por eso se compara con '' y '0'.

@@ -52,6 +52,12 @@ server {
     index index.php;
     server_tokens off;
     access_log /var/log/nginx/access.log sin_token;
+
+    # N2: la aplicación solo usa GET, HEAD y POST; cualquier otro método HTTP (PUT, DELETE, PATCH, OPTIONS, TRACE) se rechaza con 405.
+    if ($request_method !~ ^(GET|HEAD|POST)$) {
+        return 405;
+    }
+
     client_max_body_size 6m;
     # U5: un cuerpo mayor que el límite lo corta nginx con un 413 sin pasar por PHP: se muestra una página con la marca, no la de nginx.
     error_page 413 /archivo-demasiado-grande.html;
@@ -91,8 +97,8 @@ server {
         try_files $uri =404;
     }
 
-    # Páginas que verifican contraseñas o tokens: tasa limitada (ráfaga de 10) y 429 al pasarse.
-    location ~ ^/(login|registro|recuperar|restablecer|perfil|espacios|verificar)\.php$ {
+    # Páginas que verifican contraseñas o tokens: tasa limitada (ráfaga de 10) y 429 al pasarse (N11 incluye login-2fa).
+    location ~ ^/(login|login-2fa|registro|recuperar|restablecer|perfil|espacios|verificar)\.php$ {
         try_files $uri =404;
         limit_req zone=acceso burst=10 nodelay;
         limit_req_status 429;

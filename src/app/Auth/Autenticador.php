@@ -23,7 +23,7 @@ final class Autenticador
     public function authenticate(string $correo, string $clave): ?Usuario
     {
         $usuario = $this->usuarios->findByEmail(mb_strtolower(trim($correo)));
-        $hash = $usuario?->contrasenaHash ?? self::HASH_SENUELO;
+        $hash = $usuario !== null ? $usuario->contrasenaHash : self::HASH_SENUELO;
         $correcta = password_verify($clave, $hash);
 
         if ($usuario === null || !$correcta || !$usuario->activo) {

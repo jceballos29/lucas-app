@@ -13,7 +13,11 @@ final class DosPasosRepository
     {
     }
 
-    /** Secreto cifrado y último paso aceptado de un usuario con 2FA activo; null si no lo tiene. @return array{secreto: string, ultimo_paso: int|null}|null */
+    /**
+     * Secreto cifrado y último paso aceptado de un usuario con 2FA activo; null si no lo tiene.
+     *
+     * @return array{secreto: string, ultimo_paso: int|null}|null
+     */
     public function datos(int $idUsuario): ?array
     {
         $stmt = $this->pdo->prepare('SELECT totp_secreto, totp_ultimo_paso FROM usuarios WHERE id_usuario = :u AND totp_activado_en IS NOT NULL AND totp_secreto IS NOT NULL');
@@ -45,7 +49,11 @@ final class DosPasosRepository
         return $stmt->rowCount() === 1;
     }
 
-    /** Sustituye todos los códigos de recuperación por estos (hashes). @param list<string> $hashes */
+    /**
+     * Sustituye todos los códigos de recuperación por estos (hashes).
+     *
+     * @param list<string> $hashes
+     */
     public function reemplazarCodigos(int $idUsuario, array $hashes): void
     {
         $this->pdo->prepare('DELETE FROM codigos_recuperacion WHERE id_usuario = :u')->execute(['u' => $idUsuario]);

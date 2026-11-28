@@ -51,7 +51,7 @@ final class GestionMovimientos
 
             $saldoDisponible = null;
             if ($cuenta !== null) {
-                $saldoActual = (string) ($this->cuentas->findOwned($userId, $datos['id_cuenta'], $espacioId)?->saldo ?? '0.00');
+                $saldoActual = $this->cuentas->findOwned($userId, $datos['id_cuenta'], $espacioId)->saldo ?? '0.00';
                 if ($anterior !== null && $anterior->idCuenta === $datos['id_cuenta']) {
                     $efectoRevertido = $anterior->esIngreso() ? '-' . $anterior->monto : $anterior->monto;
                     $saldoDisponible = Dinero::sumar([$saldoActual, $efectoRevertido]);
@@ -137,7 +137,7 @@ final class GestionMovimientos
     /**
      * Registra un movimiento dividido en varias categorías en una sola transacción (Split Transactions · Fase 14).
      *
-     * @param array{tipo: string, monto_total: string, fecha: string, id_cuenta: int, descripcion: string|null, etiqueta?: string|null} $base
+     * @param array{tipo: string, monto_total: string, fecha: string, id_cuenta: int, descripcion: string|null, etiqueta?: string|null, num_cuotas?: int, con_intereses?: bool} $base
      * @param list<array{id_categoria: int, monto: string, descripcion: string|null}> $partes
      * @return array{codigo: string, ids: list<int>, grupo_split: string|null, cuenta: string|null, saldo: string|null}
      */
@@ -146,7 +146,7 @@ final class GestionMovimientos
         return Transaction::run($this->pdo, function () use ($userId, $base, $partes, $espacioId): array {
             $cuenta = $this->cuentas->lockForWrite($userId, $base['id_cuenta'], $espacioId);
             $saldoDisponible = $cuenta !== null
-                ? (string) ($this->cuentas->findOwned($userId, $base['id_cuenta'], $espacioId)?->saldo ?? '0.00')
+                ? ($this->cuentas->findOwned($userId, $base['id_cuenta'], $espacioId)->saldo ?? '0.00')
                 : null;
 
             $montos = array_map(static fn (array $p): string => $p['monto'], $partes);

@@ -113,6 +113,8 @@ final class PresupuestoRepository
     }
 
     /**
+     * Solo pruebas: presupuestos del mes que superan el umbral de aviso (≥ 80 %), ordenados por porcentaje descendente.
+     *
      * @param array<string, int> $tasas
      * @return list<Presupuesto>
      */

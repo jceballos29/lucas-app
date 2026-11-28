@@ -44,14 +44,6 @@ final class Peticion
         return is_string($v) ? trim($v) : $porDefecto;
     }
 
-    /** Entero positivo de un parámetro de la URL (GET). */
-    public static function getEntero(string $campo, int $porDefecto = 0): int
-    {
-        $v = $_GET[$campo] ?? null;
-
-        return is_string($v) && ctype_digit($v) && strlen($v) < 19 ? (int) $v : $porDefecto;
-    }
-
     /** «6M», «512K», «1G» o un número de bytes (el formato de los valores de php.ini) → bytes. 0 o -1 = sin límite. */
     public static function enBytes(string $tamano): int
     {
@@ -72,10 +64,5 @@ final class Peticion
         $limite = self::enBytes((string) ini_get('post_max_size'));
 
         return $limite > 0 && $_POST === [] && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > $limite;
-    }
-
-    public static function esPost(): bool
-    {
-        return ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
     }
 }

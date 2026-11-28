@@ -31,7 +31,7 @@ Parte de `.env.example` y **cambia todas las claves** (las de desarrollo son pú
 
 No subas `.env` a git (ya está en `.gitignore`).
 
-**Antes del primer arranque (y cada vez que cambies el `.env`) ejecuta `bin/comprobar-produccion`.** Revisa que ninguna clave sea de
+**Antes del primer arranque (y cada vez que cambies el `.env`) ejecuta `bin/comprobar-produccion`** (usa `docker-compose.prod.yml` por defecto; respeta `COMPOSE_FILE` si defines otro). Revisa que ninguna clave sea de
 desarrollo o débil (menos de 12 caracteres, de ejemplo, repetida entre roles), que `APP_KEY` tenga 32 caracteres o más, que `APP_ORIGIN` sea
 `https://` y no `localhost`, que el SMTP no mande usuario y clave sin cifrar y que existan los certificados. No imprime ninguna clave y sale
 con código 1 si algo está mal. Además, `salud.php` responde **503** (y registra `[seguridad]…`) si en producción la clave de la base de datos
@@ -162,7 +162,7 @@ les pone permisos `600` y conserva las últimas 8 parejas. Programa una por sema
 
 - **Proxy o CDN delante (B3).** Lucas limita los intentos de acceso por IP con la que ve nginx. Si hay un balanceador delante, todos los visitantes llegarían con la IP del proxy y 20 intentos globales bloquearían a todos: en `docker/nginx/production.conf.template` descomenta `set_real_ip_from` (**solo** la red del proxy, nunca un rango abierto: cualquiera falsificaría `X-Forwarded-For`), `real_ip_header` y `real_ip_recursive`. Sin proxy delante, déjalos comentados.
 - **Sesiones (B4, B7).** Cada visita al login crea un archivo de sesión pequeño (lleva el token CSRF); el recolector de PHP los borra (1 de cada 20 inicios) y `/tmp` del contenedor es una `tmpfs` de 128 MB. Si ves errores al iniciar sesión, mira `docker compose -f docker-compose.prod.yml exec php df -h /tmp`. Con HTTPS la cookie se llama `__Host-lucas_session`: **al actualizar desde una versión anterior, las sesiones abiertas se cierran una vez.**
-- **Mantenimiento (B9).** El servicio `correo` ejecuta `scripts/mantenimiento.php` una vez al día (enlaces vencidos, intentos viejos, sesiones caducadas, historial de la cola). Para lanzarlo a mano: `docker compose -f docker-compose.prod.yml exec -T php php scripts/mantenimiento.php`.
+- **Mantenimiento y tareas programadas (B9, N13).** El servicio `correo` ejecuta una vez al día `scripts/mantenimiento.php` (enlaces vencidos, intentos viejos, sesiones caducadas, historial de la cola) y `scripts/procesar-recurrentes.php` (movimientos recurrentes automáticos cuya fecha llegó). Para lanzarlos a mano: `docker compose -f docker-compose.prod.yml exec -T php php scripts/mantenimiento.php` y `docker compose -f docker-compose.prod.yml exec -T php php scripts/procesar-recurrentes.php`. Si quieres que Lucas envíe además el resumen financiero mensual el día 1 de cada mes a quienes lo activaron, añade en cron: `0 7 1 * * cd /ruta/a/lucas-app && docker compose -f docker-compose.prod.yml exec -T php php scripts/enviar-resumen-mensual.php >> /var/log/lucas-resumen.log 2>&1`.
 - **Registro de accesos (B2).** nginx no escribe el valor de `token=` en `access.log` (lo sustituye por `oculto`).
 
 ## 7. Monitorización (RNF-14)
@@ -186,3 +186,31 @@ Las cifras medidas están en [`docs/PLAN.md`](PLAN.md) (Fase 7). Lo que conviene
   defecto; cada proceso usa una conexión mientras atiende una petición).
 - Para medir tu servidor: `python3 tests/carga.py --setup --users 500` y `python3 tests/carga.py --users 500 --duration 60 --ramp 150`
   (solo en un entorno de pruebas: crea usuarios; `--cleanup` los borra).
+
+## 9. CI/CD con GitHub Actions (GHCR y despliegue automático)
+
+El flujo [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) automatiza cinco etapas en cada *push*, *pull request* o etiqueta `v*.*.*`:
+
+1. **`calidad`**: valida `composer.json` (`--strict`), comprueba la sintaxis de todos los `.php` y scripts `.sh`, ejecuta `composer audit`, **PHPStan (nivel 7, línea base vacía)** y **PHP CS Fixer**.
+2. **`pruebas`**: levanta el entorno con Docker Compose y ejecuta `tests/run-all.sh` (unitarias, integración, humo, copias e imagen de producción) más `tests/ataques.py`.
+3. **`produccion`**: genera un `.env` de producción con claves fuertes y certificados TLS temporales, pasa `bin/comprobar-produccion`, levanta `docker-compose.prod.yml` de verdad y verifica HTTPS, redirección `80 → 443`, `HSTS`, `CSP`, cookie `__Host-lucas_session`, `/salud.php`, migraciones y copias de seguridad.
+4. **`publicar` (CD)**: en cada *push* a `main` o etiqueta `v*.*.*`, construye la imagen PHP de producción (`docker/php/Dockerfile.prod`) con caché Buildx y la publica en **GitHub Container Registry**:
+   - `ghcr.io/<tu-usuario>/lucas-app:latest`
+   - `ghcr.io/<tu-usuario>/lucas-app:sha-<commit>`
+   - `ghcr.io/<tu-usuario>/lucas-app:<versión>` (al crear un tag `v1.0.0`)
+5. **`desplegar` (CD por SSH)**: si configuraste los *Secrets* de tu servidor en GitHub, se conecta por SSH, valida `.env`, hace una copia de seguridad preventiva (`bin/backup-db`), actualiza el commit, reconstruye/levanta los contenedores, aplica las migraciones (`scripts/migrate.php` + `03-users.sh`) y comprueba que `https://localhost/salud.php` responda `{"estado":"ok"}`. Si aún no has configurado los *Secrets*, el trabajo termina en verde sin fallar y muestra las instrucciones en el resumen.
+
+### Cómo activar el despliegue automático por SSH a tu servidor (p. ej. Oracle Cloud / VPS)
+
+ tras realizar el primer arranque manual en tu servidor (secciones 1 a 4), abre tu repositorio en GitHub → **Settings → Secrets and variables → Actions → New repository secret** y añade:
+
+| Secret | Obligatorio | Qué poner |
+|---|---|---|
+| `DEPLOY_HOST` | Sí | IP pública o dominio de tu servidor (p. ej. `lucas.tudominio.com`). |
+| `DEPLOY_USER` | Sí | Usuario SSH del servidor (p. ej. `ubuntu` o `opc`). |
+| `DEPLOY_SSH_KEY` | Sí | Llave privada SSH (`~/.ssh/id_ed25519`) cuya llave pública esté en `~/.ssh/authorized_keys` del servidor. |
+| `DEPLOY_PORT` | Opcional | Puerto SSH si no es el `22`. |
+| `DEPLOY_PATH` | Opcional | Carpeta del repositorio en el servidor (por defecto `~/lucas-app`). |
+| `DEPLOY_KNOWN_HOSTS` | Opcional | Salida de `ssh-keyscan -H <tu-servidor>` para fijar la huella del host SSH. |
+
+También puedes lanzar el pipeline manualmente desde la pestaña **Actions → CI/CD → Run workflow** (con la opción de omitir el despliegue SSH si solo quieres validar y publicar la imagen).

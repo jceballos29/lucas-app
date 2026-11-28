@@ -132,7 +132,10 @@ final class SmtpMailer implements Mailer
         }
     }
 
-    /** @param resource $socket @param list<int> $expected */
+    /**
+     * @param resource $socket
+     * @param list<int> $expected
+     */
     private function command($socket, string $line, array $expected): void
     {
         fwrite($socket, $line . "\r\n");

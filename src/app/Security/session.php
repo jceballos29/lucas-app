@@ -36,7 +36,7 @@ const SESSION_IDLE_TIMEOUT = 1800;
  *   guardaría), por eso depende de APP_ORIGIN.
  * - lifetime 0: cookie de sesión, desaparece al cerrar el navegador (además de la caducidad por inactividad).
  *
- * @return array{lifetime: int, path: string, domain: string, secure: bool, httponly: bool, samesite: string}
+ * @return array{lifetime: int, path: string, domain: string, secure: bool, httponly: bool, samesite: 'Lax'}
  */
 function session_cookie_options(bool $secure): array
 {
@@ -51,19 +51,6 @@ function app_uses_https(): bool
     } catch (RuntimeException) {
         return false;
     }
-}
-
-/**
- * ¿Caducó la sesión por inactividad?
- *
- * @param mixed $lastSeen Marca de tiempo de la última petición guardada en la sesión (si no es un entero, se
- *                        considera caducada: una sesión sin marca no es de fiar).
- * @param int $now Ahora (time()).
- * @param int $ttl Segundos de inactividad permitidos.
- */
-function session_is_expired(mixed $lastSeen, int $now, int $ttl = SESSION_IDLE_TIMEOUT): bool
-{
-    return \App\Auth\ContextoSesion::haCaducado($lastSeen, $now, $ttl);
 }
 
 /** Inicia la sesión de PHP con la configuración segura de la aplicación. Se puede llamar varias veces. */
@@ -99,7 +86,7 @@ function start_app_session(): void
  * desactivó (RF-31) la sesión se cierra en su siguiente petición, y si le cambió el rol (RF-32) el cambio vale
  * de inmediato, sin esperar a que vuelva a entrar. El rol de la sesión es solo una copia para mostrar.
  *
- * @return array{user: array{id: int, name: string, email: string, role: string}|null, expired: bool, revoked: bool}
+ * @return array{user: array{id: int, name: string, email: string, role: string, verified: bool, dos_pasos: bool, espacio_id: int|null, espacio_nombre: string|null, espacio_rol: string|null}|null, expired: bool, revoked: bool}
  * @throws RuntimeException Si no se puede consultar la BD (lo traduce require_login()).
  */
 function resolve_user_session(): array
@@ -193,7 +180,11 @@ function refresh_session_fingerprint(string $hash): void
     $_SESSION['pw_fp'] = password_fingerprint($hash);
 }
 
-/** El usuario conectado, o null. */
+/**
+ * El usuario conectado, o null.
+ *
+ * @return array{id: int, name: string, email: string, role: string, verified: bool, dos_pasos: bool, espacio_id: int|null, espacio_nombre: string|null, espacio_rol: string|null}|null
+ */
 function current_user(): ?array
 {
     return resolve_user_session()['user'];
@@ -247,7 +238,11 @@ function begin_two_factor_challenge(int $userId, string $fingerprint): void
     $_SESSION = ['2fa_uid' => $userId, '2fa_fp' => $fingerprint, '2fa_hasta' => time() + TWO_FACTOR_CHALLENGE_SECONDS, '2fa_fallos' => 0, 'last_seen' => time()];
 }
 
-/** El reto de segundo factor en curso de ESTA sesión, o null si no hay o caducó. @return array{uid: int, fp: string, fallos: int}|null */
+/**
+ * El reto de segundo factor en curso de ESTA sesión, o null si no hay o caducó.
+ *
+ * @return array{uid: int, fp: string, fallos: int}|null
+ */
 function pending_two_factor(): ?array
 {
     if (session_status() !== PHP_SESSION_ACTIVE && !isset($_COOKIE[session_cookie_name()])) {
@@ -293,7 +288,7 @@ function log_out_user(): void
 
     if (!headers_sent()) {
         $options = session_cookie_options(app_uses_https());
-        setcookie(session_name(), '', [
+        setcookie((string) session_name(), '', [
             'expires' => time() - 42000,
             'path' => $options['path'],
             'domain' => $options['domain'],
@@ -313,7 +308,7 @@ function log_out_user(): void
  * También manda Cache-Control: no-store, para que el navegador no guarde estas páginas: tras cerrar sesión,
  * el botón «atrás» no debe enseñar el panel desde la memoria del navegador.
  *
- * @return array{id: int, name: string, email: string, role: string}
+ * @return array{id: int, name: string, email: string, role: string, verified: bool, dos_pasos: bool, espacio_id: int|null, espacio_nombre: string|null, espacio_rol: string|null}
  */
 function require_login(): array
 {
@@ -335,7 +330,7 @@ function require_login(): array
  * Exige sesión Y un rol concreto, comprobado en el servidor en cada petición (RNF-22): ocultar el menú no basta.
  * Sin sesión redirige a login; con otro rol responde 403.
  *
- * @return array{id: int, name: string, email: string, role: string}
+ * @return array{id: int, name: string, email: string, role: string, verified: bool, dos_pasos: bool, espacio_id: int|null, espacio_nombre: string|null, espacio_rol: string|null}
  */
 function require_role(string $role): array
 {

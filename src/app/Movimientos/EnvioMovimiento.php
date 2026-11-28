@@ -15,7 +15,7 @@ final class EnvioMovimiento
 {
     /**
      * @param array<string, mixed> $datos Normal: los datos validados. Dividido: la parte común («base»).
-     * @param list<array<string, mixed>> $partes Solo en un movimiento dividido.
+     * @param list<array{id_categoria: int, monto: string, descripcion: string|null}> $partes Solo en un movimiento dividido.
      * @param array<string, string> $errors
      * @param array<string, string> $old Valores para repoblar el formulario.
      * @param list<array{id_categoria: string, monto: string, descripcion: string}> $splitOld

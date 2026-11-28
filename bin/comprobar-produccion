@@ -3,10 +3,10 @@
 # Revisa el .env de PRODUCCIÓN ANTES del primer arranque (y tras cambiarlo): claves de desarrollo o débiles (B10), APP_KEY, APP_ORIGIN con
 # HTTPS, SMTP sin cifrar con credenciales (B5) y que existan los certificados. No imprime ninguna clave. Sale con 1 si algo está mal.
 #
-#   bin/comprobar-produccion                 # revisa ./.env
+#   bin/comprobar-produccion                 # revisa ./.env con docker-compose.prod.yml por defecto (N5)
 #   ENV_FILE=/ruta/al/.env bin/comprobar-produccion
 #
-# Usa la imagen del contenedor php, así que hace falta Docker pero no PHP en el servidor.
+# Usa la imagen del contenedor php (docker-compose.prod.yml por defecto; respeta COMPOSE_FILE si se define), así que hace falta Docker pero no PHP en el servidor.
 
 set -eu
 export MSYS_NO_PATHCONV=1
@@ -16,6 +16,9 @@ ENV_FILE="${ENV_FILE:-.env}"
 [ -f "$ENV_FILE" ] || { echo "No existe $ENV_FILE." >&2; exit 2; }
 ENV_ABS="$(cd "$(dirname "$ENV_FILE")" && pwd)/$(basename "$ENV_FILE")"
 
+# N5: en un servidor de producción usa docker-compose.prod.yml por defecto para no construir la imagen de desarrollo.
+export COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+
 # Certificados HTTPS (los lee nginx): se comprueban aquí porque el contenedor php no los ve.
 certs="$(grep -E '^CERTS_DIR=' "$ENV_FILE" | tail -n1 | cut -d= -f2- | tr -d '\r')"; certs="${certs:-./certs}"
 fallo=0
@@ -24,5 +27,8 @@ for f in fullchain.pem privkey.pem; do
 done
 
 # --no-deps y sin entrypoint: solo ejecuta el script (no arranca la base de datos ni PHP-FPM).
-docker compose run --rm --no-deps -T -v "$ENV_ABS:/tmp/lucas.env:ro" --entrypoint php php scripts/comprobar-config.php /tmp/lucas.env || fallo=1
+# Las variables con valor de relleno permiten que Docker Compose cargue docker-compose.prod.yml aunque a $ENV_FILE le falte alguna: el
+# script lee directamente /tmp/lucas.env y reporta todas las que falten o sean débiles.
+APP_ORIGIN=x APP_KEY=x DB_USERNAME=x DB_PASSWORD=x DB_ROOT_PASSWORD=x DB_MIGRATION_PASSWORD=x MAIL_HOST=x MAIL_FROM=x APP_DOMAIN=x \
+    docker compose run --rm --no-deps -T -v "$ENV_ABS:/tmp/lucas.env:ro" --entrypoint php php scripts/comprobar-config.php /tmp/lucas.env || fallo=1
 exit "$fallo"

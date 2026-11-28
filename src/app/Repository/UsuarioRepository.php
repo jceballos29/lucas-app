@@ -173,6 +173,7 @@ final class UsuarioRepository implements CredentialSource
         return $adjuntosABorrar;
     }
 
+    /** Solo pruebas: total de administradores activos en el sistema. */
     public function countActiveAdmins(): int
     {
         return (int) $this->pdo->query("SELECT COUNT(*) FROM usuarios WHERE rol = 'admin' AND activo = 1")->fetchColumn();

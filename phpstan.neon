@@ -1,11 +1,9 @@
-# Análisis estático (R8 de docs/AUDITORIA.md). Nivel 6: tipos de parámetros y retornos, tipos genéricos de arrays, métodos inexistentes.
+# Análisis estático (R8 / N9 de docs/AUDITORIA.md). Nivel 7 con línea base vacía (0 errores en phpstan-baseline.neon).
 # Ejecutar:  bin/estatico analizar    (o, con Composer instalado, `composer analizar`)
-# Los fallos que ya existían al activarlo están en phpstan-baseline.neon: no se ignoran, se pagan poco a poco. CI falla ante CUALQUIER
-# fallo nuevo. Para regenerar la línea base tras arreglar cosas:  bin/estatico analizar --generate-baseline
 includes:
     - phpstan-baseline.neon
 parameters:
-    level: 6
+    level: 7
     paths:
         - src/app
         - src/public
@@ -20,3 +18,9 @@ parameters:
         - src/app/Security/request-guard.php
     tmpDir: .phpstan.cache
     treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        # PDO::ATTR_ERRMODE = ERRMODE_EXCEPTION (Connection.php): PDO::query() y PDOStatement::fetchAll() lanzan PDOException, nunca devuelven false.
+        - '#Cannot call method fetch(?:All|Column)?\(\) on PDOStatement\|false\.#'
+        - '#Argument of an invalid type PDOStatement\|false supplied for foreach#'
+        # PDOStatement::fetchAll() devuelve una lista 0..N-1 y array_map() sobre una sola lista conserva las claves secuenciales (list<T>).
+        - '#Method App\\Repository\\.*::.*\(\) should return list<.*> but returns array<.*>\.#'

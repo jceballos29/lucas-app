@@ -1661,6 +1661,8 @@ $ordenar = static function (array $a): array {
 same('Esquema::TODAS es exactamente el conjunto de tablas de 01-schema.sql', $ordenar($tablasBd), $ordenar(Esquema::TODAS));
 preg_match('/^APP_TABLES="([^"]+)"/m', (string) file_get_contents(dirname(__DIR__, 2) . '/database/03-users.sh'), $mApp);
 same('APP_TABLES de database/03-users.sh (permisos de la aplicación) coincide con Esquema::TODAS', $ordenar(Esquema::TODAS), $ordenar(explode(' ', $mApp[1] ?? '')));
+preg_match_all('/^\*\*([a-z_]+)\*\*/m', (string) file_get_contents(dirname(__DIR__, 2) . '/docs/BASE-DE-DATOS.md'), $mDoc);
+same('N10: el diccionario de docs/BASE-DE-DATOS.md documenta exactamente todas las tablas de Esquema::TODAS', $ordenar(Esquema::TODAS), $ordenar($mDoc[1]));
 $conColumna = static function (string $col) use ($pdo): array {
     $q = $pdo->prepare("SELECT DISTINCT c.table_name FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE' WHERE c.table_schema = DATABASE() AND c.column_name = :c");
     $q->execute(['c' => $col]);

@@ -39,6 +39,7 @@ final class GuardarMovimiento
 
     private function guardarNormal(int $userId, ?Movimiento $existente, EnvioMovimiento $envio, ?int $espacioId): ResultadoGuardado
     {
+        /** @var array{tipo: string, monto: string, fecha: string, id_cuenta: int, id_categoria: int, descripcion: string|null, etiqueta?: string|null, num_cuotas?: int, con_intereses?: bool} $data */
         $data = $envio->datos;
         $subida = $envio->subida;
         $saved = $this->gestion->guardar($userId, $existente?->id, $data, $espacioId);
@@ -91,6 +92,7 @@ final class GuardarMovimiento
 
     private function guardarDividido(int $userId, EnvioMovimiento $envio, ?int $espacioId): ResultadoGuardado
     {
+        /** @var array{tipo: string, monto_total: string, fecha: string, id_cuenta: int, descripcion: string|null, etiqueta?: string|null, num_cuotas?: int, con_intereses?: bool} $base */
         $base = $envio->datos;
         $partes = $envio->partes;
         $subida = $envio->subida;

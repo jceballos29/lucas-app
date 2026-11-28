@@ -49,7 +49,11 @@ final class EstadoSesion
         return $this->caducada || $this->revocada;
     }
 
-    /** @return array{user: array<string, mixed>|null, expired: bool, revoked: bool} La forma que usa `resolve_user_session()`. */
+    /**
+     * La forma que usa `resolve_user_session()`.
+     *
+     * @return array{user: array{id: int, name: string, email: string, role: string, verified: bool, dos_pasos: bool, espacio_id: int|null, espacio_nombre: string|null, espacio_rol: string|null}|null, expired: bool, revoked: bool}
+     */
     public function comoArreglo(): array
     {
         return ['user' => $this->user, 'expired' => $this->caducada, 'revoked' => $this->revocada];

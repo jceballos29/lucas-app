@@ -11,7 +11,7 @@
 # Versión de parche fijada, igual que en desarrollo: sube el número a propósito y vuelve a pasar las pruebas.
 
 # ---- Etapa 1: dependencias y autoload optimizado ----------------------------------------------------------------------------------
-FROM composer:2 AS vendor
+FROM composer:2.11.3 AS vendor
 WORKDIR /app
 COPY src/ ./
 RUN composer install --no-dev --no-interaction --no-progress --no-scripts --no-plugins --classmap-authoritative --ignore-platform-reqs \

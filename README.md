@@ -31,21 +31,26 @@ El proyecto avanza por fases, cada una con criterios de «terminado» verificabl
 | 5 | Presupuestos mensuales con avisos al 80 % y al superar el límite, y metas de ahorro con aportes desde una cuenta | Completa |
 | 6 | Panel con el resumen del mes, reportes (gastos por categoría y evolución mensual) y exportación de movimientos a CSV | Completa |
 | 7 | Perfil, recuperación de contraseña por correo, eliminar la cuenta, HTTPS, copias de seguridad y verificación de rendimiento y accesibilidad | Completa |
+| 8–10 | Transferencias entre cuentas, movimientos recurrentes programados y espacios compartidos (cuenta familiar multiusuario con roles e invitaciones) | Completa |
+| 11–14 | Módulo de deudas (Bola de Nieve y Avalancha), clonación de presupuestos y asistente 50/30/20, conciliación e importación CSV con vista previa, movimientos divididos y etiquetas | Completa |
+| 15–17 | Tarjetas de crédito (cuotas, intereses, fechas de corte y pago), PWA instalable con modo sin conexión, sesiones activas y verificación en dos pasos (2FA TOTP) | Completa |
+| 18–20 | Multimoneda con tasas de cambio y patrimonio consolidado, comprobantes adjuntos (JPG/PNG/WebP/PDF) y reporte imprimible, verificación de correo, cola de correo y alertas/resumen mensual | Completa |
 
 > Todas las fases están completas. La guía para ponerlo en un servidor (HTTPS, correo real, copias de seguridad, monitorización y capacidad)
 > está en [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md). Probado en Firefox; conviene una pasada manual en Chrome/Edge y Safari y una prueba con lector de pantalla antes de
 > lanzar (ver las notas de la Fase 7 en [`docs/PLAN.md`](docs/PLAN.md)).
 
-## Funcionalidades previstas
+## Funcionalidades
 
 **Personas usuarias**
-- Registro público, inicio y cierre de sesión, recuperación de contraseña.
-- Cuentas (efectivo, bancaria, tarjeta de crédito, ahorro) con saldo calculado en vivo.
+- Registro público con verificación de correo, inicio y cierre de sesión, recuperación de contraseña, verificación en dos pasos (2FA TOTP con códigos de recuperación) y gestión de sesiones activas.
+- Cuentas (efectivo, bancaria, tarjeta de crédito, ahorro) con saldo calculado en vivo, conciliación rápida, multimoneda (`COP`, `USD`, `EUR`, `MXN`) con tasas de cambio y tarjetas de crédito con compras a cuotas, intereses, fecha de corte y fecha de pago.
+- Espacios compartidos (cuenta familiar o de pareja) con invitación por correo, roles (`propietario`, `editor`, `lector`) y aislamiento respecto al espacio personal.
 - Categorías predeterminadas y propias.
-- Movimientos de ingreso y gasto, con filtros por fecha, cuenta, categoría y tipo, y paginación.
-- Presupuestos mensuales por categoría con avisos al 80 % y 100 %.
-- Metas de ahorro con aportes y porcentaje de avance.
-- Panel del mes, reportes gráficos y exportación a CSV.
+- Movimientos de ingreso y gasto (simples o divididos en varias categorías), etiquetas (`#tags`), comprobantes adjuntos (JPG, PNG, WebP, PDF), transferencias entre cuentas, movimientos recurrentes programados e importación desde CSV con vista previa y detección de duplicados.
+- Presupuestos mensuales por categoría con avisos al 80 % y 100 % (en pantalla y por correo), clonación del mes anterior y asistente 50/30/20.
+- Metas de ahorro con aportes desde una cuenta y módulo de deudas con abonos a capital/intereses y simulador Bola de Nieve vs. Avalancha.
+- Panel del mes, reportes gráficos, vista imprimible, resumen financiero mensual por correo y exportación a CSV.
 
 **Administración**
 - Métricas globales: usuarios totales, activos y nuevos, y registros por mes.
@@ -184,7 +189,12 @@ bin/as-migrator php scripts/<script>.php            # scripts que cambian datos 
 docker compose down -v                              # parar y BORRAR la base
 ```
 
-**Integración continua:** `.github/workflows/ci.yml` ejecuta en cada push y pull request la calidad de código (`bin/estatico todo`) y todas las suites con Docker Compose, más `tests/ataques.py`. PHPStan parte de una línea base (`phpstan-baseline.neon`) con los 34 avisos que ya existían: CI falla ante cualquiera **nuevo**; al arreglar los antiguos, regenera la línea base con `bin/estatico analizar --generate-baseline`.
+**CI/CD (GitHub Actions):** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) ejecuta en cada *push* y *pull request* cinco etapas:
+1. **Calidad y seguridad:** `composer validate --strict`, sintaxis PHP/Bash, `composer audit`, **PHPStan (nivel 7, con línea base vacía)** y **PHP CS Fixer**.
+2. **Suites completas:** `tests/run-all.sh` (unitarias, integración, humo, copias de seguridad e imagen de producción) + `tests/ataques.py`.
+3. **Simulación real de producción (HTTPS):** levanta `docker-compose.prod.yml` con certificados TLS y claves generadas, valida `bin/comprobar-produccion` y comprueba `/salud.php`, `HSTS`, `CSP` y la cookie `__Host-lucas_session`.
+4. **Entrega continua (GHCR):** en `main` y tags `v*.*.*` publica la imagen de producción en `ghcr.io/<usuario>/lucas-app`.
+5. **Despliegue continuo (SSH):** si están definidos los Secrets `DEPLOY_HOST`, `DEPLOY_USER` y `DEPLOY_SSH_KEY`, hace copia de seguridad preventiva en el servidor, despliega la nueva versión, aplica migraciones y verifica `/salud.php` (ver [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md#9-cicd-con-github-actions-ghcr-y-despliegue-automático)).
 
 ### Problemas frecuentes
 

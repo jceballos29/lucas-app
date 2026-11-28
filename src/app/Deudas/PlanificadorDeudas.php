@@ -87,12 +87,12 @@ final class PlanificadorDeudas
             'bolaNieve' => $nieve + [
                 'ahorroIntereses' => Dinero::deCentavos($ahorroNieve),
                 'mesesAhorrados' => max(0, $minimos['meses'] - $nieve['meses']),
-                'primeraDeuda' => $nieveList[0]->nombre ?? null,
+                'primeraDeuda' => isset($nieveList[0]) ? $nieveList[0]->nombre : null,
             ],
             'avalancha' => $avalancha + [
                 'ahorroIntereses' => Dinero::deCentavos($ahorroAvalancha),
                 'mesesAhorrados' => max(0, $minimos['meses'] - $avalancha['meses']),
-                'primeraDeuda' => $avalanchaList[0]->nombre ?? null,
+                'primeraDeuda' => isset($avalanchaList[0]) ? $avalanchaList[0]->nombre : null,
             ],
         ];
     }

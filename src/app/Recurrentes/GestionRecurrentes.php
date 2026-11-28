@@ -76,7 +76,7 @@ final class GestionRecurrentes
 
             $cuenta = $this->cuentas->lockForWrite($userId, $rec->idCuenta, $espacioId);
             $categoria = $this->categorias->findById($rec->idCategoria);
-            $saldo = $cuenta === null ? '0.00' : (string) ($this->cuentas->findOwned($userId, $rec->idCuenta, $espacioId)?->saldo ?? '0.00');
+            $saldo = $cuenta === null ? '0.00' : ($this->cuentas->findOwned($userId, $rec->idCuenta, $espacioId)->saldo ?? '0.00');
 
             $codigo = ReglasMovimiento::evaluar($cuenta, $categoria, $userId, $rec->tipo, $saldo, $rec->monto, $espacioId);
 

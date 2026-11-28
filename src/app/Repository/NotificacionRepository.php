@@ -32,6 +32,7 @@ final class NotificacionRepository
         $this->pdo->prepare('DELETE FROM notificaciones_enviadas WHERE clave_dedup = :c')->execute(['c' => $clave]);
     }
 
+    /** Solo pruebas: comprueba si ya se registró el envío de una notificación con esa clave. */
     public function existe(string $clave): bool
     {
         $stmt = $this->pdo->prepare('SELECT 1 FROM notificaciones_enviadas WHERE clave_dedup = :c');

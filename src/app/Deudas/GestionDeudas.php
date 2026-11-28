@@ -40,7 +40,7 @@ final class GestionDeudas
         return Transaction::run($this->pdo, function () use ($userId, $deudaId, $datos, $espacioId): array {
             $cuenta = $this->cuentas->lockForWrite($userId, $datos['id_cuenta'], $espacioId);
             $deuda = $this->deudas->lockOwned($userId, $deudaId, $espacioId);
-            $saldoCuenta = $cuenta === null ? '0.00' : (string) ($this->cuentas->findOwned($userId, $datos['id_cuenta'], $espacioId)?->saldo ?? '0.00');
+            $saldoCuenta = $cuenta === null ? '0.00' : ($this->cuentas->findOwned($userId, $datos['id_cuenta'], $espacioId)->saldo ?? '0.00');
 
             $infoDeuda = $deuda === null ? null : [
                 'estado' => $deuda->estado,

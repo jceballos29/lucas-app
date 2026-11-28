@@ -91,12 +91,6 @@ final class ColaCorreoRepository
             ->execute(['s' => self::esperaTrasFallo($intentosHechos), 'e' => $error, 'i' => $id]);
     }
 
-    /** Un correo que no se puede ni armar (dirección inválida...) no tiene sentido reintentarlo. */
-    public function descartar(int $id, string $error): void
-    {
-        $this->pdo->prepare("UPDATE cola_correo SET estado = 'fallido', cuerpo = '', ultimo_error = :e, procesado_en = NOW() WHERE id_correo = :i")->execute(['e' => mb_substr($error, 0, 255), 'i' => $id]);
-    }
-
     /** Borra el historial viejo: enviados de más de 7 días y fallidos de más de 30. */
     public function purgar(): int
     {
@@ -112,6 +106,11 @@ final class ColaCorreoRepository
         }
         $antiguo = $this->pdo->query("SELECT TIMESTAMPDIFF(SECOND, MIN(creado_en), NOW()) FROM cola_correo WHERE estado = 'pendiente'")->fetchColumn();
 
-        return $cuenta + ['mas_antiguo_segundos' => $antiguo === null || $antiguo === false ? null : (int) $antiguo];
+        return [
+            'pendiente' => $cuenta['pendiente'],
+            'enviado' => $cuenta['enviado'],
+            'fallido' => $cuenta['fallido'],
+            'mas_antiguo_segundos' => $antiguo === null || $antiguo === false ? null : (int) $antiguo,
+        ];
     }
 }

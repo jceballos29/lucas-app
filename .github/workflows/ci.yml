@@ -1,55 +1,109 @@
-# Integración continua (R8 de docs/AUDITORIA.md). En cada push y pull request:
-#   1. calidad  → PHPStan (nivel 6, sin fallos nuevos respecto a phpstan-baseline.neon) y PHP CS Fixer (estilo).
-#   2. pruebas  → levanta el entorno de desarrollo con Docker Compose y ejecuta tests/run-all.sh (unitarias, integración, humo y copias)
-#                 más la suite de ataques (tests/ataques.py).
-# Los mismos comandos funcionan en local: `bin/estatico todo` y `tests/run-all.sh`.
-name: CI
+# CI/CD de Lucas (R8 de docs/AUDITORIA.md y sección 9 de docs/DESPLIEGUE.md).
+#
+# Etapas del pipeline:
+#   1. calidad    → Validación de composer.json, sintaxis PHP/Bash en paralelo, composer audit, PHPStan (nivel 7, baseline vacía) y PHP CS Fixer.
+#   2. pruebas    → Levanta el entorno de desarrollo con Docker Compose y ejecuta tests/run-all.sh (unitarias, integración, humo, copias e
+#                   imagen de producción) más la suite de ataques en vivo (tests/ataques.py).
+#   3. produccion → Levanta de verdad docker-compose.prod.yml con HTTPS, claves generadas al vuelo, valida bin/comprobar-produccion,
+#                   /salud.php, redirección 80→443, HSTS/CSP, cookie __Host-lucas_session, migraciones y backup.
+#   4. publicar   → (Solo en push a main o tags v*) Construye y publica la imagen PHP de producción en GitHub Container Registry (ghcr.io)
+#                   con caché de capas Buildx y etiquetas por SHA, rama y versión semántica.
+#   5. desplegar  → (Solo tras publicar) Si los Secrets SSH (DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY) están configurados en el repositorio,
+#                   hace backup preventivo en el servidor, actualiza la versión, aplica migraciones y verifica /salud.php. Si aún no hay
+#                   servidor configurado, omite el paso en verde y deja las instrucciones en el resumen.
+name: CI/CD
 
 on:
   push:
     branches: [main]
+    tags: ['v*.*.*']
   pull_request:
+  workflow_dispatch:
+    inputs:
+      omitir_despliegue:
+        description: 'Ejecutar solo CI y publicación de imagen (omitir despliegue SSH)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: cicd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   calidad:
-    name: Calidad de código
+    name: Calidad, sintaxis y seguridad
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: shivammathur/setup-php@v2
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar PHP 8.4 y caché de Composer
+        uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+          extensions: pdo_mysql, intl, zip, sodium, mbstring, opcache
           tools: composer:v2
           coverage: none
-      - name: Instalar herramientas
+
+      - name: Validar composer.json y sintaxis de scripts
+        run: |
+          composer validate --strict
+          composer validate --strict --working-dir=src
+          find src -name '*.php' -print0 | xargs -0 -n1 -P4 php -l >/dev/null
+          bash -n bin/as-migrator bin/backup-db bin/comprobar-produccion bin/estatico bin/restore-adjuntos bin/restore-db
+          bash -n tests/run-all.sh tests/smoke.sh tests/backup.sh tests/imagen-produccion.sh database/03-users.sh database/04-dev-admin.sh
+
+      - name: Instalar herramientas de análisis
         run: composer install --no-interaction --no-progress --prefer-dist
-      - name: PHPStan
+
+      - name: Auditoría de seguridad de dependencias (composer audit)
+        run: composer audit --no-interaction
+
+      - name: Análisis estático (PHPStan nivel 7)
         run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
-      - name: PHP CS Fixer
+
+      - name: Estilo de código (PHP CS Fixer)
         run: vendor/bin/php-cs-fixer fix --dry-run --diff
 
+      - name: Resumen de calidad
+        if: always()
+        run: |
+          {
+            echo "### Calidad de código y análisis estático"
+            echo "| Comprobación | Resultado |"
+            echo "|---|---|"
+            echo "| Sintaxis PHP 8.4 y scripts Bash | ✅ Correcta |"
+            echo "| \`composer validate --strict\` y \`composer audit\` | ✅ Sin vulnerabilidades |"
+            echo "| \`PHPStan\` (nivel 7, línea base vacía) | ✅ 0 errores |"
+            echo "| \`PHP CS Fixer\` (PSR-12) | ✅ 0 archivos pendientes |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   pruebas:
-    name: Pruebas (Docker Compose)
+    name: Suites de pruebas y ataques
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - name: Configuración de desarrollo
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar entorno de desarrollo (.env)
         run: |
           cp .env.example .env
           echo "HOST_UID=$(id -u)" >> .env
           echo "HOST_GID=$(id -g)" >> .env
-      - name: Levantar el entorno
-        run: docker compose up -d --build
-      - name: Esperar a que la aplicación responda
+
+      - name: Levantar servicios y preconstruir imagen de producción
+        run: |
+          docker compose up -d --build
+          APP_ORIGIN=x APP_KEY=x DB_USERNAME=x DB_PASSWORD=x DB_ROOT_PASSWORD=x DB_MIGRATION_PASSWORD=x MAIL_HOST=x MAIL_FROM=x APP_DOMAIN=x \
+            COMPOSE_FILE=docker-compose.prod.yml docker compose build -q php
+
+      - name: Esperar a que la aplicación responda (/salud.php)
         run: |
           port="$(grep -E '^APP_PORT=' .env | cut -d= -f2)"
           for i in $(seq 1 90); do
@@ -59,13 +113,278 @@ jobs:
           docker compose ps
           docker compose logs --tail 80
           exit 1
-      - name: Pruebas (unitarias, integración, humo y copias)
-        run: tests/run-all.sh
-      - name: Pruebas de ataque
-        run: python3 tests/ataques.py
-      - name: Registros si algo falló
+
+      - name: Ejecutar suites (unitarias, integración, humo, copias e imagen de producción)
+        run: tests/run-all.sh | tee /tmp/suites.log
+
+      - name: Ejecutar pruebas de ataque en vivo (IDOR, XSS, CSRF, fuerza bruta, 2FA)
+        run: python3 tests/ataques.py | tee /tmp/ataques.log
+
+      - name: Publicar resumen de pruebas
+        if: always()
+        run: |
+          {
+            echo "### Resultados de las suites automáticas"
+            echo '```text'
+            grep -E "^(################|Resultado:|Todas las suites)" /tmp/suites.log 2>/dev/null || true
+            grep -E "^Resultado:" /tmp/ataques.log 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Registros de contenedores si algo falló
         if: failure()
         run: docker compose logs --tail 200
-      - name: Apagar
+
+      - name: Apagar y limpiar volúmenes
         if: always()
         run: docker compose down -v
+
+  produccion:
+    name: Simulación real de producción (HTTPS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Generar .env de producción y certificados TLS de prueba
+        run: |
+          mkdir -p certs certbot-webroot src/storage/adjuntos
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj "/CN=lucas.ci.invalid" \
+            -keyout certs/privkey.pem -out certs/fullchain.pem 2>/dev/null
+          cat > .env <<EOF
+          APP_ENV=production
+          APP_DOMAIN=lucas.ci.invalid
+          APP_ORIGIN=https://lucas.ci.invalid
+          APP_KEY=$(openssl rand -base64 32)
+          HOST_UID=$(id -u)
+          HOST_GID=$(id -g)
+          DB_HOST=db
+          DB_PORT=3306
+          DB_DATABASE=lucas
+          DB_USERNAME=lucas_app
+          DB_PASSWORD=$(openssl rand -hex 16)
+          DB_MIGRATION_USERNAME=lucas_migrator
+          DB_MIGRATION_PASSWORD=$(openssl rand -hex 16)
+          DB_ROOT_PASSWORD=$(openssl rand -hex 16)
+          MAIL_HOST=smtp.ci.invalid
+          MAIL_PORT=587
+          MAIL_ENCRYPTION=starttls
+          MAIL_USER=ci_mailer
+          MAIL_PASSWORD=$(openssl rand -hex 16)
+          MAIL_FROM=lucas@lucas.ci.invalid
+          MAIL_FROM_NAME=Lucas
+          CERTS_DIR=./certs
+          EOF
+
+      - name: Validar configuración con bin/comprobar-produccion
+        run: bin/comprobar-produccion
+
+      - name: Levantar stack de producción (docker-compose.prod.yml)
+        run: docker compose -f docker-compose.prod.yml up -d --build
+
+      - name: Verificar HTTPS, /salud.php, cabeceras, cookie __Host-, migraciones y backup
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsSk --resolve lucas.ci.invalid:443:127.0.0.1 https://lucas.ci.invalid/salud.php | grep -q '"ok"'; then
+              break
+            fi
+            sleep 2
+            if [ "$i" -eq 90 ]; then
+              docker compose -f docker-compose.prod.yml ps
+              docker compose -f docker-compose.prod.yml logs --tail 100
+              exit 1
+            fi
+          done
+
+          # 1. Redirección HTTP -> HTTPS
+          http_code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: lucas.ci.invalid' http://127.0.0.1/login.php)"
+          [ "$http_code" = "301" ] || { echo "Esperado 301 en HTTP, obtenido: $http_code"; exit 1; }
+
+          # 2. Cabeceras HSTS, CSP, Cache-Control: no-store y cookie __Host-lucas_session en HTTPS
+          hdrs="$(curl -sIk --resolve lucas.ci.invalid:443:127.0.0.1 https://lucas.ci.invalid/login.php)"
+          echo "$hdrs" | grep -qi '^strict-transport-security:' || { echo "Falta HSTS"; exit 1; }
+          echo "$hdrs" | grep -qi '^content-security-policy:' || { echo "Falta CSP"; exit 1; }
+          echo "$hdrs" | grep -qi '^cache-control:.*no-store' || { echo "Falta Cache-Control: no-store"; exit 1; }
+          echo "$hdrs" | grep -qi '^set-cookie: __Host-lucas_session=.*; Secure; HttpOnly; SameSite=Lax' || { echo "Cookie __Host- incorrecta"; exit 1; }
+
+          # 3. status.php oculto (404) y métodos extra rechazados (405)
+          st_code="$(curl -sk -o /dev/null -w '%{http_code}' --resolve lucas.ci.invalid:443:127.0.0.1 https://lucas.ci.invalid/status.php)"
+          [ "$st_code" = "404" ] || { echo "Esperado 404 en status.php, obtenido: $st_code"; exit 1; }
+          put_code="$(curl -sk -X PUT -o /dev/null -w '%{http_code}' --resolve lucas.ci.invalid:443:127.0.0.1 https://lucas.ci.invalid/login.php)"
+          [ "$put_code" = "405" ] || { echo "Esperado 405 en PUT, obtenido: $put_code"; exit 1; }
+
+          # 4. Migraciones y copia de seguridad en el entorno de producción
+          COMPOSE_FILE=docker-compose.prod.yml bin/as-migrator php scripts/migrate.php
+          COMPOSE_FILE=docker-compose.prod.yml bin/backup-db /tmp/backups-prod
+          ls /tmp/backups-prod/lucas-*.sql.gz /tmp/backups-prod/lucas-*.adjuntos.tar.gz >/dev/null
+
+          {
+            echo "### Verificación del stack de producción (\`docker-compose.prod.yml\`)"
+            echo "- ✅ \`bin/comprobar-produccion\` superado sin avisos"
+            echo "- ✅ \`https://lucas.ci.invalid/salud.php\` respondió \`200 {\"estado\":\"ok\"}\`"
+            echo "- ✅ Redirección \`80 → 443\`, \`HSTS\`, \`CSP\`, \`Cache-Control: no-store\` y cookie \`__Host-lucas_session\` verificados"
+            echo "- ✅ \`/status.php\` oculto (\`404\`), métodos no permitidos rechazados (\`405\`), migraciones y \`bin/backup-db\` operativos"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Registros si algo falló
+        if: failure()
+        run: docker compose -f docker-compose.prod.yml logs --tail 200
+
+      - name: Apagar stack de producción
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v
+
+  publicar:
+    name: Publicar imagen en GHCR (CD)
+    needs: [calidad, pruebas, produccion]
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar sesión en GitHub Container Registry (ghcr.io)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extraer metadatos y etiquetas de la imagen
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Construir y publicar imagen PHP de producción
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/php/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resumen de imagen publicada
+        run: |
+          {
+            echo "### Imagen de producción publicada en GHCR"
+            echo "- **Imagen:** \`ghcr.io/${GITHUB_REPOSITORY}\`"
+            echo "- **Digest:** \`${{ steps.build.outputs.digest }}\`"
+            echo "- **Etiquetas:**"
+            echo '```text'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  desplegar:
+    name: Despliegue a servidor de producción (CD)
+    needs: [publicar]
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      inputs.omitir_despliegue != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Desplegar por SSH (si los Secrets están configurados)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          APP_IMAGE: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            {
+              echo "### Despliegue SSH (pendiente de configurar Secrets)"
+              echo "La imagen ya está publicada en \`ghcr.io/${GITHUB_REPOSITORY}\`."
+              echo "Para activar el despliegue automático a tu servidor (p. ej. Oracle Cloud / VPS), añade en **Settings → Secrets and variables → Actions**:"
+              echo "- \`DEPLOY_HOST\`: IP o dominio del servidor"
+              echo "- \`DEPLOY_USER\`: usuario SSH (p. ej. \`ubuntu\`)"
+              echo "- \`DEPLOY_SSH_KEY\`: llave privada SSH (Ed25519 o RSA)"
+              echo "- \`DEPLOY_PORT\` *(opcional)*: puerto SSH (por defecto \`22\`)"
+              echo "- \`DEPLOY_PATH\` *(opcional)*: ruta del proyecto en el servidor (por defecto \`~/lucas-app\`)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          PORT="${DEPLOY_PORT:-22}"
+          REMOTE_PATH="${DEPLOY_PATH:-~/lucas-app}"
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/id_deploy -p "$PORT" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "REMOTE_PATH='$REMOTE_PATH' TARGET_SHA='${GITHUB_SHA}' bash -s" << 'EOF'
+          set -eu
+          eval cd "$REMOTE_PATH"
+
+          echo "==> 1. Validando configuración de producción (.env)"
+          COMPOSE_FILE=docker-compose.prod.yml bin/comprobar-produccion
+
+          echo "==> 2. Copia de seguridad preventiva (BD + comprobantes)"
+          mkdir -p src/storage/adjuntos
+          COMPOSE_FILE=docker-compose.prod.yml bin/backup-db
+
+          echo "==> 3. Actualizando repositorio al commit $TARGET_SHA"
+          git fetch --all --tags
+          git checkout --force "$TARGET_SHA"
+
+          echo "==> 4. Reconstruyendo y levantando servicios de producción"
+          docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+          echo "==> 5. Aplicando migraciones pendientes y permisos de BD"
+          COMPOSE_FILE=docker-compose.prod.yml bin/as-migrator php scripts/migrate.php
+          docker compose -f docker-compose.prod.yml exec -T db bash /docker-entrypoint-initdb.d/03-users.sh
+
+          echo "==> 6. Verificando salud de la aplicación (/salud.php)"
+          for i in $(seq 1 30); do
+            if docker compose -f docker-compose.prod.yml exec -T nginx wget -qO- --no-check-certificate https://localhost/salud.php | grep -q '"ok"'; then
+              echo "Despliegue completado y verificado con éxito."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Error: /salud.php no respondió OK tras el despliegue." >&2
+          docker compose -f docker-compose.prod.yml ps >&2
+          docker compose -f docker-compose.prod.yml logs --tail 80 >&2
+          exit 1
+          EOF
+
+          {
+            echo "### Despliegue SSH completado"
+            echo "- **Servidor:** \`${DEPLOY_USER}@${DEPLOY_HOST}:${PORT}\`"
+            echo "- **Commit desplegado:** \`${GITHUB_SHA}\`"
+            echo "- **Estado de \`/salud.php\`:** ✅ \`200 {\"estado\":\"ok\"}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -84,7 +84,7 @@ final class Totp
 
         $salida = '';
         foreach (str_split($bits, 5) as $trozo) {
-            $salida .= self::ALFABETO[bindec(str_pad($trozo, 5, '0'))];
+            $salida .= self::ALFABETO[(int) bindec(str_pad($trozo, 5, '0'))];
         }
 
         return $salida;

@@ -114,9 +114,9 @@
 
 /* ======================= Móvil y pantallas táctiles (U1, U3) ======================= */
 @media (pointer: coarse), (max-width: 767px) {
-  /* U3: objetivos táctiles de al menos 44 px (guía de accesibilidad móvil). Los enlaces de texto ganan zona pulsable sin cambiar el diseño. */
+  /* U3 / N7: objetivos táctiles de al menos 44 px (guía de accesibilidad móvil). Los enlaces de texto ganan zona pulsable sin cambiar el diseño. */
   .btn--sm { min-height: 44px; }
-  .icon-btn { min-width: 44px; min-height: 44px; }
+  .icon-btn, .field__toggle { min-width: 44px; min-height: 44px; }
   .pagination a { min-width: 44px; height: 44px; }
   .logo { min-height: 44px; display: inline-flex; align-items: center; }
   .notice a, .link { display: inline-block; padding-block: 11px; margin-block: -11px; }

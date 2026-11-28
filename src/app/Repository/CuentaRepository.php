@@ -28,7 +28,11 @@ final class CuentaRepository
     {
     }
 
-    /** Las cuentas activas primero, por nombre. @return list<Cuenta> */
+    /**
+     * Las cuentas activas primero, por nombre.
+     *
+     * @return list<Cuenta>
+     */
     public function listByUser(int $userId, ?int $espacioId = null): array
     {
         [$scope, $params] = self::scope($userId, $espacioId, 'c');

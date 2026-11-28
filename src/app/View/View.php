@@ -48,7 +48,7 @@ final class View
      * @param string $name La vista del contenido.
      * @param array<string, mixed> $data Sus datos.
      * @param string $title Título de la página (va en <title>).
-     * @param array{id: int, name: string, email: string}|null $user El usuario conectado (null si no hay).
+     * @param array{id: int, name: string, email: string, role?: string, verified?: bool, dos_pasos?: bool, espacio_id?: int|null, espacio_nombre?: string|null, espacio_rol?: string|null}|null $user El usuario conectado (null si no hay).
      * @param string $layout Diseño: 'plain' (sin menú), 'auth' (login/registro), 'app' (menú del usuario) o
      *                       'admin' (menú del administrador).
      * @param string $nav Clave de la entrada del menú que queda marcada como activa.
@@ -63,6 +63,11 @@ final class View
         // nada: la cookie viaja en las cabeceras, que salen con el primer byte del HTML.
         if ($layout !== 'plain') {
             csrf_token();
+        }
+
+        // N3: las páginas de acceso (login, 2FA, registro, recuperar…) llevan un token CSRF y no deben guardarse en caché.
+        if ($layout === 'auth' && !headers_sent()) {
+            header('Cache-Control: no-store');
         }
 
         self::render('layout/head', ['pageTitle' => $title]);

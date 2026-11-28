@@ -25,56 +25,63 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-$cola = new ColaCorreoRepository(Container::shared()->pdo());
-
-if (in_array('--estado', $argv, true)) {
-    $r = $cola->resumen();
-    echo "pendientes: {$r['pendiente']}  enviados: {$r['enviado']}  fallidos: {$r['fallido']}  pendiente más antiguo: " . ($r['mas_antiguo_segundos'] === null ? '-' : $r['mas_antiguo_segundos'] . ' s') . "\n";
-    exit(0);
-}
-
-$max = 100;
-foreach ($argv as $arg) {
-    if (preg_match('/^--max=(\d+)$/', $arg, $m) === 1) {
-        $max = max(1, (int) $m[1]);
-    }
-}
-
 try {
-    $smtp = SmtpMailer::fromEnvironment();
-} catch (MailException $e) {
-    Logger::exception('mail', $e);
-    fwrite(STDERR, $e->getMessage() . "\n");
-    exit(1);
-}
+    $cola = new ColaCorreoRepository(Container::shared()->pdo());
 
-$enviados = 0;
-$fallos = 0;
-$inicio = time();
-
-// Lotes pequeños y con límite de tiempo, para que un SMTP lento no deje el proceso atascado y el bucle pueda volver a empezar.
-while ($enviados + $fallos < $max && time() - $inicio < 50) {
-    $lote = $cola->reclamar(min(10, $max - $enviados - $fallos));
-
-    if ($lote === []) {
-        break;
+    if (in_array('--estado', $argv, true)) {
+        $r = $cola->resumen();
+        echo "pendientes: {$r['pendiente']}  enviados: {$r['enviado']}  fallidos: {$r['fallido']}  pendiente más antiguo: " . ($r['mas_antiguo_segundos'] === null ? '-' : $r['mas_antiguo_segundos'] . ' s') . "\n";
+        exit(0);
     }
 
-    foreach ($lote as $correo) {
-        try {
-            $smtp->send($correo['destinatario'], $correo['asunto'], $correo['cuerpo']);
-            $cola->marcarEnviado($correo['id_correo']);
-            $enviados++;
-        } catch (MailException $e) {
-            $fallos++;
-            Logger::exception('mail', $e);
-            $cola->marcarFallo($correo['id_correo'], $correo['intentos'], $e->getMessage());
+    $max = 100;
+    foreach ($argv as $arg) {
+        if (preg_match('/^--max=(\d+)$/', $arg, $m) === 1) {
+            $max = max(1, (int) $m[1]);
         }
     }
-}
 
-if (random_int(1, 20) === 1) {
-    $cola->purgar();
+    try {
+        $smtp = SmtpMailer::fromEnvironment();
+    } catch (MailException $e) {
+        Logger::exception('mail', $e);
+        fwrite(STDERR, $e->getMessage() . "\n");
+        exit(1);
+    }
+
+    $enviados = 0;
+    $fallos = 0;
+    $inicio = time();
+
+    // Lotes pequeños y con límite de tiempo, para que un SMTP lento no deje el proceso atascado y el bucle pueda volver a empezar.
+    while ($enviados + $fallos < $max && time() - $inicio < 50) {
+        $lote = $cola->reclamar(min(10, $max - $enviados - $fallos));
+
+        if ($lote === []) {
+            break;
+        }
+
+        foreach ($lote as $correo) {
+            try {
+                $smtp->send($correo['destinatario'], $correo['asunto'], $correo['cuerpo']);
+                $cola->marcarEnviado($correo['id_correo']);
+                $enviados++;
+            } catch (MailException $e) {
+                $fallos++;
+                Logger::exception('mail', $e);
+                $cola->marcarFallo($correo['id_correo'], $correo['intentos'], $e->getMessage());
+            }
+        }
+    }
+
+    if (random_int(1, 20) === 1) {
+        $cola->purgar();
+    }
+} catch (RuntimeException $e) {
+    // N4: si la base de datos no responde (parada o apagándose), registra una sola línea limpia sin volcar una traza fatal cada 5 s.
+    Logger::exception('cola-correo', $e);
+    fwrite(STDERR, $e->getMessage() . "\n");
+    exit(1);
 }
 
 if ($enviados + $fallos > 0) {

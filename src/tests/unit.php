@@ -21,11 +21,11 @@ same('Origin con ruta no vale', null, normalize_origin('http://localhost:8090/x'
 same('dominio engañoso', null, normalize_origin('http://localhost:8090.evil.com'));
 same('"null" no vale', null, normalize_origin('null'));
 
-section('session_is_expired()');
-same('sin marca = caducada', true, session_is_expired(null, 1000));
-same('reciente = viva', false, session_is_expired(900, 1000));
-same('pasado el límite', true, session_is_expired(1000, 1000 + SESSION_IDLE_TIMEOUT));
-same('marca del futuro', true, session_is_expired(2000, 1000));
+section('ContextoSesion::haCaducado()');
+same('sin marca = caducada', true, App\Auth\ContextoSesion::haCaducado(null, 1000));
+same('reciente = viva', false, App\Auth\ContextoSesion::haCaducado(900, 1000));
+same('pasado el límite', true, App\Auth\ContextoSesion::haCaducado(1000, 1000 + SESSION_IDLE_TIMEOUT));
+same('marca del futuro', true, App\Auth\ContextoSesion::haCaducado(2000, 1000));
 
 section('format_utc_datetime()');
 same('UTC a Bogotá', '2026-11-19 09:08:36', format_utc_datetime('2026-11-19 14:08:36', 'America/Bogota'));
@@ -808,6 +808,8 @@ same('un destinatario con < o > (inyección en sobre SMTP) se rechaza', true, (s
 same('Logger::format neutraliza saltos de línea y caracteres de control (CWE-117)', '[test] /ruta falsa: fallo [31m limpio', (static function (): string {
     return App\Logging\Logger::format('test', "/ruta\r\nfalsa", new RuntimeException("fallo\x1b[31m\nlimpio"));
 })());
+same('Logger::format (N1) oculta el valor de ?token= al principio de la query', '[connection] /restablecer.php?token=oculto: fallo', App\Logging\Logger::format('connection', '/restablecer.php?token=secreto123456', new RuntimeException('fallo')));
+same('Logger::format (N1) oculta el valor de &token= en medio de la query y conserva los demás parámetros', '[query] /espacios.php?x=1&token=oculto&y=2: (42) tabla', App\Logging\Logger::format('query', '/espacios.php?x=1&token=secreto789&y=2', new RuntimeException('tabla', 42)));
 same('dot-stuffing: una línea que empieza con punto lleva otro delante', "uno\r\n..dos\r\n...tres\r\n.\r\n", Msg::forData("uno\n.dos\n..tres"));
 same('termina con la línea de un solo punto', true, str_ends_with(Msg::forData("a\nb"), "\r\n.\r\n"));
 same('los fines de línea pasan a CRLF', "a\r\nb\r\n.\r\n", Msg::forData("a\nb\n"));
@@ -1175,15 +1177,9 @@ same('un campo con forma de array (campo[]=x) cuenta como ausente, nunca devuelv
 same('postEntero: solo dígitos; «-5», «1e3», vacío, array, ausente y números gigantes dan el valor por defecto', [42, 0, 0, 0, 0, 0, 9, 0], [
     PQ::postEntero('n'), PQ::postEntero('neg'), PQ::postEntero('exp'), PQ::postEntero('vacio'), PQ::postEntero('arr'), PQ::postEntero('no_existe'), PQ::postEntero('no_existe', 9), PQ::postEntero('enorme'),
 ]);
-same('get y getEntero leen la URL con las mismas reglas', ['url', 7, 0, 3], [PQ::get('g'), PQ::getEntero('gn'), PQ::getEntero('g'), PQ::getEntero('no_existe', 3)]);
-$_SERVER['REQUEST_METHOD'] = 'POST';
-same('esPost', [true, false], [PQ::esPost(), (static function (): bool {
-    $_SERVER['REQUEST_METHOD'] = 'GET';
-    return PQ::esPost();
-})()]);
+same('get lee la URL con las mismas reglas (recorta espacios y descarta arrays)', ['url', '', 'otro'], [PQ::get('g'), PQ::get('garr'), PQ::get('no_existe', 'otro')]);
 $_POST = [];
 $_GET = [];
-unset($_SERVER['REQUEST_METHOD']);
 
 section('PlanCuotas y CicloTarjeta: compras a cuotas, fecha de corte y fecha de pago (Fase 15)');
 use App\Tarjetas\CicloTarjeta as CT;
@@ -1392,7 +1388,6 @@ same('ConversorMoneda::convertir aplica tasa directa, inversa, identidad y null 
     CM::convertir('100.00', 'EUR', 'COP', ['USD:COP' => 4_200_000_000]),
     CM::convertir('-10.00', 'USD', 'COP', ['USD:COP' => 4_200_000_000]),
 ]);
-same('ConversorMoneda::tasaImplicita calcula millonésimas exactas', 4_150_000_000, CM::tasaImplicita('100.00', '415000.00'));
 
 $consCuentas = CM::consolidarCuentas([
     new Cta(1, 1, 'Banco COP', 'bancaria', '1000000.00', true, '1000000.00', null, null, 0, null),

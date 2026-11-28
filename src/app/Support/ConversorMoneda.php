@@ -137,22 +137,6 @@ final class ConversorMoneda
     }
 
     /**
-     * Calcula la tasa implícita en millonésimas (`montoDestino / montoOrigen`), o null si algún monto es `<= 0`.
-     */
-    public static function tasaImplicita(string $montoOrigen, string $montoDestino): ?int
-    {
-        $orig = Dinero::aCentavos($montoOrigen);
-        $dest = Dinero::aCentavos($montoDestino);
-        if ($orig <= 0 || $dest <= 0) {
-            return null;
-        }
-
-        $tasa = intdiv($dest * self::ESCALA + intdiv($orig, 2), $orig);
-
-        return ($tasa > 0 && $tasa <= self::MAX_TASA_MICROS) ? $tasa : null;
-    }
-
-    /**
      * Convierte un monto de `$desde` a `$hacia` usando el mapa de tasas (`"ORIG:DEST" => tasa_micros`).
      * Busca primero la tasa directa y, si no existe, la inversa. Devuelve `null` si no hay tasa registrada.
      *

@@ -2,27 +2,29 @@
 
 Con el **MVP de Lucas** cerrado, probado de punta a punta y endurecido en seguridad y compatibilidad multiplataforma, este documento presenta la hoja de ruta recomendada para llevar la aplicación al nivel de un **gestor de finanzas personales y familiares de grado profesional**.
 
+> **Estado actual (Fase 20):** las **13 propuestas** descritas en este documento ya están **implementadas, probadas y auditadas** en el repositorio (ver [`docs/AUDITORIA.md`](AUDITORIA.md)).
+
 Cada propuesta describe **qué mejora en el producto**, **por qué debería implementarse** (valor para el usuario y para el negocio/arquitectura) y **cómo encaja técnicamente** en el diseño actual de Lucas (`PHP 8.4` + `MySQL 8.4`, sin perder precisión en centavos ni privacidad por diseño).
 
 ---
 
 ## Matriz Resumen por Prioridad de Implementación
 
-| Prioridad | Orden | Propuesta | Complejidad | Impacto en el Usuario |
-|---|---|---|---|---|
-| **P1 · Crítica** | 1 | **Transferencias entre cuentas propias y pago de tarjetas de crédito** | Baja | Elimina la fricción #1 del uso diario (mover dinero sin inflar ingresos ni gastos). |
-| **P1 · Crítica** | 2 | **Movimientos recurrentes y suscripciones programadas** | Media | Automatiza gastos fijos (arriendo, servicios, internet) y evita olvidos mensuales. |
-| **P1 · Crítica** | 3 | **Espacios compartidos / Cuenta Familiar (Multiusuario colaborativo)** | Alta | Abre Lucas a parejas, familias y socios manteniendo intacta la privacidad personal. |
-| **P2 · Alta** | 4 | **Módulo de Deudas, cálculo de intereses y estrategias de pago (Bola de Nieve / Avalancha)** | Media-Alta | Guía paso a paso para salir de deudas ahorrando intereses y con abonos recurrentes. |
-| **P2 · Alta** | 5 | **Clonación inteligente de presupuestos y regla 50/30/20** | Baja | Evita recrear presupuestos desde cero el día 1 de cada mes. |
-| **P2 · Alta** | 6 | **Importación bancaria asistida (CSV) y conciliación de saldos** | Media | Reduce drásticamente el tiempo de digitación manual y corrige descuadres. |
-| **P2 · Alta** | 7 | **División de movimientos (*Split Transactions*) y etiquetas (*Tags*)** | Media | Permite repartir una compra de supermercado en varias categorías o etiquetar un viaje. |
-| **P3 · Media** | 8 | **Gestión avanzada de tarjetas de crédito (cuotas, fecha de corte y pago)** | Media-Alta | Adapta Lucas a la realidad financiera latinoamericana (compras diferidas a *N* cuotas). |
-| **P3 · Media** | 9 | **Aplicación Web Progresiva (PWA) e instalación en móvil** | Baja-Media | Experiencia de app nativa desde la pantalla de inicio del celular sin tiendas de apps. |
-| **P3 · Media** | 10 | **Autenticación en dos pasos (2FA con TOTP) y gestión de sesiones activas** | Media | Eleva la seguridad de la cuenta al estándar bancario moderno. |
-| **P4 · Evolutiva** | 11 | **Multimoneda por cuenta con tasa de cambio manual o referencial** | Media | Permite ahorrar en dólares/euros y gastar en pesos con patrimonio neto consolidado. |
-| **P4 · Evolutiva** | 12 | **Adjuntos de comprobantes (facturas/recibos) y reportes imprimibles** | Media | Respaldo documental para garantías, declaración de renta o rendición de cuentas. |
-| **P4 · Evolutiva** | 13 | **Alertas proactivas por correo y resumen financiero semanal/mensual** | Baja-Media | Mantiene el hábito financiero sin exigir que el usuario recuerde abrir la aplicación. |
+| Prioridad | Orden | Propuesta | Complejidad | Estado | Impacto en el Usuario |
+|---|---|---|---|---|---|
+| **P1 · Crítica** | 1 | **Transferencias entre cuentas propias y pago de tarjetas de crédito** | Baja | ✅ Implementada | Elimina la fricción #1 del uso diario (mover dinero sin inflar ingresos ni gastos). |
+| **P1 · Crítica** | 2 | **Movimientos recurrentes y suscripciones programadas** | Media | ✅ Implementada | Automatiza gastos fijos (arriendo, servicios, internet) y evita olvidos mensuales. |
+| **P1 · Crítica** | 3 | **Espacios compartidos / Cuenta Familiar (Multiusuario colaborativo)** | Alta | ✅ Implementada | Abre Lucas a parejas, familias y socios manteniendo intacta la privacidad personal. |
+| **P2 · Alta** | 4 | **Módulo de Deudas, cálculo de intereses y estrategias de pago (Bola de Nieve / Avalancha)** | Media-Alta | ✅ Implementada | Guía paso a paso para salir de deudas ahorrando intereses y con abonos recurrentes. |
+| **P2 · Alta** | 5 | **Clonación inteligente de presupuestos y regla 50/30/20** | Baja | ✅ Implementada | Evita recrear presupuestos desde cero el día 1 de cada mes. |
+| **P2 · Alta** | 6 | **Importación bancaria asistida (CSV) y conciliación de saldos** | Media | ✅ Implementada | Reduce drásticamente el tiempo de digitación manual y corrige descuadres. |
+| **P2 · Alta** | 7 | **División de movimientos (*Split Transactions*) y etiquetas (*Tags*)** | Media | ✅ Implementada | Permite repartir una compra de supermercado en varias categorías o etiquetar un viaje. |
+| **P3 · Media** | 8 | **Gestión avanzada de tarjetas de crédito (cuotas, fecha de corte y pago)** | Media-Alta | ✅ Implementada | Adapta Lucas a la realidad financiera latinoamericana (compras diferidas a *N* cuotas). |
+| **P3 · Media** | 9 | **Aplicación Web Progresiva (PWA) e instalación en móvil** | Baja-Media | ✅ Implementada | Experiencia de app nativa desde la pantalla de inicio del celular sin tiendas de apps. |
+| **P3 · Media** | 10 | **Autenticación en dos pasos (2FA con TOTP) y gestión de sesiones activas** | Media | ✅ Implementada | Eleva la seguridad de la cuenta al estándar bancario moderno. |
+| **P4 · Evolutiva** | 11 | **Multimoneda por cuenta con tasa de cambio manual o referencial** | Media | ✅ Implementada | Permite ahorrar en dólares/euros y gastar en pesos con patrimonio neto consolidado. |
+| **P4 · Evolutiva** | 12 | **Adjuntos de comprobantes (facturas/recibos) y reportes imprimibles** | Media | ✅ Implementada | Respaldo documental para garantías, declaración de renta o rendición de cuentas. |
+| **P4 · Evolutiva** | 13 | **Alertas proactivas por correo y resumen financiero semanal/mensual** | Baja-Media | ✅ Implementada | Mantiene el hábito financiero sin exigir que el usuario recuerde abrir la aplicación. |
 
 ---
 

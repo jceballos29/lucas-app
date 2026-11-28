@@ -1925,5 +1925,18 @@ request "$JU6" GET /css/components.css
 contains "U9: la acción de la cabecera de una tarjeta queda a la derecha aunque baje de línea" "margin-inline-start: auto" "$TMP/body"
 contains "U11: las tarjetas informativas son planas y la elevación es de lo accionable" ".form-card, .card--raised { box-shadow: var(--sh-2); }" "$TMP/body"
 
+echo; echo "== Segunda revisión y ajustes previos al despliegue (N1-N7, N11-N13)"
+check "N2: nginx rechaza PUT, DELETE, PATCH y OPTIONS con 405" "405 405 405 405" "$(for m in PUT DELETE PATCH OPTIONS; do curl -s -X "$m" -o /dev/null -w '%{http_code} ' "$BASE/login.php"; done | sed 's/ $//')"
+check "N3: /login.php, /registro.php y /recuperar.php envían Cache-Control: no-store" "3" "$(for p in /login.php /registro.php /recuperar.php; do curl -sI "$BASE$p" | grep -i '^cache-control:.*no-store'; done | wc -l | tr -d ' ')"
+check "N1/N4: enviar-cola.php sin base de datos sale con código 1 y sin traza fatal (Uncaught)" "1 0" "$(OUT="$(docker compose exec -T -e DB_HOST=127.0.0.1 -e DB_PORT=1 php php scripts/enviar-cola.php 2>&1)"; C=$?; echo "$C $(echo "$OUT" | grep -c 'Uncaught')")"
+check "N4: mantenimiento.php sin base de datos sale con código 1 y sin traza fatal (Uncaught)" "1 0" "$(OUT="$(docker compose exec -T -e DB_HOST=127.0.0.1 -e DB_PORT=1 php php scripts/mantenimiento.php 2>&1)"; C=$?; echo "$C $(echo "$OUT" | grep -c 'Uncaught')")"
+check "N5: bin/comprobar-produccion usa docker-compose.prod.yml por defecto" "1" "$(grep -c 'COMPOSE_FILE:-docker-compose.prod.yml' bin/comprobar-produccion)"
+check "N6: todas las imágenes (mysql, composer, php, nginx) tienen versión de parche fija" "0" "$(grep -E 'image: *mysql:8\.4$|FROM +composer:2(\s|$)|COPY --from=composer:2 ' docker-compose.yml docker-compose.prod.yml docker/php/Dockerfile docker/php/Dockerfile.prod | wc -l | tr -d ' ')"
+request "$JU6" GET /css/layout.css
+contains "N7: .field__toggle alcanza 44x44 px en pantallas táctiles" ".icon-btn, .field__toggle { min-width: 44px; min-height: 44px; }" "$TMP/body"
+check "N11: nginx de producción incluye login-2fa.php en la zona limit_req de acceso" "1" "$(grep -c 'login|login-2fa|registro' docker/nginx/production.conf.template)"
+check "N12: nginx de producción monta solo ./src/public (no ./src entero)" "1 0" "$(sed -n '/^  nginx:/,/^  db:/p' docker-compose.prod.yml | grep -c '\./src/public:/var/www/html/public:ro') $(sed -n '/^  nginx:/,/^  db:/p' docker-compose.prod.yml | grep -c '\./src:/var/www/html:ro')"
+check "N13: el servicio correo de producción ejecuta también scripts/procesar-recurrentes.php" "1" "$(sed -n '/^  correo:/,/^  nginx:/p' docker-compose.prod.yml | grep -c 'scripts/procesar-recurrentes.php')"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

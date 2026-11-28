@@ -199,7 +199,7 @@ final class PresupuestoController
             $limites = is_array($_POST['limites'] ?? null) ? $_POST['limites'] : [];
             $montosValidos = [];
             foreach ($limites as $catIdRaw => $textoMonto) {
-                if (!is_int($catIdRaw) && (!is_string($catIdRaw) || !ctype_digit($catIdRaw))) {
+                if (!is_int($catIdRaw) && !ctype_digit($catIdRaw)) {
                     continue;
                 }
                 $txt = is_string($textoMonto) ? trim($textoMonto) : '';

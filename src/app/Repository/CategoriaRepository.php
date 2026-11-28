@@ -20,7 +20,11 @@ final class CategoriaRepository
     {
     }
 
-    /** Las predeterminadas y las del usuario o su espacio compartido: gastos primero, por nombre. @return list<Categoria> */
+    /**
+     * Las predeterminadas y las del usuario o su espacio compartido: gastos primero, por nombre.
+     *
+     * @return list<Categoria>
+     */
     public function listVisible(int $userId, ?int $espacioId = null): array
     {
         if ($espacioId === null) {

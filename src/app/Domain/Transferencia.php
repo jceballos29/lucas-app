@@ -38,7 +38,7 @@ final class Transferencia
             (string) ($row['cuenta_origen_nombre'] ?? ''),
             (string) ($row['cuenta_destino_nombre'] ?? ''),
             (string) ($row['autor_nombre'] ?? ''),
-            isset($row['monto_destino']) && $row['monto_destino'] !== null && $row['monto_destino'] !== '' ? (string) $row['monto_destino'] : null,
+            isset($row['monto_destino']) && $row['monto_destino'] !== '' ? (string) $row['monto_destino'] : null,
             isset($row['cuenta_origen_moneda']) && is_string($row['cuenta_origen_moneda']) && $row['cuenta_origen_moneda'] !== '' ? $row['cuenta_origen_moneda'] : null,
             isset($row['cuenta_destino_moneda']) && is_string($row['cuenta_destino_moneda']) && $row['cuenta_destino_moneda'] !== '' ? $row['cuenta_destino_moneda'] : null,
         );

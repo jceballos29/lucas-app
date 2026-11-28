@@ -131,7 +131,11 @@ final class Dinero
         return ($centavos < 0 ? '-' : '') . intdiv($abs, 100) . '.' . str_pad((string) ($abs % 100), 2, '0', STR_PAD_LEFT);
     }
 
-    /** Suma de montos exacta (en centavos enteros). @param list<string> $montos */
+    /**
+     * Suma de montos exacta (en centavos enteros).
+     *
+     * @param list<string> $montos
+     */
     public static function sumar(array $montos): string
     {
         return self::deCentavos(array_sum(array_map([self::class, 'aCentavos'], $montos)));

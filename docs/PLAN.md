@@ -13,6 +13,7 @@ Cada fase termina en algo que funciona y se prueba en el navegador y con pruebas
 | 5 | Presupuestos y metas de ahorro | [x] |
 | 6 | Panel y reportes | [x] |
 | 7 | Perfil, recuperación de contraseña, endurecimiento | [x] |
+| 8–20 | Evolución post-MVP (transferencias, recurrentes, espacios compartidos, deudas, 50/30/20, importación CSV, movimientos divididos/etiquetas, tarjetas a cuotas, PWA, sesiones y 2FA TOTP, multimoneda, comprobantes adjuntos, verificación y cola de correo, alertas y resumen mensual) | [x] |
 
 ## Decisiones tomadas
 
@@ -41,7 +42,7 @@ CSS/JS en `src/public/`, layouts (`auth`, `app`, `admin`), 7 vistas de usuario (
 1. **Infraestructura de pruebas** (antes de escribir lógica): `src/tests/integration.php` (BD temporal, D6), `tests/smoke.sh` (curl), `tests/run-all.sh`; ajustar `03-users.sh` para el permiso `lucas\_test%`. Los scripts de humo usan una IP/correo propios o reinician `intentos_acceso` para no chocar con la limitación.
 2. **BD:** `rol` y `activo` ya están en `01-schema.sql`. Añadir `intentos_acceso` (D1); crear `02-seed.sql` con las categorías predeterminadas y el admin inicial (`docs/BASE-DE-DATOS.md`); actualizar «7 tablas» → 8 en la documentación y `APP_TABLES`. Corregir en `BASE-DE-DATOS.md` que la seed es segura por ejecutarse una sola vez (`categorias` no tiene clave única).
 3. **Dominio y datos:** `Domain\Usuario`, `Repository\UsuarioRepository` (`findByEmail`, `findById`, `create`, `countActiveAdmins`...), `Repository\IntentoRepository`, `Container::usuarios()`.
-4. **Validación:** `Validation\RegistroValidator` (nombre 2–80, correo válido ≤120, contraseña de 8 a 72 bytes —el límite de bcrypt— y confirmada). Es puro, como exige la arquitectura: la **unicidad** del correo la comprueba el controlador y, ante dos registros simultáneos, la clave `UNIQUE` (`create()` devuelve `null`).
+4. **Validación:** `Validation\RegistroValidator` (nombre 2–80, correo válido ≤120, contraseña de 10 a 72 bytes —mínimo subido de 8 a 10 en B6; 72 es el límite de bcrypt— y confirmada). Es puro, como exige la arquitectura: la **unicidad** del correo la comprueba el controlador y, ante dos registros simultáneos, la clave `UNIQUE` (`create()` devuelve `null`).
 5. **Autenticación:** `Auth\Autenticador::authenticate()` con `password_verify`, rehash, rechazo de `activo = 0`, mismo mensaje y mismo coste si el correo no existe; limitación de intentos en login **y** registro (D1, D2, RNF-24).
 6. **Sesión:** `log_in_user()` guarda `user_role`. `resolve_user_session()` vuelve a leer `activo` y `rol` de la BD **en cada petición** (una consulta por clave primaria): un usuario desactivado o con otro rol lo nota de inmediato. Añadir `require_role()` (403 si el rol no coincide).
 7. **Páginas y vistas:** `registro.php` (entra al panel, D3), `login.php`, `logout.php`, `index.php` (redirección por rol) y `views/auth/{login,registro}.php`. Las páginas de maqueta pasan a exigir `require_login()` y las de `admin/` `require_role('admin')`, aunque sigan con datos de ejemplo.
