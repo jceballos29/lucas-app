@@ -1267,4 +1267,44 @@ same('guardarDesdeContenido escribe el archivo fuera de public/ y eliminar lo bo
 @unlink($tmpPng);
 @unlink($tmpPhp);
 
+section('Segundo factor TOTP y cifrado del secreto (M7)');
+use App\Auth\DosPasos as DP2;
+use App\Auth\Totp as T2;
+use App\Security\CifradoSecreto as CS;
+
+$rfc = T2::base32Codificar('12345678901234567890');
+same('base32 de la clave de las pruebas del RFC 6238', 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', $rfc);
+same('base32 decodificar es la inversa (con espacios y minúsculas)', '12345678901234567890', T2::base32Decodificar('gezd gnbv gy3t qojq gezd gnbv gy3t qojq'));
+// Vectores del RFC 6238 (SHA-1), a 6 dígitos: tiempo 59 → 287082, 1111111109 → 081804, 1111111111 → 050471, 1234567890 → 005924, 2000000000 → 279037
+same('RFC 6238: t=59', '287082', T2::codigo($rfc, T2::paso(59)));
+same('RFC 6238: t=1111111109', '081804', T2::codigo($rfc, T2::paso(1111111109)));
+same('RFC 6238: t=1111111111', '050471', T2::codigo($rfc, T2::paso(1111111111)));
+same('RFC 6238: t=1234567890 (con ceros a la izquierda)', '005924', T2::codigo($rfc, T2::paso(1234567890)));
+same('RFC 6238: t=2000000000', '279037', T2::codigo($rfc, T2::paso(2000000000)));
+same('verificar acepta el código del paso actual y devuelve ese paso', T2::paso(1234567890), T2::verificar($rfc, '005924', 1234567890));
+same('verificar tolera ±1 paso (relojes algo desajustados)', [T2::paso(1234567890), T2::paso(1234567890)], [T2::verificar($rfc, '005924', 1234567890 + 30), T2::verificar($rfc, '005924', 1234567890 - 30)]);
+same('verificar rechaza un código de hace 2 pasos', null, T2::verificar($rfc, '005924', 1234567890 + 60));
+same('verificar rechaza lo que no son 6 dígitos', [null, null, null, null], [T2::verificar($rfc, '12345', 59), T2::verificar($rfc, '1234567', 59), T2::verificar($rfc, 'abcdef', 59), T2::verificar($rfc, '', 59)]);
+same('verificar ignora espacios (los teléfonos muestran «123 456»)', T2::paso(59), T2::verificar($rfc, '287 082', 59));
+$sec = T2::generarSecreto();
+same('un secreto nuevo son 32 caracteres base32 (160 bits) y no se repite', [true, true], [preg_match('/^[A-Z2-7]{32}$/', $sec) === 1, $sec !== T2::generarSecreto()]);
+same('la URI otpauth lleva secreto, emisor y parámetros', true, str_starts_with(T2::uri($sec, 'ana@correo.com'), 'otpauth://totp/Lucas%3Aana%40correo.com?secret=' . $sec . '&issuer=Lucas') && str_contains(T2::uri($sec, 'a@b.co'), 'digits=6&period=30'));
+
+$cif = new CS(str_repeat('k', 40));
+$cifrado = $cif->cifrar($sec);
+same('el secreto cifrado no contiene el secreto y se descifra igual', [false, $sec], [str_contains($cifrado, $sec), $cif->descifrar($cifrado)]);
+same('cifrar dos veces lo mismo da textos distintos (nonce aleatorio)', true, $cif->cifrar($sec) !== $cifrado);
+same('con otra clave no se puede descifrar', 'excepción', (static function () use ($cifrado): string { try { (new CS(str_repeat('z', 40)))->descifrar($cifrado); return 'sin error'; } catch (RuntimeException) { return 'excepción'; } })());
+same('un dato alterado no se descifra', 'excepción', (static function () use ($cif, $cifrado): string { try { $x = base64_decode($cifrado); $x[-1] = $x[-1] === 'a' ? 'b' : 'a'; $cif->descifrar(base64_encode($x)); return 'sin error'; } catch (RuntimeException) { return 'excepción'; } })());
+same('APP_KEY demasiado corta se rechaza', 'excepción', (static function (): string { try { new CS('corta'); return 'sin error'; } catch (RuntimeException) { return 'excepción'; } })());
+
+same('código de recuperación: formato XXXX-XXXX-XXXX-XXXX sin caracteres ambiguos', true, preg_match('/^([A-HJ-NP-Z2-9]{4}-){3}[A-HJ-NP-Z2-9]{4}$/', DP2::generarCodigoRecuperacion()) === 1);
+same('el hash del código ignora mayúsculas, guiones y espacios', true, DP2::hashCodigo('abcd-efgh-jklm-npqr') === DP2::hashCodigo(' ABCD EFGH JKLM NPQR '));
+same('administrador sin 2FA y con obligatoriedad debe activarlo; los demás casos no', [true, false, false, false], [
+    DP2::adminDebeActivar('admin', false, true), DP2::adminDebeActivar('admin', true, true), DP2::adminDebeActivar('admin', false, false), DP2::adminDebeActivar('usuario', false, true),
+]);
+same('obligatoriedad: sí salvo en local; ADMIN_2FA_OBLIGATORIO la fuerza', [false, true, true, false, true], [
+    DP2::obligatorioParaAdmin('local', null), DP2::obligatorioParaAdmin('production', null), DP2::obligatorioParaAdmin('local', '1'), DP2::obligatorioParaAdmin('production', '0'), DP2::obligatorioParaAdmin('production', ''),
+]);
+
 finish();

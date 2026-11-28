@@ -20,6 +20,8 @@ Parte de `.env.example` y **cambia todas las claves** (las de desarrollo son pú
 |---|---|
 | `APP_DOMAIN` | El dominio, sin `https://` (lo usa nginx). |
 | `APP_ORIGIN` | El origen completo, **con `https://`** (p. ej. `https://lucas.tudominio.com`). Hace que la cookie de sesión sea `Secure` y que solo se acepten POST de ese origen. |
+| `APP_KEY` | **Obligatoria.** Cifra los secretos de la verificación en dos pasos en la base. Genérala una vez: `openssl rand -base64 32`. Guárdala fuera del repositorio y con copia aparte de la base de datos; si la pierdes o la cambias, nadie con 2FA podrá iniciar sesión hasta que se le quite con `scripts/desactivar-2fa.php`. |
+| `ADMIN_2FA_OBLIGATORIO` | Opcional. Vacío = los administradores **deben** activar el 2FA (salvo con `APP_ENV=local`); `0`/`1` lo fuerza. |
 | `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | Base y usuario de la **aplicación** (solo `SELECT/INSERT/UPDATE/DELETE`). |
 | `DB_MIGRATION_USERNAME`, `DB_MIGRATION_PASSWORD` | Usuario de **migraciones, scripts y copias** (la aplicación web no lo conoce). |
 | `DB_ROOT_PASSWORD` | `root` de MySQL: solo para administrar el servidor. |
@@ -63,8 +65,7 @@ curl -fsS https://$APP_DOMAIN/salud.php                # {"estado":"ok"}
 
 ### El administrador
 
-Con el volumen de MySQL vacío, `database/02-seed.sql` crea las categorías predeterminadas **y un administrador de desarrollo
-(`admin@lucas.local`, clave pública)**. En producción:
+> **Verificación en dos pasos.** Tras crear tu administrador, inicia sesión y actívala en **Mi perfil → Verificación en dos pasos** (en producción es obligatoria para administradores: sin ella no se abre la administración). Guarda los 10 códigos de recuperación. Si pierdes teléfono y códigos: `COMPOSE_FILE=docker-compose.prod.yml bin/as-migrator php scripts/desactivar-2fa.php tu@correo.com`.
 
 En producción **no existe ningún administrador al arrancar**: `database/02-seed.sql` solo crea las categorías predeterminadas, y el
 administrador de desarrollo (`admin@lucas.local`, clave pública) lo crea `database/04-dev-admin.sh` únicamente si el servicio `db`
@@ -98,6 +99,8 @@ docker compose -f docker-compose.prod.yml exec db bash /docker-entrypoint-initdb
 ```
 
 Haz una copia (`bin/backup-db`) **antes** de actualizar.
+
+**Al actualizar a la versión con verificación en dos pasos (migración 014):** define `APP_KEY` en `.env` **antes** de levantar (el compose de producción se niega a arrancar sin ella), ejecuta `03-users.sh` (tabla `codigos_recuperacion`) y pide a los administradores que activen el 2FA: hasta entonces la administración les redirige a su perfil.
 
 **Al actualizar desde una versión sin verificación de correo (migración 013):** las cuentas existentes quedan con el correo **sin verificar**
 (los administradores sí se marcan verificados). Verán un aviso en cada página y podrán pedir el enlace desde *Mi perfil*; hasta entonces no

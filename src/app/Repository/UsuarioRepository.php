@@ -12,7 +12,7 @@ use PDOException;
 /** Único sitio con el SQL de `usuarios`. */
 final class UsuarioRepository implements CredentialSource
 {
-    private const COLUMNS = 'id_usuario, nombre, correo, contrasena_hash, moneda, rol, activo, notif_presupuestos, notif_resumen_mensual';
+    private const COLUMNS = 'id_usuario, nombre, correo, contrasena_hash, moneda, rol, activo, notif_presupuestos, notif_resumen_mensual, correo_verificado_en, totp_activado_en';
 
     public function __construct(private readonly PDO $pdo)
     {

@@ -59,8 +59,16 @@ final class LimitadorIntentos
         return 'ip:' . substr($ip, 0, 45);
     }
 
-    public function bloqueado(string $tipo, string $correo, string $ip): bool
+    /** Límite por correo más estricto para el segundo factor (códigos de 6 dígitos): 10 fallos / 15 min aunque cambie la IP. */
+    public const MAX_POR_CORREO_DOS_PASOS = 10;
+
+    /** @param int|null $maxCorreo Si se indica, además bloquea al llegar a ese número de fallos por correo (sea cual sea la IP). */
+    public function bloqueado(string $tipo, string $correo, string $ip, ?int $maxCorreo = null): bool
     {
+        if ($maxCorreo !== null && $this->intentos->countSince($tipo, self::claveCorreo($correo), self::VENTANA_SEGUNDOS) >= $maxCorreo) {
+            return true;
+        }
+
         return self::excede(
             $this->intentos->countSince($tipo, self::claveCorreo($correo), self::VENTANA_SEGUNDOS),
             $this->intentos->countSince($tipo, self::claveIp($ip), self::VENTANA_SEGUNDOS),

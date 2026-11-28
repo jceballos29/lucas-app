@@ -29,6 +29,7 @@ final class PerfilController
         $user = require_login();
         $errors = [];
         $notice = null;
+        $codigosNuevos = null;
 
         try {
             $usuario = $this->container->usuarios()->findById($user['id']);
@@ -53,6 +54,75 @@ final class PerfilController
                             $this->container->usuarios()->updateProfile($usuario->id, $old['nombre'], $old['moneda']);
                             Flash::set('ok', 'Se guardaron tus datos.');
                             Response::redirect('/perfil.php');
+                        }
+                        break;
+
+                    case 'reenviar_verificacion':
+                        Flash::set(...match ($this->container->verificacionCorreo()->enviar($usuario)) {
+                            VerificacionCorreo::OK => ['ok', "Te enviamos un enlace nuevo a {$usuario->correo}. Revisa también la carpeta de spam; vale " . VerificacionCorreo::VIGENCIA_HORAS . ' horas.'],
+                            VerificacionCorreo::YA_VERIFICADO => ['info', 'Tu correo ya está verificado.'],
+                            default => ['error', 'Ya te enviamos varios enlaces en la última hora. Revisa tu correo (y el spam) o inténtalo de nuevo más tarde.'],
+                        });
+                        Response::redirect('/perfil.php');
+
+                    case 'dos_pasos_iniciar':
+                        // El secreto de la configuración en curso vive solo en la sesión hasta que el usuario lo confirma con un código.
+                        if ($usuario->dosPasos) {
+                            Response::redirect('/perfil.php#dos-pasos');
+                        }
+                        $this->container->dosPasos(); // falla con un error claro si falta APP_KEY, antes de enseñar un secreto que no se podría guardar
+                        $_SESSION['dos_pasos_config'] = \App\Auth\Totp::generarSecreto();
+                        Response::redirect('/perfil.php#dos-pasos');
+
+                    case 'dos_pasos_cancelar':
+                        unset($_SESSION['dos_pasos_config']);
+                        Response::redirect('/perfil.php#dos-pasos');
+
+                    case 'dos_pasos_activar':
+                        $secreto = is_string($_SESSION['dos_pasos_config'] ?? null) ? $_SESSION['dos_pasos_config'] : '';
+                        if ($usuario->dosPasos || $secreto === '') {
+                            Response::redirect('/perfil.php#dos-pasos');
+                        }
+
+                        $errors = $this->limitarCodigoDosPasos($usuario->correo, 'dp_codigo');
+                        if ($errors === []) {
+                            $codigosNuevos = $this->container->dosPasos()->activar($usuario->id, $secreto, self::field('codigo'));
+                            if ($codigosNuevos === null) {
+                                $this->container->limitador()->registrar('login', '2fa:' . $usuario->correo, self::ip());
+                                $errors['dp_codigo'] = 'El código no coincide. Revisa que añadiste la clave correcta y que la hora de tu teléfono es automática.';
+                            } else {
+                                unset($_SESSION['dos_pasos_config']);
+                                // Quien tuviera otra sesión abierta (p. ej. robada) la pierde: a partir de ahora se exige el segundo factor.
+                                $this->container->sesiones()->eliminarOtrasDeUsuario($usuario->id, \App\Repository\SesionRepository::hashId((string) session_id()));
+                                $usuario = $this->container->usuarios()->findById($usuario->id) ?? $usuario;
+                            }
+                        }
+                        break;
+
+                    case 'dos_pasos_regenerar':
+                    case 'dos_pasos_desactivar':
+                        $accion = (string) $_POST['accion'];
+                        if (!$usuario->dosPasos) {
+                            Response::redirect('/perfil.php#dos-pasos');
+                        }
+
+                        $errors = $this->verificarClave($usuario->correo, $usuario->contrasenaHash, self::field('dp_clave'), 'dp_clave');
+                        if ($errors === []) {
+                            $errors = $this->limitarCodigoDosPasos($usuario->correo, 'dp_codigo2');
+                        }
+                        if ($errors === [] && $this->container->dosPasos()->comprobar($usuario->id, self::field('codigo')) === null) {
+                            $this->container->limitador()->registrar('login', '2fa:' . $usuario->correo, self::ip());
+                            $errors['dp_codigo2'] = 'El código no es correcto.';
+                        }
+
+                        if ($errors === [] && $accion === 'dos_pasos_regenerar') {
+                            $codigosNuevos = $this->container->dosPasos()->regenerarCodigos($usuario->id);
+                        } elseif ($errors === [] && $this->adminObligatorio($usuario)) {
+                            $errors['dp_codigo2'] = 'Los administradores no pueden desactivar la verificación en dos pasos.';
+                        } elseif ($errors === []) {
+                            $this->container->dosPasos()->desactivar($usuario->id);
+                            Flash::set('ok', 'Desactivaste la verificación en dos pasos. Puedes volver a activarla cuando quieras.');
+                            Response::redirect('/perfil.php#dos-pasos');
                         }
                         break;
 
@@ -181,6 +251,8 @@ final class PerfilController
                         Response::plain(400, "Solicitud no válida.\n");
                 }
             }
+            $dosPasosSecreto = is_string($_SESSION['dos_pasos_config'] ?? null) && !$usuario->dosPasos ? $_SESSION['dos_pasos_config'] : null;
+            $codigosQuedan = $usuario->dosPasos ? $this->container->dosPasos()->codigosDisponibles($usuario->id) : 0;
             $sesionesActivas = $this->container->sesiones()->listByUser($usuario->id, SESSION_IDLE_TIMEOUT);
             $sesionActualHash = \App\Repository\SesionRepository::hashId((string) session_id());
         } catch (RuntimeException $error) {
@@ -195,6 +267,10 @@ final class PerfilController
             'sesiones' => $sesionesActivas,
             'sesionActualHash' => $sesionActualHash,
             'flash' => Flash::pull(),
+            'dosPasosSecreto' => $dosPasosSecreto,
+            'codigosNuevos' => $codigosNuevos,
+            'codigosQuedan' => $codigosQuedan,
+            'adminObligatorio' => $this->adminObligatorio($usuario),
         ], 'Mi perfil', $user, $user['role'] === 'admin' ? 'admin' : 'app', 'perfil');
     }
 
@@ -225,6 +301,34 @@ final class PerfilController
         $limitador->perdonar('clave', $correo, $ip);
 
         return [];
+    }
+
+    /** ¿Es un administrador al que se le exige el segundo factor (no puede desactivarlo)? */
+    private function adminObligatorio(\App\Domain\Usuario $usuario): bool
+    {
+        return $usuario->esAdmin() && \App\Auth\DosPasos::obligatorioParaAdmin((string) getenv('APP_ENV'), getenv('ADMIN_2FA_OBLIGATORIO') === false ? null : (string) getenv('ADMIN_2FA_OBLIGATORIO'));
+    }
+
+    /**
+     * Límite de intentos de código del segundo factor desde el perfil (mismos contadores que el inicio de sesión: «2fa:correo»).
+     *
+     * @return array<string, string>
+     */
+    private function limitarCodigoDosPasos(string $correo, string $campo): array
+    {
+        if ($this->container->limitador()->bloqueado('login', '2fa:' . $correo, self::ip(), \App\Auth\LimitadorIntentos::MAX_POR_CORREO_DOS_PASOS)) {
+            http_response_code(429);
+            header('Retry-After: 900');
+
+            return [$campo => 'Demasiados intentos. Espera unos minutos antes de volver a intentarlo.'];
+        }
+
+        return [];
+    }
+
+    private static function ip(): string
+    {
+        return (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
     }
 
     private static function field(string $name): string

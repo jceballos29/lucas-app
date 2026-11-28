@@ -181,6 +181,8 @@ function resolve_user_session(): array
             'name' => $current->nombre,
             'email' => $current->correo,
             'role' => $current->rol,
+            'verified' => $current->correoVerificado,
+            'dos_pasos' => $current->dosPasos,
             'espacio_id' => $espacioId,
             'espacio_nombre' => $espacioNombre,
             'espacio_rol' => $espacioRol,
@@ -267,6 +269,52 @@ function log_in_user(array $user): void
     }
 }
 
+/** Minutos que se concede para escribir el código del segundo factor tras acertar la contraseña, y fallos tolerados en ese reto. */
+const TWO_FACTOR_CHALLENGE_SECONDS = 300;
+const TWO_FACTOR_CHALLENGE_MAX_FAILURES = 5;
+
+/**
+ * Deja la sesión a medio abrir (M7): la contraseña fue correcta pero falta el segundo factor. NO es una sesión iniciada (no hay `user_id`):
+ * ninguna página protegida la acepta. Igual que en {@see log_in_user()}, el id de sesión se renueva y se descarta lo anterior.
+ */
+function begin_two_factor_challenge(int $userId, string $fingerprint): void
+{
+    start_app_session();
+    session_regenerate_id(true);
+    $_SESSION = ['2fa_uid' => $userId, '2fa_fp' => $fingerprint, '2fa_hasta' => time() + TWO_FACTOR_CHALLENGE_SECONDS, '2fa_fallos' => 0, 'last_seen' => time()];
+}
+
+/** El reto de segundo factor en curso de ESTA sesión, o null si no hay o caducó. @return array{uid: int, fp: string, fallos: int}|null */
+function pending_two_factor(): ?array
+{
+    if (session_status() !== PHP_SESSION_ACTIVE && !isset($_COOKIE[SESSION_NAME])) {
+        return null;
+    }
+
+    start_app_session();
+
+    if (!isset($_SESSION['2fa_uid']) || !is_int($_SESSION['2fa_uid']) || (int) ($_SESSION['2fa_hasta'] ?? 0) < time()) {
+        return null;
+    }
+
+    return ['uid' => $_SESSION['2fa_uid'], 'fp' => (string) ($_SESSION['2fa_fp'] ?? ''), 'fallos' => (int) ($_SESSION['2fa_fallos'] ?? 0)];
+}
+
+function record_two_factor_failure(): int
+{
+    start_app_session();
+    $_SESSION['2fa_fallos'] = (int) ($_SESSION['2fa_fallos'] ?? 0) + 1;
+
+    return (int) $_SESSION['2fa_fallos'];
+}
+
+/** Abandona el reto sin iniciar sesión (demasiados fallos, caducó o el usuario volvió atrás). */
+function discard_two_factor_challenge(): void
+{
+    start_app_session();
+    unset($_SESSION['2fa_uid'], $_SESSION['2fa_fp'], $_SESSION['2fa_hasta'], $_SESSION['2fa_fallos']);
+}
+
 /** Cierra la sesión: vacía los datos, borra la cookie del navegador, elimina el registro en BD y destruye el archivo del servidor. */
 function log_out_user(): void
 {
@@ -336,6 +384,14 @@ function require_role(string $role): array
 
     if ($user['role'] !== $role) {
         \App\Http\Response::plain(403, "Acceso denegado: no tienes permiso para ver esta página.\n", ['Cache-Control: no-store']);
+    }
+
+    // M7: un administrador sin segundo factor no entra a la administración hasta activarlo en Mi perfil (que sí puede abrir).
+    $obligatorio = \App\Auth\DosPasos::obligatorioParaAdmin((string) getenv('APP_ENV'), getenv('ADMIN_2FA_OBLIGATORIO') === false ? null : (string) getenv('ADMIN_2FA_OBLIGATORIO'));
+    if (\App\Auth\DosPasos::adminDebeActivar($user['role'], (bool) ($user['dos_pasos'] ?? false), $obligatorio)) {
+        \App\Http\Flash::set('warn', 'Los administradores deben activar la verificación en dos pasos antes de usar la administración. Actívala aquí abajo.');
+        header('Location: /perfil.php#dos-pasos');
+        exit;
     }
 
     return $user;

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Auth\DosPasos;
+use App\Auth\LimitadorIntentos;
 use App\Container;
 use App\Domain\Usuario;
 use App\Http\Failure;
@@ -20,6 +22,8 @@ final class AuthController
         'expired' => ['Tu sesión caducó por inactividad. Vuelve a iniciar sesión.', 'warn'],
         'revoked' => ['Tu sesión se cerró: tu cuenta ya no está activa o tu contraseña cambió. Inicia sesión de nuevo; si crees que es un error, contacta al administrador.', 'warn'],
         'reset' => ['Listo: tu contraseña se cambió. Ya puedes iniciar sesión con la nueva.', 'ok'],
+        'verified' => ['Listo: tu correo quedó verificado. Ya puedes iniciar sesión.', 'ok'],
+        '2fa-fallos' => ['Demasiados códigos incorrectos. Inicia sesión de nuevo con tu contraseña.', 'warn'],
         'deleted' => ['Tu cuenta y todos tus datos se eliminaron. Gracias por haber usado Lucas.', 'ok'],
     ];
 
@@ -68,7 +72,84 @@ final class AuthController
             $this->failed($error, 'auth/login', ['email' => $correo], 'Iniciar sesión');
         }
 
+        // M7: con el segundo factor activo, la contraseña sola no abre sesión: queda un reto pendiente (5 min) y se pide el código.
+        if ($usuario->dosPasos) {
+            begin_two_factor_challenge($usuario->id, password_fingerprint($usuario->contrasenaHash));
+            Response::redirect('/login-2fa.php');
+        }
+
         self::startSession($usuario);
+        Response::redirect(self::homeFor($usuario->rol));
+    }
+
+    /** Segundo paso del inicio de sesión (M7): código de la app de autenticación o código de recuperación. */
+    public function segundoFactor(): void
+    {
+        $reto = pending_two_factor();
+
+        if ($reto === null) {
+            Response::redirect('/login.php');
+        }
+
+        if (!$this->isPost()) {
+            View::page('auth/dos-pasos', [], 'Verificación en dos pasos', null, 'auth');
+
+            return;
+        }
+
+        if (self::field('accion') === 'cancelar') {
+            discard_two_factor_challenge();
+            Response::redirect('/login.php');
+        }
+
+        try {
+            $usuario = $this->container->usuarios()->findById($reto['uid']);
+
+            // Si la cuenta se desactivó o la contraseña cambió mientras tanto, el reto ya no vale.
+            if ($usuario === null || !$usuario->activo || !$usuario->dosPasos || !hash_equals($reto['fp'], password_fingerprint($usuario->contrasenaHash))) {
+                discard_two_factor_challenge();
+                Response::redirect('/login.php?msg=revoked');
+            }
+
+            // Los fallos del código cuentan aparte de los de la contraseña (clave «2fa:correo») y con un límite por correo más bajo.
+            $limitador = $this->container->limitador();
+            $clave = '2fa:' . $usuario->correo;
+            $ip = self::ip();
+
+            if ($limitador->bloqueado('login', $clave, $ip, LimitadorIntentos::MAX_POR_CORREO_DOS_PASOS)) {
+                $this->tooManyAttempts('auth/dos-pasos', [], 'Verificación en dos pasos');
+            }
+
+            $resultado = $this->container->dosPasos()->comprobar($usuario->id, self::field('codigo', false));
+
+            if ($resultado === null) {
+                $limitador->registrar('login', $clave, $ip);
+
+                if (record_two_factor_failure() >= TWO_FACTOR_CHALLENGE_MAX_FAILURES) {
+                    discard_two_factor_challenge();
+                    Response::redirect('/login.php?msg=2fa-fallos');
+                }
+
+                View::page('auth/dos-pasos', ['error' => 'El código no es correcto. Revisa que la hora de tu teléfono sea automática e inténtalo con el código actual.'], 'Verificación en dos pasos', null, 'auth');
+
+                return;
+            }
+
+            $limitador->perdonar('login', $clave, $ip);
+            $quedan = $resultado === DosPasos::OK_RECUPERACION ? $this->container->dosPasos()->codigosDisponibles($usuario->id) : null;
+        } catch (RuntimeException $error) {
+            $this->failed($error, 'auth/dos-pasos', [], 'Verificación en dos pasos');
+        }
+
+        self::startSession($usuario);
+
+        if ($quedan !== null) {
+            \App\Http\Flash::set('warn', $quedan === 0
+                ? 'Entraste con un código de recuperación y ya no te quedan más. Genera códigos nuevos ahora.'
+                : "Entraste con un código de recuperación (ya no sirve). Te quedan $quedan; genera códigos nuevos si lo necesitas.");
+            Response::redirect('/perfil.php#dos-pasos');
+        }
+
         Response::redirect(self::homeFor($usuario->rol));
     }
 

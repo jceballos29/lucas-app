@@ -18,7 +18,15 @@ use App\View\Ui;
  * @var list<array{id_sesion: string, ip: string, user_agent: string, creado_en: string, ultimo_uso: string}>|null $sesiones
  * @var string|null $sesionActualHash
  * @var array{tone: string, message: string}|null $flash
+ * @var string|null $dosPasosSecreto Secreto de la activación en curso (aún sin confirmar).
+ * @var list<string>|null $codigosNuevos Códigos de recuperación recién generados (se muestran una sola vez).
+ * @var int $codigosQuedan Códigos de recuperación sin usar.
+ * @var bool $adminObligatorio ¿Es administrador y por tanto no puede desactivar el 2FA?
  */
+$dosPasosSecreto = $dosPasosSecreto ?? null;
+$codigosNuevos = $codigosNuevos ?? null;
+$codigosQuedan = $codigosQuedan ?? 0;
+$adminObligatorio = $adminObligatorio ?? false;
 $flash = $flash ?? null;
 $sesiones = $sesiones ?? [];
 $sesionActualHash = $sesionActualHash ?? '';
@@ -62,6 +70,58 @@ $filasSesiones = array_map(static function (array $s) use ($sesionActualHash): a
         <p class="muted">La moneda solo cambia el símbolo con el que se muestran tus montos: Lucas no convierte entre monedas.</p>
         <div class="form-actions"><?= Ui::button('Guardar datos', ['type' => 'submit']) ?></div>
     </form>
+<?= Ui::cardClose() ?>
+
+<?= Ui::cardOpen(['title' => 'Correo electrónico', 'subtitle' => $usuario->correo, 'class' => 'form-card', 'id' => 'correo']) ?>
+    <?php if ($usuario->correoVerificado): ?>
+        <?= Ui::notice('Tu correo está verificado: puedes enviar y aceptar invitaciones a espacios compartidos y recibir avisos por correo.', 'ok') ?>
+    <?php else: ?>
+        <p>Aún no confirmaste que este correo es tuyo. Abre el enlace que te enviamos al registrarte; si no lo encuentras (mira también el spam), pide otro.</p>
+        <?= Ui::postForm('/perfil.php', ['accion' => 'reenviar_verificacion'], Ui::button('Reenviar enlace de verificación', ['type' => 'submit'])) ?>
+    <?php endif; ?>
+<?= Ui::cardClose() ?>
+
+<?= Ui::cardOpen(['title' => 'Verificación en dos pasos', 'subtitle' => 'Un código de tu teléfono además de la contraseña', 'class' => 'form-card', 'id' => 'dos-pasos']) ?>
+    <?php if ($codigosNuevos !== null): ?>
+        <?= Ui::notice('Guarda estos códigos de recuperación AHORA: no se volverán a mostrar. Cada uno sirve una sola vez si pierdes el teléfono.', 'warn') ?>
+        <ul class="recovery-codes" aria-label="Códigos de recuperación">
+            <?php foreach ($codigosNuevos as $codigo): ?><li><code><?= escape($codigo) ?></code></li><?php endforeach; ?>
+        </ul>
+        <p class="muted">Guárdalos en un gestor de contraseñas o impresos, lejos del teléfono. Los anteriores ya no valen.</p>
+    <?php endif; ?>
+
+    <?php if ($usuario->dosPasos): ?>
+        <?php if ($codigosNuevos === null): ?><?= Ui::notice('La verificación en dos pasos está activa: al iniciar sesión se te pedirá el código de tu app de autenticación.', 'ok') ?><?php endif; ?>
+        <p class="<?= $codigosQuedan <= 2 ? '' : 'muted' ?>">Te quedan <strong><?= (int) $codigosQuedan ?></strong> códigos de recuperación sin usar.<?= $codigosQuedan <= 2 ? ' Genera códigos nuevos.' : '' ?></p>
+        <form action="/perfil.php#dos-pasos" method="post" novalidate>
+            <?= csrf_field() ?>
+            <?= Ui::field(['id' => 'dp_clave', 'label' => 'Tu contraseña', 'type' => 'password', 'autocomplete' => 'current-password', 'required' => true, 'hint' => 'Para generar códigos nuevos o desactivar, confirma tu contraseña y un código actual.', 'error' => $errors['dp_clave'] ?? null]) ?>
+            <?= Ui::field(['id' => 'dp_codigo2', 'name' => 'codigo', 'label' => 'Código de tu app (o de recuperación)', 'autocomplete' => 'one-time-code', 'required' => true, 'error' => $errors['dp_codigo2'] ?? null, 'attrs' => ['spellcheck' => 'false', 'autocapitalize' => 'characters']]) ?>
+            <div class="form-actions">
+                <button class="btn btn--secondary" type="submit" name="accion" value="dos_pasos_regenerar">Generar códigos de recuperación nuevos</button>
+                <?php if (!$adminObligatorio): ?><button class="btn btn--danger" type="submit" name="accion" value="dos_pasos_desactivar">Desactivar</button><?php endif; ?>
+            </div>
+            <?php if ($adminObligatorio): ?><p class="muted">Como administrador, no puedes desactivar la verificación en dos pasos.</p><?php endif; ?>
+        </form>
+    <?php elseif ($dosPasosSecreto !== null): ?>
+        <ol class="steps">
+            <li>Instala una app de autenticación (Google Authenticator, Aegis, 2FAS, Authy, Microsoft Authenticator…).</li>
+            <li>Añade una cuenta <strong>introduciendo esta clave</strong> (tipo «basada en tiempo»), o abre el enlace en el teléfono:<br>
+                <code class="secret-key" id="dp-secreto"><?= escape(\App\Auth\Totp::agrupar($dosPasosSecreto)) ?></code><br>
+                <a class="link" href="<?= escape(\App\Auth\Totp::uri($dosPasosSecreto, $usuario->correo)) ?>">Abrir en mi app de autenticación</a></li>
+            <li>Escribe aquí el código de 6 dígitos que muestra la app para confirmar:</li>
+        </ol>
+        <form action="/perfil.php#dos-pasos" method="post" novalidate>
+            <?= csrf_field() ?>
+            <input type="hidden" name="accion" value="dos_pasos_activar">
+            <?= Ui::field(['id' => 'dp_codigo', 'name' => 'codigo', 'label' => 'Código de 6 dígitos', 'autocomplete' => 'one-time-code', 'required' => true, 'error' => $errors['dp_codigo'] ?? null, 'attrs' => ['inputmode' => 'numeric', 'maxlength' => '7', 'spellcheck' => 'false']]) ?>
+            <div class="form-actions"><?= Ui::button('Activar verificación en dos pasos', ['type' => 'submit']) ?></div>
+        </form>
+        <?= Ui::postForm('/perfil.php#dos-pasos', ['accion' => 'dos_pasos_cancelar'], Ui::button('Cancelar', ['type' => 'submit', 'variant' => 'ghost'])) ?>
+    <?php else: ?>
+        <p>Protege tu cuenta aunque alguien conozca tu contraseña: al iniciar sesión también se pide un código de 6 dígitos que genera una app en tu teléfono. Recomendado, y <strong>obligatorio para administradores</strong>.</p>
+        <?= Ui::postForm('/perfil.php#dos-pasos', ['accion' => 'dos_pasos_iniciar'], Ui::button('Configurar verificación en dos pasos', ['type' => 'submit'])) ?>
+    <?php endif; ?>
 <?= Ui::cardClose() ?>
 
 <?= Ui::cardOpen(['title' => 'Notificaciones por correo', 'subtitle' => 'Recibe avisos en ' . $usuario->correo, 'class' => 'form-card']) ?>

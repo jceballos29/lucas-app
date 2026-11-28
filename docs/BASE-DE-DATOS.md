@@ -124,6 +124,16 @@ No tiene relaciones: es una tabla de apoyo, sin FK, que se purga sola.
 
 `usuarios.correo_verificado_en` (DATETIME NULL) guarda **cuándo** se verificó el correo; `NULL` = sin verificar. Sin verificar, la cuenta funciona, pero no recibe correo de Lucas y no puede enviar ni aceptar invitaciones a espacios (RNF-25). Restablecer la contraseña con el enlace del correo también lo verifica.
 
+**codigos_recuperacion** (códigos de respaldo del 2FA, M7)
+| Campo | Tipo | Clave | Descripción |
+|---|---|---|---|
+| id_codigo | INT AUTO_INCREMENT | PK | Identificador |
+| id_usuario | INT | FK → usuarios (CASCADE), UNIQUE con `codigo_hash` | A quién pertenece |
+| codigo_hash | CHAR(64) | | SHA-256 del código (80 bits); el código en claro solo se muestra al generarlo |
+| creado_en · usado_en | TIMESTAMP · DATETIME NULL | | `usado_en` se llena al gastarlo: sirve una sola vez |
+
+`usuarios.totp_secreto` (VARCHAR 255) guarda el secreto TOTP **cifrado** con libsodium y la clave `APP_KEY` (nunca en claro); `totp_activado_en` (DATETIME NULL) indica cuándo se confirmó (`NULL` = 2FA no activo) y `totp_ultimo_paso` (BIGINT) el último paso de 30 s aceptado, para que un código no pueda reutilizarse (RNF-26).
+
 **cuentas**
 | Campo | Tipo | Clave | Descripción |
 |---|---|---|---|

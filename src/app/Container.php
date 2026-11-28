@@ -274,6 +274,15 @@ final class Container
         return new \App\Auth\VerificacionCorreo($this->pdo(), $this->usuarios(), $this->verificacionesCorreo(), $this->notificaciones(), $this->mailer(), \App\Config\Environment::get('APP_ORIGIN'));
     }
 
+    public function dosPasos(): \App\Auth\DosPasos
+    {
+        return new \App\Auth\DosPasos(
+            $this->pdo(),
+            new \App\Repository\DosPasosRepository($this->pdo()),
+            new \App\Security\CifradoSecreto(\App\Config\Environment::get('APP_KEY')),
+        );
+    }
+
     public function recuperacion(): RecuperacionClave
     {
         return new RecuperacionClave($this->pdo(), $this->usuarios(), $this->restablecimientos(), $this->mailer(), \App\Config\Environment::get('APP_ORIGIN'));

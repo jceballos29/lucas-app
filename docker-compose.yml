@@ -21,6 +21,10 @@ services:
       # Origen público de la aplicación (esquema + host + puerto). Lo usan los POST (reject_foreign_origin()) para aceptar
       # solo peticiones que vienen de este sitio. Por defecto se deriva de APP_PORT.
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:${APP_PORT:-8080}}
+      # Clave que cifra los secretos del segundo factor (M7). Esta es SOLO de desarrollo (pública): en producción es obligatoria y propia.
+      APP_KEY: ${APP_KEY:-lucas-clave-de-desarrollo-no-usar-en-produccion}
+      # ¿Los administradores deben activar el 2FA? Vacío = sí salvo con APP_ENV=local; 1/0 lo fuerza.
+      ADMIN_2FA_OBLIGATORIO: ${ADMIN_2FA_OBLIGATORIO:-}
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT}
       DB_DATABASE: ${DB_DATABASE}

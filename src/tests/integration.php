@@ -1467,6 +1467,50 @@ same('M5: nunca hay más de 10 sesiones por usuario', App\Repository\SesionRepos
 same('M5: la sesión recién abierta sigue válida y la más antigua se cerró', [true, false], [$sesRepo->validarYRenovar($sesUser, $ultima), $sesRepo->validarYRenovar($sesUser, $primera)]);
 same('M5: el tope de un usuario no toca las sesiones de otro', true, $sesRepo->validarYRenovar($sesOtro, $hOtro));
 
+section('Autenticación en dos pasos: activar, comprobar, recuperar, desactivar (M7)');
+$dp = new App\Auth\DosPasos($pdo, new App\Repository\DosPasosRepository($pdo), new App\Security\CifradoSecreto(str_repeat('t', 40)));
+$dpUser = (int) $usuarios->create('Dora DosPasos', 'dora.dp@correo.com', 'x');
+$dpAhora = 1700000000;
+$dpSecreto = App\Auth\Totp::generarSecreto();
+$cod = static fn (int $t): string => App\Auth\Totp::codigo($dpSecreto, App\Auth\Totp::paso($t));
+
+same('al principio no tiene 2FA', [false, false], [$dp->estaActivo($dpUser), $usuarios->findById($dpUser)->dosPasos]);
+same('comprobar sin 2FA activo siempre es null', null, $dp->comprobar($dpUser, $cod($dpAhora), $dpAhora));
+same('activar con un código incorrecto no activa nada', [null, false], [$dp->activar($dpUser, $dpSecreto, '000000' === $cod($dpAhora) ? '111111' : '000000', $dpAhora), $dp->estaActivo($dpUser)]);
+$dpCodigos = $dp->activar($dpUser, $dpSecreto, $cod($dpAhora), $dpAhora);
+same('activar con el código correcto devuelve 10 códigos de recuperación distintos', 10, is_array($dpCodigos) ? count(array_unique($dpCodigos)) : -1);
+same('queda activo y el Usuario lo refleja', [true, true, 10], [$dp->estaActivo($dpUser), $usuarios->findById($dpUser)->dosPasos, $dp->codigosDisponibles($dpUser)]);
+same('el secreto se guardó cifrado (no es el base32)', true, !str_contains((string) $pdo->query("SELECT totp_secreto FROM usuarios WHERE id_usuario = $dpUser")->fetchColumn(), $dpSecreto));
+same('los códigos se guardaron como hash (ninguno en claro)', 0, (int) $pdo->query("SELECT COUNT(*) FROM codigos_recuperacion WHERE id_usuario = $dpUser AND codigo_hash IN ('" . implode("','", $dpCodigos) . "')")->fetchColumn());
+same('el código con el que se activó no se puede reutilizar para entrar', null, $dp->comprobar($dpUser, $cod($dpAhora), $dpAhora));
+same('el del paso siguiente sí (dentro de la tolerancia)', App\Auth\DosPasos::OK_TOTP, $dp->comprobar($dpUser, $cod($dpAhora + 30), $dpAhora));
+same('…pero tampoco se puede usar dos veces', null, $dp->comprobar($dpUser, $cod($dpAhora + 30), $dpAhora));
+same('un código de un paso ANTERIOR al último aceptado se rechaza', null, $dp->comprobar($dpUser, $cod($dpAhora - 30), $dpAhora));
+same('un código inventado se rechaza', null, $dp->comprobar($dpUser, '123456' === $cod($dpAhora + 60) ? '654321' : '123456', $dpAhora + 60));
+same('código de recuperación: sirve (con minúsculas y sin guiones) la primera vez', App\Auth\DosPasos::OK_RECUPERACION, $dp->comprobar($dpUser, strtolower(str_replace('-', '', $dpCodigos[0])), $dpAhora));
+same('…y no la segunda', null, $dp->comprobar($dpUser, $dpCodigos[0], $dpAhora));
+same('quedan 9 códigos', 9, $dp->codigosDisponibles($dpUser));
+$dpNuevos = $dp->regenerarCodigos($dpUser);
+same('regenerar da 10 nuevos y los anteriores dejan de valer', [10, null, 10], [count($dpNuevos), $dp->comprobar($dpUser, $dpCodigos[1], $dpAhora), $dp->codigosDisponibles($dpUser)]);
+same('un usuario no puede usar los códigos de otro', null, (function () use ($dp, $dpNuevos, $usuarios): ?string { $otro = (int) $usuarios->create('Otro DP', 'otro.dp@correo.com', 'x'); return $dp->comprobar($otro, $dpNuevos[0], 1700000000); })());
+same('con otra APP_KEY el secreto guardado no se puede leer: comprobar falla de forma controlada', null, (new App\Auth\DosPasos($pdo, new App\Repository\DosPasosRepository($pdo), new App\Security\CifradoSecreto(str_repeat('x', 40))))->comprobar($dpUser, $cod($dpAhora + 60), $dpAhora + 60));
+$dp->desactivar($dpUser);
+same('desactivar quita el secreto, el estado y los códigos', [false, false, 0, 0], [
+    $dp->estaActivo($dpUser), $usuarios->findById($dpUser)->dosPasos, $dp->codigosDisponibles($dpUser),
+    (int) $pdo->query("SELECT COUNT(*) FROM usuarios WHERE id_usuario = $dpUser AND totp_secreto IS NOT NULL")->fetchColumn(),
+]);
+$dp->activar($dpUser, $dpSecreto, $cod($dpAhora + 600), $dpAhora + 600);
+same('eliminar la cuenta borra también sus códigos de recuperación', [true, 0], [$container->eliminarCuenta()->eliminar($dpUser) === 'ok', (int) $pdo->query("SELECT COUNT(*) FROM codigos_recuperacion WHERE id_usuario = $dpUser")->fetchColumn()]);
+
+$limDp = new LimitadorIntentos($container->intentos());
+for ($i = 0; $i < LimitadorIntentos::MAX_POR_CORREO_DOS_PASOS - 1; $i++) {
+    $limDp->registrar('login', '2fa:dp@correo.com', '10.8.0.' . (1 + $i));
+}
+same('9 fallos de código desde IP distintas aún no bloquean', false, $limDp->bloqueado('login', '2fa:dp@correo.com', '10.8.9.9', LimitadorIntentos::MAX_POR_CORREO_DOS_PASOS));
+$limDp->registrar('login', '2fa:dp@correo.com', '10.8.0.99');
+same('el 10.º bloquea el segundo factor de esa cuenta, sea cual sea la IP', true, $limDp->bloqueado('login', '2fa:dp@correo.com', '10.8.9.9', LimitadorIntentos::MAX_POR_CORREO_DOS_PASOS));
+same('y no afecta a la contraseña de la misma cuenta (otra clave)', false, $limDp->bloqueado('login', 'dp@correo.com', '10.8.9.9'));
+
 
 section('Multimoneda por cuenta, transferencias multimoneda y conversión en reportes/presupuestos (Fase 18)');
 $mUser = (int) $usuarios->create('Mateo Multimoneda', 'mateo.multi@correo.com', 'x');

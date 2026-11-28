@@ -240,3 +240,10 @@ input[type="color"].input { width: 96px; height: 44px; padding: 4px; cursor: poi
 .check-row input[type="checkbox"] { margin-top: 0.25rem; flex: none; width: 1.1rem; height: 1.1rem; }
 .check-row + .check-row { border-top: 1px solid var(--border, rgba(127, 127, 127, 0.25)); }
 .card .form-actions + form { margin-top: var(--s-3); }
+
+/* Verificación en dos pasos (M7): clave para teclear en la app y códigos de recuperación */
+.secret-key { display: inline-block; margin: var(--space-2, 8px) 0; padding: 8px 12px; border: 1px dashed var(--border, #cbd5e1); border-radius: 8px; font-size: 1.05rem; letter-spacing: .08em; word-break: break-all; user-select: all; }
+.steps { padding-left: 1.25rem; display: grid; gap: 12px; }
+.recovery-codes { list-style: none; margin: 12px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+.recovery-codes li { padding: 8px 12px; border: 1px solid var(--border, #cbd5e1); border-radius: 8px; background: var(--surface-2, #f8fafc); }
+.recovery-codes code { font-size: 1rem; letter-spacing: .06em; user-select: all; }

@@ -8,6 +8,11 @@ CREATE TABLE usuarios (
   activo          BOOLEAN      NOT NULL DEFAULT TRUE,
   notif_presupuestos    BOOLEAN NOT NULL DEFAULT FALSE,
   notif_resumen_mensual BOOLEAN NOT NULL DEFAULT FALSE,
+  correo_verificado_en  DATETIME NULL DEFAULT NULL,
+  -- Autenticación en dos pasos (M7): secreto TOTP CIFRADO con APP_KEY, cuándo se activó y último paso aceptado (anti-repetición).
+  totp_secreto          VARCHAR(255) NULL DEFAULT NULL,
+  totp_activado_en      DATETIME NULL DEFAULT NULL,
+  totp_ultimo_paso      BIGINT NULL DEFAULT NULL,
   creado_en       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_rol_activo (rol, activo)
 );
@@ -289,6 +294,17 @@ CREATE TABLE verificaciones_correo (
   expira_en       DATETIME NOT NULL,
   usado_en        DATETIME NULL DEFAULT NULL,
   INDEX idx_verif_usuario (id_usuario),
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+);
+
+-- Códigos de recuperación del 2FA (M7): un solo uso; solo se guarda el HASH (SHA-256) de cada código.
+CREATE TABLE codigos_recuperacion (
+  id_codigo   INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario  INT NOT NULL,
+  codigo_hash CHAR(64) NOT NULL,
+  creado_en   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  usado_en    DATETIME NULL DEFAULT NULL,
+  UNIQUE KEY uq_codigo_usuario (id_usuario, codigo_hash),
   FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
 );
 

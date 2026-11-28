@@ -23,6 +23,9 @@ services:
       # Con https:// la cookie de sesión se marca «Secure» y los POST solo se aceptan desde este origen.
       APP_ORIGIN: ${APP_ORIGIN:?Falta APP_ORIGIN (p. ej. https://lucas.tudominio.com)}
       PHP_INI_SCAN_DIR: /usr/local/etc/php/conf.d:/usr/local/etc/php/env/production
+      # Cifra los secretos del segundo factor (2FA). Genérala una vez con «openssl rand -base64 32» y NO la cambies (ver docs/DESPLIEGUE.md).
+      APP_KEY: ${APP_KEY:?Falta APP_KEY (openssl rand -base64 32)}
+      ADMIN_2FA_OBLIGATORIO: ${ADMIN_2FA_OBLIGATORIO:-}
       DB_HOST: ${DB_HOST:-db}
       DB_PORT: ${DB_PORT:-3306}
       DB_DATABASE: ${DB_DATABASE:-lucas}

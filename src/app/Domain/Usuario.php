@@ -22,6 +22,8 @@ final class Usuario
         public readonly bool $notifResumenMensual = false,
         /** ¿Demostró que controla su correo (A1)? Sin esto no recibe correo de Lucas ni puede enviar/aceptar invitaciones. */
         public readonly bool $correoVerificado = false,
+        /** ¿Tiene activada la autenticación en dos pasos (M7)? */
+        public readonly bool $dosPasos = false,
     ) {
     }
 
@@ -39,13 +41,14 @@ final class Usuario
             (bool) ($row['notif_presupuestos'] ?? false),
             (bool) ($row['notif_resumen_mensual'] ?? false),
             ($row['correo_verificado_en'] ?? null) !== null,
+            ($row['totp_activado_en'] ?? null) !== null,
         );
     }
 
     /** El mismo usuario con otro hash de contraseña (tras un rehash). */
     public function conContrasenaHash(string $hash): self
     {
-        return new self($this->id, $this->nombre, $this->correo, $hash, $this->moneda, $this->rol, $this->activo, $this->notifPresupuestos, $this->notifResumenMensual);
+        return new self($this->id, $this->nombre, $this->correo, $hash, $this->moneda, $this->rol, $this->activo, $this->notifPresupuestos, $this->notifResumenMensual, $this->correoVerificado, $this->dosPasos);
     }
 
     public function esAdmin(): bool

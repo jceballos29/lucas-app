@@ -116,6 +116,8 @@ echo; echo "== La imagen de producción no lleva Xdebug (M2)"
 check "docker-compose.prod.yml construye la imagen PHP con INSTALL_XDEBUG=0" "1" "$(sed -n '/^  php:/,/^  nginx:/p' docker-compose.prod.yml | grep -c -E 'INSTALL_XDEBUG: *"?0"?')"
 check "docker-compose.prod.yml fija XDEBUG_MODE=off en el servicio php" "1" "$(sed -n '/^  php:/,/^  nginx:/p' docker-compose.prod.yml | grep -c -E 'XDEBUG_MODE: *"?off"?')"
 check "el Dockerfile solo instala Xdebug con INSTALL_XDEBUG=1" "1" "$(grep -c 'if \[ "\$INSTALL_XDEBUG" = "1" \]; then install-php-extensions xdebug' docker/php/Dockerfile)"
+check "M7: docker-compose.prod.yml exige APP_KEY (sin ella no arranca)" "1" "$(grep -c "APP_KEY: \${APP_KEY:?" docker-compose.prod.yml)"
+
 echo; echo "== Sin sesión"
 J="$(new_jar)"
 request "$J" GET /;                 check "/ redirige a login" "302 /login.php" "$CODE $LOC"
@@ -1669,6 +1671,43 @@ check "reporte-imprimir.php responde 200" "200" "$CODE"
 contains "muestra cabecera de Reporte financiero" "Reporte financiero" "$TMP/body"
 contains "incluye el botón Imprimir / Guardar PDF con data-print" 'data-print="1"' "$TMP/body"
 absent "no incluye el menú lateral (layout plain limpio para PDF)" 'class="sidebar"' "$TMP/body"
+
+echo; echo "== Verificación en dos pasos (M7)"
+totp_code() { docker compose exec -T php php -r 'require "app/Auth/Totp.php"; echo App\Auth\Totp::codigo($argv[1], intdiv(time(), 30) + (int) $argv[2]);' "$1" "$2" 2>/dev/null; }
+JDP="$(new_jar)"; UDP="smoke_${RUN}_dp@correo.com"; register "$JDP" "$UDP" "$P"
+request "$JDP" GET /perfil.php
+contains "el perfil ofrece configurar la verificación en dos pasos" "Configurar verificación en dos pasos" "$TMP/body"
+post_form "$JDP" /perfil.php /perfil.php "accion=dos_pasos_iniciar"
+request "$JDP" GET /perfil.php
+DPSEC="$(grep -o 'id="dp-secreto">[A-Z2-7 ]*<' "$TMP/body" | sed 's/.*">//; s/<//; s/ //g')"
+check "muestra la clave para la app (32 caracteres base32)" "32" "${#DPSEC}"
+contains "y un enlace otpauth para abrirla en el teléfono" "otpauth://totp/Lucas" "$TMP/body"
+post_form "$JDP" /perfil.php /perfil.php "accion=dos_pasos_activar" "codigo=000000"
+check "un código incorrecto no activa el 2FA" "NULL" "$(sql "SELECT IFNULL(totp_activado_en,'NULL') FROM usuarios WHERE correo='$UDP'")"
+post_form "$JDP" /perfil.php /perfil.php "accion=dos_pasos_activar" "codigo=$(totp_code "$DPSEC" 0)"
+contains "con el código correcto se muestran los códigos de recuperación una sola vez" "Guarda estos códigos de recuperación" "$TMP/body"
+check "y el 2FA queda activo" "1" "$(sql "SELECT totp_activado_en IS NOT NULL FROM usuarios WHERE correo='$UDP'")"
+request "$JDP" GET /perfil.php
+absent "al recargar los códigos ya no aparecen" "Guarda estos códigos de recuperación" "$TMP/body"
+contains "y se informa de los que quedan" "<strong>10</strong> códigos de recuperación" "$TMP/body"
+
+J2F="$(new_jar)"
+request "$J2F" GET /login-2fa.php;  check "sin pasar por la contraseña, el segundo paso redirige al login" "302 /login.php" "$CODE $LOC"
+login "$J2F" "$UDP" "$P"
+check "con 2FA, la contraseña lleva al segundo paso" "302 /login-2fa.php" "$CODE $LOC"
+request "$J2F" GET /panel.php;  check "y todavía no hay sesión (el panel redirige al login)" "302 /login.php" "$CODE $LOC"
+request "$J2F" GET /login-2fa.php;  contains "el segundo paso pide el código" "Verificación en dos pasos" "$TMP/body"
+post_form "$J2F" /login-2fa.php /login-2fa.php "codigo=000000"
+check "un código incorrecto se queda en el segundo paso" "200" "$CODE"
+contains "con un mensaje claro" "El código no es correcto" "$TMP/body"
+post_form "$J2F" /login-2fa.php /login-2fa.php "codigo=$(totp_code "$DPSEC" 1)"
+check "el código correcto entra al panel" "302 /panel.php" "$CODE $LOC"
+request "$J2F" GET /panel.php;  check "y la sesión funciona" "200" "$CODE"
+sql "UPDATE usuarios SET totp_ultimo_paso = NULL WHERE correo='$UDP'" >/dev/null
+
+JADM="$(new_jar)"
+login "$JADM" "$ADMIN_EMAIL" "$ADMIN_PASS"
+request "$JADM" GET /admin/index.php;  check "en desarrollo el administrador sin 2FA entra a la administración (la obligatoriedad es solo fuera de local)" "200" "$CODE"
 
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]
