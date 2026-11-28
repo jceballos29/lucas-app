@@ -291,6 +291,14 @@ Método: `ui-ux-pro-max` (checklist de accesibilidad, interacción, rendimiento,
 | U10 | Baja | **La sesión caduca a los 30 min sin aviso**; si el usuario estaba rellenando un formulario largo (importar CSV, división de gasto) lo pierde. | Aviso a los 28 min con botón «Seguir conectado» (un `fetch` ligero) o guardar borrador en `sessionStorage`. |
 | U11 | Baja | Las tarjetas son todas iguales (mismo radio y sombra) y la jerarquía entre «dato principal» y «dato de apoyo» depende solo del tamaño de texto. | Reservar el estilo de tarjeta elevada para lo accionable (saldo, presupuestos excedidos) y usar secciones con divisor para lo informativo, para que lo urgente destaque más. |
 
+**U1, U2 y U3 — ✅ RESUELTOS (2026-11-28).**
+- **U1 (botón flotante):** en móvil la cabecera ya no repite «Nuevo movimiento» cuando hay botón flotante; el botón flotante respeta el área segura de los móviles con muesca y se oculta mientras un campo tiene el foco (teclado abierto). El relleno inferior del contenido (104 px) ya evitaba que tapara el final de la página.
+- **U2 (foco en errores):** `app.js` lleva el foco al primer campo con `aria-invalid="true"` al volver el formulario con errores, y lo centra en pantalla; el lector de pantalla lo anuncia con su mensaje (`aria-describedby`). No se añadió resumen de errores: con el foco en el campo y su mensaje enlazado cubre el caso sin ruido adicional.
+- **U3 (objetivos táctiles):** en pantallas táctiles o de menos de 768 px los botones `sm`, los botones de icono, la paginación y el logo miden ≥ 44 px, y los enlaces de texto de avisos y `.link` ganan zona pulsable (relleno con margen negativo, sin cambiar el diseño). Medido en el panel a 390 px: ningún control interactivo por debajo de 44 px y sin desbordamiento horizontal.
+- La caché del service worker pasó a `lucas-static-v2` para que quien ya tenga la PWA reciba el CSS/JS nuevos.
+- Pruebas: 9 comprobaciones en `smoke.sh` (reglas CSS, JS, versión de la caché y el marcado `aria-invalid`/`aria-describedby` real de un formulario con error).
+
+
 ---
 
 ## 7. Pruebas de ataque realizadas (resumen reproducible)

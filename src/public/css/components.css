@@ -260,10 +260,12 @@ dialog h2 { font-size: var(--fs-lg); margin-bottom: var(--s-2); }
 
 /* ---------- Botón flotante (móvil) ---------- */
 .fab {
-  position: fixed; right: var(--s-5); bottom: var(--s-5); z-index: var(--z-fab);
+  position: fixed; right: var(--s-5); bottom: calc(var(--s-5) + env(safe-area-inset-bottom, 0px)); z-index: var(--z-fab);
   width: 56px; height: 56px; display: grid; place-items: center; border-radius: 50%;
   background: var(--teal); color: var(--ink); box-shadow: var(--sh-2);
   transition: background-color var(--t), transform var(--t);
 }
 .fab:hover { background: color-mix(in srgb, var(--teal) 86%, var(--ink)); }
 .fab .icon { width: 24px; height: 24px; stroke-width: 2.25; }
+/* U1: con el teclado abierto (un campo con el foco) el botón flotante taparía el formulario: se oculta. */
+body:has(input:focus, select:focus, textarea:focus) .fab { display: none; }

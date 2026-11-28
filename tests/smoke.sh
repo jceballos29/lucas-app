@@ -1761,5 +1761,20 @@ JADM="$(new_jar)"
 login "$JADM" "$ADMIN_EMAIL" "$ADMIN_PASS"
 request "$JADM" GET /admin/index.php;  check "en desarrollo el administrador sin 2FA entra a la administración (la obligatoriedad es solo fuera de local)" "200" "$CODE"
 
+echo; echo "== Interfaz móvil y accesibilidad (U1-U3)"
+request "$JMU" GET /css/layout.css
+contains "U3: en pantallas táctiles/móvil los botones pequeños, iconos y paginación miden al menos 44 px" "pointer: coarse" "$TMP/body"
+contains "U3: …incluida la paginación" ".pagination a { min-width: 44px; height: 44px; }" "$TMP/body"
+contains "U1: en móvil la cabecera no repite «Nuevo movimiento» cuando ya hay botón flotante" "body:has(.fab) .page-head__actions" "$TMP/body"
+request "$JMU" GET /css/components.css
+contains "U1: el botón flotante respeta el área segura del móvil y se oculta con el teclado abierto" "safe-area-inset-bottom" "$TMP/body"
+contains "U1: …se oculta con un campo enfocado" "body:has(input:focus, select:focus, textarea:focus) .fab" "$TMP/body"
+request "$JMU" GET /js/app.js
+contains "U2: el foco pasa al primer campo con error al volver el formulario" '[aria-invalid="true"]' "$TMP/body"
+request "$JMU" GET /sw.js
+contains "los recursos estáticos cambiaron: la caché del service worker se renovó (v3)" "lucas-static-v3" "$TMP/body"
+post_form "$JMU" /perfil.php /perfil.php "accion=clave" "clave_actual=incorrecta" "clave_nueva=abc" "clave_nueva2=x"
+contains "U2: el campo con error queda marcado aria-invalid y enlazado a su mensaje" 'aria-invalid="true" aria-describedby="e-clave_actual"' "$TMP/body"
+
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

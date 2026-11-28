@@ -111,6 +111,14 @@
     });
   });
 
+  /* 5a. Si el formulario volvió con errores, el foco va al primer campo inválido (los lectores de pantalla lo anuncian con su
+         mensaje, que está enlazado con aria-describedby) y se centra en pantalla; sin esto el usuario tiene que buscar qué falló. */
+  var primerInvalido = document.querySelector('[aria-invalid="true"]');
+  if (primerInvalido && typeof primerInvalido.focus === 'function') {
+    primerInvalido.focus({ preventScroll: true });
+    primerInvalido.scrollIntoView({ block: 'center' });
+  }
+
   /* 5b. Botón de envío: se desactiva y muestra el indicador mientras el formulario se envía (evita doble envío).
          setTimeout(0): así el navegador alcanza a incluir el valor del botón en la petición. */
   document.querySelectorAll('form').forEach(function (form) {

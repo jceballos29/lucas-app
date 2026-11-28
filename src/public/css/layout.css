@@ -112,6 +112,22 @@
 .auth-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .auth-forgot { display: block; width: fit-content; margin: calc(var(--s-2) * -1) 0 var(--s-5) auto; font-size: var(--fs-sm); }
 
+/* ======================= Móvil y pantallas táctiles (U1, U3) ======================= */
+@media (pointer: coarse), (max-width: 767px) {
+  /* U3: objetivos táctiles de al menos 44 px (guía de accesibilidad móvil). Los enlaces de texto ganan zona pulsable sin cambiar el diseño. */
+  .btn--sm { min-height: 44px; }
+  .icon-btn { min-width: 44px; min-height: 44px; }
+  .pagination a { min-width: 44px; height: 44px; }
+  .logo { min-height: 44px; display: inline-flex; align-items: center; }
+  .notice a, .link { display: inline-block; padding-block: 11px; margin-block: -11px; }
+}
+
+/* U1: en móvil el botón flotante (+) ya ofrece «Nuevo movimiento»: la cabecera no lo repite. */
+@media (max-width: 767px) {
+  body:has(.fab) .page-head__actions:has(> a[href^="/movimiento-form.php"]:only-child),
+  body:has(.fab) .page-head__actions:has(> a[href^="/recurrente-form.php"]:only-child) { display: none; }
+}
+
 /* ======================= ≥ 640px ======================= */
 @media (min-width: 640px) {
   .cards-grid { grid-template-columns: repeat(2, 1fr); }
