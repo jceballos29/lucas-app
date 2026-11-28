@@ -54,12 +54,7 @@ function app_uses_https(): bool
  */
 function session_is_expired(mixed $lastSeen, int $now, int $ttl = SESSION_IDLE_TIMEOUT): bool
 {
-    if (!is_int($lastSeen)) {
-        return true;
-    }
-
-    // Una marca del futuro (el reloj retrocedió) tampoco es de fiar.
-    return $lastSeen > $now || $now - $lastSeen >= $ttl;
+    return \App\Auth\ContextoSesion::haCaducado($lastSeen, $now, $ttl);
 }
 
 /** Inicia la sesión de PHP con la configuración segura de la aplicación. Se puede llamar varias veces. */
@@ -108,87 +103,48 @@ function resolve_user_session(): array
 
     start_app_session();
 
+    // Una visita sin usuario (la página de login tiene sesión por el token CSRF) no toca la base de datos: el contexto, que abre la
+    // conexión al construir sus repositorios, solo se crea cuando hay un usuario que comprobar.
     if (!isset($_SESSION['user_id'])) {
         return ['user' => null, 'expired' => false, 'revoked' => false];
     }
 
-    if (session_is_expired($_SESSION['last_seen'] ?? null, time())) {
-        log_out_user();
-
-        return ['user' => null, 'expired' => true, 'revoked' => false];
-    }
-
-    $current = \App\Container::shared()->usuarios()->findById((int) $_SESSION['user_id']);
-
-    if ($current === null || !$current->activo) {
-        log_out_user();
-
-        return ['user' => null, 'expired' => false, 'revoked' => true];
-    }
-
-    // La sesión guarda una HUELLA del hash de la contraseña con la que se abrió. Si la contraseña cambia (el propio usuario, o un
-    // restablecimiento por correo), las demás sesiones abiertas dejan de valer en su siguiente petición: quien robó una sesión
-    // la pierde al cambiar la clave.
-    if (!hash_equals((string) ($_SESSION['pw_fp'] ?? ''), password_fingerprint($current->contrasenaHash))) {
-        log_out_user();
-
-        return ['user' => null, 'expired' => false, 'revoked' => true];
-    }
-
-    // Comprobar que la sesión sigue activa en el registro de sesiones del usuario (Fase 17: cierre remoto desde Mi perfil).
     $sid = (string) session_id();
-    if ($sid !== '') {
-        $sessionHash = \App\Repository\SesionRepository::hashId($sid);
-        if (!\App\Container::shared()->sesiones()->validarYRenovar($current->id, $sessionHash)) {
-            log_out_user();
+    $estado = session_context()->resolver($_SESSION, $sid !== '' ? \App\Repository\SesionRepository::hashId($sid) : '', time());
 
-            return ['user' => null, 'expired' => false, 'revoked' => true];
-        }
+    if ($estado->cerrar()) {
+        log_out_user();
+    } elseif ($estado->monedaActiva !== null) {
+        // Los montos de toda la petición se muestran en la moneda del usuario o del espacio compartido activo (RF-03, Fase 10).
+        \App\Support\Dinero::usarMoneda($estado->monedaActiva);
     }
 
-    // Comprobar si la sesión tiene seleccionado un espacio compartido activo (Fase 10).
-    // Si el usuario ya no es miembro de ese espacio (o el espacio fue eliminado), vuelve automáticamente al espacio personal.
-    $espacioId = null;
-    $espacioNombre = null;
-    $espacioRol = null;
-    $monedaActiva = $current->moneda;
+    return $estado->comoArreglo();
+}
 
-    $rawEspacio = $_SESSION['espacio_id'] ?? null;
-    if (is_int($rawEspacio) && $rawEspacio > 0) {
-        $espacio = \App\Container::shared()->espacios()->findForMember($current->id, $rawEspacio);
-        if ($espacio !== null) {
-            $espacioId = $espacio->id;
-            $espacioNombre = $espacio->nombre;
-            $espacioRol = $espacio->rolUsuario;
-            $monedaActiva = $espacio->moneda;
-        } else {
-            unset($_SESSION['espacio_id']);
-        }
+/**
+ * El contexto de sesión de esta petición: la lógica de «quién está conectado» ({@see \App\Auth\ContextoSesion}) con los repositorios del
+ * contenedor. Es el ÚNICO sitio de este archivo que conoce `Container`; las pruebas pueden poner otro con {@see use_session_context()}.
+ */
+function session_context(): \App\Auth\ContextoSesion
+{
+    return $GLOBALS['__lucas_contexto_sesion'] ??= (static function (): \App\Auth\ContextoSesion {
+        $c = \App\Container::shared();
+
+        return new \App\Auth\ContextoSesion($c->usuarios(), $c->sesiones(), $c->espacios(), SESSION_IDLE_TIMEOUT);
+    })();
+}
+
+/** Sustituye el contexto de sesión (pruebas); `null` vuelve al del contenedor. */
+function use_session_context(?\App\Auth\ContextoSesion $contexto): void
+{
+    if ($contexto === null) {
+        unset($GLOBALS['__lucas_contexto_sesion']);
+
+        return;
     }
 
-    // Los montos de toda la petición se muestran en la moneda del usuario o del espacio compartido activo (RF-03, Fase 10).
-    \App\Support\Dinero::usarMoneda($monedaActiva);
-
-    $_SESSION['last_seen'] = time();
-    $_SESSION['user_name'] = $current->nombre;
-    $_SESSION['user_email'] = $current->correo;
-    $_SESSION['user_role'] = $current->rol;
-
-    return [
-        'user' => [
-            'id' => $current->id,
-            'name' => $current->nombre,
-            'email' => $current->correo,
-            'role' => $current->rol,
-            'verified' => $current->correoVerificado,
-            'dos_pasos' => $current->dosPasos,
-            'espacio_id' => $espacioId,
-            'espacio_nombre' => $espacioNombre,
-            'espacio_rol' => $espacioRol,
-        ],
-        'expired' => false,
-        'revoked' => false,
-    ];
+    $GLOBALS['__lucas_contexto_sesion'] = $contexto;
 }
 
 /** Cambia el espacio activo en la sesión (`null` = volver a Mi espacio personal). */
@@ -218,7 +174,7 @@ function require_espacio_write(array $user): void
 /** Huella corta del hash de una contraseña (no revela el hash): sirve para saber si la contraseña cambió desde que se abrió la sesión. */
 function password_fingerprint(string $hash): string
 {
-    return substr(hash('sha256', $hash), 0, 32);
+    return \App\Auth\ContextoSesion::huella($hash);
 }
 
 /** Tras cambiar la contraseña en ESTA sesión, se actualiza su huella para que siga abierta (las demás se cierran). */
@@ -255,12 +211,11 @@ function log_in_user(array $user): void
     $sid = (string) session_id();
     if ($sid !== '') {
         try {
-            \App\Container::shared()->sesiones()->registrar(
+            session_context()->registrarInicio(
                 (int) $user['id'],
                 \App\Repository\SesionRepository::hashId($sid),
                 (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'),
                 (string) ($_SERVER['HTTP_USER_AGENT'] ?? 'Navegador web'),
-                SESSION_IDLE_TIMEOUT,
             );
         } catch (Throwable) {
             // Si la BD falla aquí, la siguiente petición en resolve_user_session() lo detectará de forma controlada.
@@ -321,7 +276,7 @@ function log_out_user(): void
     $sid = (string) session_id();
     if ($sid !== '' && isset($_SESSION['user_id'])) {
         try {
-            \App\Container::shared()->sesiones()->eliminarPorHash(\App\Repository\SesionRepository::hashId($sid));
+            session_context()->olvidar(\App\Repository\SesionRepository::hashId($sid));
         } catch (Throwable) {
         }
     }

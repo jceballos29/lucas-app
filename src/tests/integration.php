@@ -1650,6 +1650,78 @@ $cascada = $pdo->query("SELECT k.table_name FROM information_schema.key_column_u
 same('las tablas POR_CASCADA con id_usuario/id_espacio tienen de verdad FK ON DELETE CASCADE', [], array_values(array_diff(array_intersect(Esquema::POR_CASCADA, array_merge($conColumna('id_usuario'), $conColumna('id_espacio'))), $cascada)));
 same('ninguna tabla aparece en dos listas de tratamiento', [], array_values(array_diff_key(array_count_values($tratadas), array_filter(array_count_values($tratadas), static fn (int $n): bool => $n === 1))));
 
+section('ContextoSesion: quién está conectado, sin cookies ni superglobales (R5)');
+use App\Auth\ContextoSesion;
+use App\Repository\SesionRepository as SesRepo5;
+
+$ctx = new ContextoSesion($usuarios, $container->sesiones(), $container->espacios());
+$u5 = (int) $usuarios->create('Sara Sesión', 'sara.sesion@correo.com', password_hash('x', PASSWORD_DEFAULT));
+$u5Usuario = $usuarios->findById($u5);
+$sid5 = SesRepo5::hashId('sid-r5-sara');
+$container->sesiones()->registrar($u5, $sid5, '10.0.0.1', 'Firefox');
+$ahora5 = 1_800_000_000;
+$sesion5 = static function (array $extra = []) use ($u5, $ahora5, &$u5Usuario): array {
+    return $extra + ['user_id' => $u5, 'last_seen' => $ahora5 - 60, 'pw_fp' => ContextoSesion::huella($u5Usuario->contrasenaHash)];
+};
+
+$s = [];
+same('sin user_id la sesión es anónima y no hay nada que cerrar', [null, false], (static function () use ($ctx, $ahora5): array {
+    $s = [];
+    $e = $ctx->resolver($s, '', $ahora5);
+    return [$e->user, $e->cerrar()];
+})());
+$s = $sesion5(['last_seen' => $ahora5 - ContextoSesion::INACTIVIDAD]);
+$e = $ctx->resolver($s, $sid5, $ahora5);
+same('pasada la inactividad (30 min) caduca y hay que cerrarla', [true, false, true, null], [$e->caducada, $e->revocada, $e->cerrar(), $e->user]);
+$s = $sesion5(['last_seen' => $ahora5 + 500]);
+same('una marca de actividad del futuro (reloj atrasado) también caduca', true, $ctx->resolver($s, $sid5, $ahora5)->caducada);
+$s = $sesion5(['last_seen' => 'ayer']);
+same('una marca que no es un entero caduca', true, $ctx->resolver($s, $sid5, $ahora5)->caducada);
+
+$s = $sesion5();
+$e = $ctx->resolver($s, $sid5, $ahora5);
+same('una sesión viva devuelve al usuario con su rol y sin espacio activo', [$u5, 'usuario', null, false, false], [$e->user['id'] ?? null, $e->user['role'] ?? null, $e->user === null ? 'sin usuario' : $e->user['espacio_id'], $e->cerrar(), $e->caducada]);
+same('…y renueva la actividad y la copia del nombre y el rol en la sesión', [$ahora5, 'Sara Sesión', 'usuario'], [$s['last_seen'], $s['user_name'], $s['user_role']]);
+same('la moneda activa es la del usuario', 'COP', $e->monedaActiva);
+
+$s = $sesion5();
+same('si la sesión ya no está en el registro (cierre remoto) se revoca', true, $ctx->resolver($s, SesRepo5::hashId('otra-sesion'), $ahora5)->revocada);
+$s = $sesion5();
+same('sin id de sesión de PHP no se consulta el registro (CLI, pruebas)', true, $ctx->resolver($s, '', $ahora5)->user !== null);
+
+$usuarios->setRol($u5, 'admin');
+$s = $sesion5();
+same('si le cambian el rol, vale en la siguiente petición (no hace falta volver a entrar)', 'admin', $ctx->resolver($s, $sid5, $ahora5)->user['role'] ?? null);
+$usuarios->setRol($u5, 'usuario');
+
+$usuarios->updatePasswordHash($u5, password_hash('nueva', PASSWORD_DEFAULT));
+$s = $sesion5();
+same('si cambia la contraseña desde que se abrió la sesión, la sesión se revoca', true, $ctx->resolver($s, $sid5, $ahora5)->revocada);
+$u5Usuario = $usuarios->findById($u5);
+
+$usuarios->setActivo($u5, false);
+$s = $sesion5();
+same('si desactivan al usuario, la sesión se revoca', true, $ctx->resolver($s, $sid5, $ahora5)->revocada);
+$usuarios->setActivo($u5, true);
+
+$esp5 = $container->gestionEspacios()->crear($u5, 'Casa R5', 'USD');
+$s = $sesion5(['espacio_id' => $esp5]);
+$e = $ctx->resolver($s, $sid5, $ahora5);
+same('con un espacio compartido activo devuelve su id, nombre, rol y moneda', [$esp5, 'Casa R5', 'propietario', 'USD'], [$e->user['espacio_id'] ?? null, $e->user['espacio_nombre'] ?? null, $e->user['espacio_rol'] ?? null, $e->monedaActiva]);
+$s = $sesion5(['espacio_id' => 99999999]);
+$e = $ctx->resolver($s, $sid5, $ahora5);
+same('un espacio del que no es miembro (o que no existe) se descarta y vuelve al personal', [null, false, 'COP'], [$e->user === null ? 'sin usuario' : $e->user['espacio_id'], isset($s['espacio_id']), $e->monedaActiva]);
+$s = $sesion5(['espacio_id' => 'texto']);
+same('un espacio_id que no es entero se ignora', null, ($ctx->resolver($s, $sid5, $ahora5)->user ?? ['espacio_id' => 'sin usuario'])['espacio_id']);
+
+$ctx->olvidar($sid5);
+$s = $sesion5();
+same('olvidar() saca la sesión del registro: la siguiente petición se revoca', true, $ctx->resolver($s, $sid5, $ahora5)->revocada);
+$ctx->registrarInicio($u5, $sid5, '10.0.0.2', 'Chrome');
+$s = $sesion5();
+same('registrarInicio() la vuelve a anotar', true, $ctx->resolver($s, $sid5, $ahora5)->user !== null);
+same('huella() no revela el hash y cambia con él', [32, true, true], [strlen(ContextoSesion::huella('abc')), !str_contains(ContextoSesion::huella('abc'), 'abc'), ContextoSesion::huella('a') !== ContextoSesion::huella('b')]);
+
 section('Índices de los espacios compartidos (R9)');
 $indices = static function (string $tabla) use ($pdo): array {
     $q = $pdo->prepare('SELECT index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = :t GROUP BY index_name');
