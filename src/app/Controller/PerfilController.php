@@ -179,7 +179,7 @@ final class PerfilController
                     $errors = $this->verificarClave($usuario->correo, $usuario->contrasenaHash, $actual, 'clave_actual');
 
                     if ($errors === []) {
-                        $errors = ClaveValidator::errores($nueva, self::field('clave_nueva2'), 'clave_nueva', 'clave_nueva2');
+                        $errors = ClaveValidator::errores($nueva, self::field('clave_nueva2'), 'clave_nueva', 'clave_nueva2', $usuario->correo);
                     }
 
                     if ($errors === [] && hash_equals($actual, $nueva)) {

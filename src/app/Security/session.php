@@ -11,8 +11,17 @@ declare(strict_types=1);
  * la sesión de PHP y las cabeceras, y se prueba de punta a punta (tests/smoke.sh).
  */
 
-/** Nombre de la cookie de sesión (no el PHPSESSID por defecto, que delata la tecnología). */
+/** Nombre base de la cookie de sesión (no el PHPSESSID por defecto, que delata la tecnología). */
 const SESSION_NAME = 'lucas_session';
+
+/**
+ * B7: con HTTPS la cookie se llama `__Host-lucas_session`. El prefijo `__Host-` hace que el navegador solo la acepte si es `Secure`, de
+ * `Path=/` y SIN `Domain`: un subdominio o un sitio hermano no puede crearla ni pisarla. En HTTP (desarrollo) no es posible y se usa el nombre base.
+ */
+function session_cookie_name(): string
+{
+    return app_uses_https() ? '__Host-' . SESSION_NAME : SESSION_NAME;
+}
 
 /** Segundos de INACTIVIDAD tras los que la sesión caduca (30 minutos). Cada petición lo renueva. */
 const SESSION_IDLE_TIMEOUT = 1800;
@@ -77,7 +86,7 @@ function start_app_session(): void
     // Pragma) y pisa las que manda la aplicación: así el comportamiento depende solo de nuestras cabeceras.
     session_cache_limiter('');
 
-    session_name(SESSION_NAME);
+    session_name(session_cookie_name());
     session_set_cookie_params(session_cookie_options(app_uses_https()));
     session_start();
 }
@@ -97,7 +106,7 @@ function resolve_user_session(): array
 {
     // Sin la cookie de sesión no hay sesión que consultar: no se inicia ninguna (cada visita anónima crearía
     // un archivo de sesión en el servidor). La sesión se crea al iniciar sesión (log_in_user()).
-    if (session_status() !== PHP_SESSION_ACTIVE && !isset($_COOKIE[SESSION_NAME])) {
+    if (session_status() !== PHP_SESSION_ACTIVE && !isset($_COOKIE[session_cookie_name()])) {
         return ['user' => null, 'expired' => false, 'revoked' => false];
     }
 
@@ -241,7 +250,7 @@ function begin_two_factor_challenge(int $userId, string $fingerprint): void
 /** El reto de segundo factor en curso de ESTA sesión, o null si no hay o caducó. @return array{uid: int, fp: string, fallos: int}|null */
 function pending_two_factor(): ?array
 {
-    if (session_status() !== PHP_SESSION_ACTIVE && !isset($_COOKIE[SESSION_NAME])) {
+    if (session_status() !== PHP_SESSION_ACTIVE && !isset($_COOKIE[session_cookie_name()])) {
         return null;
     }
 

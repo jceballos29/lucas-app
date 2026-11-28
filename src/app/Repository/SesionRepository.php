@@ -175,6 +175,17 @@ final class SesionRepository
         $this->pdo->prepare('DELETE FROM sesiones_usuario WHERE id_sesion = :id')->execute(['id' => $sessionHash]);
     }
 
+    /** Borra las sesiones de TODOS los usuarios que ya caducaron por inactividad o por vida máxima (mantenimiento diario, B9). */
+    public function purgarTodasCaducadas(int $ttlSeconds = 1800): int
+    {
+        $stmt = $this->pdo->prepare('DELETE FROM sesiones_usuario WHERE ultimo_uso < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL :ttl SECOND) OR creado_en < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL :vida SECOND)');
+        $stmt->bindValue('ttl', max(60, $ttlSeconds), PDO::PARAM_INT);
+        $stmt->bindValue('vida', self::VIDA_MAXIMA_SEGUNDOS, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->rowCount();
+    }
+
     public function purgarExpiradas(int $userId, int $ttlSeconds = 1800): void
     {
         $stmt = $this->pdo->prepare(

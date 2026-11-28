@@ -146,7 +146,7 @@ $filasSesiones = array_map(static function (array $s) use ($sesionActualHash): a
         <?= csrf_field() ?>
         <input type="hidden" name="accion" value="clave">
         <?= Ui::field(['id' => 'clave_actual', 'label' => 'Contraseña actual', 'type' => 'password', 'autocomplete' => 'current-password', 'required' => true, 'error' => $errors['clave_actual'] ?? null]) ?>
-        <?= Ui::field(['id' => 'clave_nueva', 'label' => 'Contraseña nueva', 'type' => 'password', 'autocomplete' => 'new-password', 'required' => true, 'hint' => 'Mínimo 8 caracteres.', 'error' => $errors['clave_nueva'] ?? null, 'attrs' => ['minlength' => '8']]) ?>
+        <?= Ui::field(['id' => 'clave_nueva', 'label' => 'Contraseña nueva', 'type' => 'password', 'autocomplete' => 'new-password', 'required' => true, 'hint' => 'Mínimo 10 caracteres.', 'error' => $errors['clave_nueva'] ?? null, 'attrs' => ['minlength' => '10']]) ?>
         <?= Ui::field(['id' => 'clave_nueva2', 'label' => 'Repite la contraseña nueva', 'type' => 'password', 'autocomplete' => 'new-password', 'required' => true, 'error' => $errors['clave_nueva2'] ?? null]) ?>
         <div class="form-actions"><?= Ui::button('Cambiar contraseña', ['type' => 'submit']) ?></div>
     </form>

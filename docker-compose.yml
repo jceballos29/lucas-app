@@ -51,7 +51,7 @@ services:
   correo:
     extends:
       service: php
-    command: ["sh", "-c", "while true; do php scripts/enviar-cola.php || true; sleep 2; done"]
+    command: ["sh", "-c", "n=0; while true; do php scripts/enviar-cola.php || true; n=$$((n + 1)); if [ $$((n % 43200)) -eq 0 ]; then php scripts/mantenimiento.php || true; fi; sleep 2; done"]
     depends_on:
       db:
         condition: service_healthy

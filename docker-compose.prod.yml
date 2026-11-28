@@ -19,7 +19,7 @@ services:
     # comprobantes y /tmp (sesiones de PHP, en memoria). Quien ejecutara código en PHP no podría modificar la aplicación.
     read_only: true
     tmpfs:
-      - /tmp:size=64m,mode=1777
+      - /tmp:size=128m,mode=1777
     cap_drop:
       - ALL
     security_opt:
@@ -62,7 +62,7 @@ services:
   correo:
     extends:
       service: php
-    command: ["sh", "-c", "while true; do php scripts/enviar-cola.php || true; sleep 5; done"]
+    command: ["sh", "-c", "n=0; while true; do php scripts/enviar-cola.php || true; n=$$((n + 1)); if [ $$((n % 17280)) -eq 0 ]; then php scripts/mantenimiento.php || true; fi; sleep 5; done"]
     depends_on:
       db:
         condition: service_healthy

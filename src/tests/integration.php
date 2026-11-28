@@ -1722,6 +1722,21 @@ $s = $sesion5();
 same('registrarInicio() la vuelve a anotar', true, $ctx->resolver($s, $sid5, $ahora5)->user !== null);
 same('huella() no revela el hash y cambia con él', [32, true, true], [strlen(ContextoSesion::huella('abc')), !str_contains(ContextoSesion::huella('abc'), 'abc'), ContextoSesion::huella('a') !== ContextoSesion::huella('b')]);
 
+section('Borrado de cuenta e higiene de datos caducados (B8, B9)');
+$bU = (int) $usuarios->create('Borra Invitada', 'borra.invitada@correo.com', 'x');
+$bDueno = (int) $usuarios->create('Dueño B8', 'dueno.b8@correo.com', 'x');
+$bEsp = $container->gestionEspacios()->crear($bDueno, 'Casa B8', 'COP');
+$pdo->exec("INSERT INTO espacio_invitaciones (id_espacio, correo, rol, token_hash, expira_en) VALUES ($bEsp, 'borra.invitada@correo.com', 'editor', " . $pdo->quote(str_repeat('b', 64)) . ", NOW() + INTERVAL 1 DAY), ($bEsp, 'otra.persona@correo.com', 'editor', " . $pdo->quote(str_repeat('c', 64)) . ', NOW() + INTERVAL 1 DAY)');
+same('antes: hay invitaciones pendientes a su correo y a otro', [1, 1], [(int) $pdo->query("SELECT COUNT(*) FROM espacio_invitaciones WHERE correo = 'borra.invitada@correo.com'")->fetchColumn(), (int) $pdo->query("SELECT COUNT(*) FROM espacio_invitaciones WHERE correo = 'otra.persona@correo.com'")->fetchColumn()]);
+same('eliminar la cuenta', 'ok', $container->eliminarCuenta()->eliminar($bU));
+same('después: ya no queda ninguna invitación a SU correo (dato personal residual) y las de otras personas siguen', [0, 1], [(int) $pdo->query("SELECT COUNT(*) FROM espacio_invitaciones WHERE correo = 'borra.invitada@correo.com'")->fetchColumn(), (int) $pdo->query("SELECT COUNT(*) FROM espacio_invitaciones WHERE correo = 'otra.persona@correo.com'")->fetchColumn()]);
+
+$pdo->exec('INSERT INTO sesiones_usuario (id_sesion, id_usuario, ip, user_agent, creado_en, ultimo_uso) VALUES (' . $pdo->quote(str_repeat('1', 64)) . ", $bDueno, '1.1.1.1', 'a', NOW() - INTERVAL 2 HOUR, NOW() - INTERVAL 2 HOUR), (" . $pdo->quote(str_repeat('2', 64)) . ", $bDueno, '1.1.1.1', 'b', NOW() - INTERVAL 13 HOUR, NOW()), (" . $pdo->quote(str_repeat('3', 64)) . ", $bDueno, '1.1.1.1', 'c', NOW(), NOW())");
+same('purgarTodasCaducadas borra las inactivas y las de más de 12 h y conserva la viva', [2, ['3333333333333333333333333333333333333333333333333333333333333333'] ], [$container->sesiones()->purgarTodasCaducadas(), array_map('strval', $pdo->query("SELECT id_sesion FROM sesiones_usuario WHERE id_usuario = $bDueno")->fetchAll(PDO::FETCH_COLUMN))]);
+$pdo->exec("INSERT INTO restablecimientos (id_usuario, token_hash, expira_en) VALUES ($bDueno, " . $pdo->quote(str_repeat('d', 64)) . ', NOW() - INTERVAL 3 DAY)');
+$container->restablecimientos()->purge();
+same('purge de restablecimientos borra los caducados hace más de un día', 0, (int) $pdo->query("SELECT COUNT(*) FROM restablecimientos WHERE id_usuario = $bDueno")->fetchColumn());
+
 section('Índices de los espacios compartidos (R9)');
 $indices = static function (string $tabla) use ($pdo): array {
     $q = $pdo->prepare('SELECT index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = :t GROUP BY index_name');

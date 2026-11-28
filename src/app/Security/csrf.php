@@ -59,7 +59,7 @@ function csrf_is_valid(mixed $submitted): bool
 
     // Sin sesión (o sin token en ella) no hay con qué comparar; no se crea uno aquí: un token recién creado
     // jamás podría coincidir con el que trae la petición.
-    if (session_status() !== PHP_SESSION_ACTIVE && !isset($_COOKIE[SESSION_NAME])) {
+    if (session_status() !== PHP_SESSION_ACTIVE && !isset($_COOKIE[session_cookie_name()])) {
         return false;
     }
 

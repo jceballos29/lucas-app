@@ -5,11 +5,19 @@
 # de acceso, que son las que cuestan CPU (bcrypt a propósito).
 limit_req_zone $binary_remote_addr zone=acceso:10m rate=30r/m;
 
+# B2: los tokens de recuperación, verificación e invitación viajan en la URL (?token=…): no se escriben en el registro de accesos.
+map $request_uri $uri_sin_token {
+    ~^(?<ruta>[^?]*)\?(?<antes>.*?)token=[^&]*(?<despues>.*)$  "$ruta?${antes}token=oculto${despues}";
+    default $request_uri;
+}
+log_format sin_token '$remote_addr - [$time_local] "$request_method $uri_sin_token $server_protocol" $status $body_bytes_sent "$http_user_agent"';
+
 # HTTP: solo redirige a HTTPS (y deja pasar la validación de Let's Encrypt si se usa).
 server {
     listen 80;
     server_name ${APP_DOMAIN};
     server_tokens off;
+    access_log /var/log/nginx/access.log sin_token;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -33,9 +41,17 @@ server {
     ssl_session_timeout 1d;
     ssl_session_tickets off;
 
+    # B3: la aplicación limita los intentos por IP con REMOTE_ADDR. Si hay un balanceador o CDN DELANTE de este nginx, todos los visitantes
+    # llegarían con la IP del proxy (20 intentos globales bloquearían a todos). Solo entonces, descomenta y pon la red del proxy (NUNCA un
+    # rango abierto: cualquiera podría falsificar X-Forwarded-For y saltarse el límite). Ver docs/DESPLIEGUE.md.
+    # set_real_ip_from 10.0.0.0/8;
+    # real_ip_header X-Forwarded-For;
+    # real_ip_recursive on;
+
     root /var/www/html/public;
     index index.php;
     server_tokens off;
+    access_log /var/log/nginx/access.log sin_token;
     client_max_body_size 6m;
 
     include /etc/nginx/snippets/security-headers.conf;

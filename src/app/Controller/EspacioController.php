@@ -41,19 +41,9 @@ final class EspacioController
         $repo = $this->container->espacios();
         $gestion = $this->container->gestionEspacios();
 
-        // Si viene un token de invitación por GET, intentar aceptarla si corresponde al correo del usuario en sesión.
-        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && isset($_GET['token']) && is_string($_GET['token'])) {
-            $acepta = $gestion->aceptarInvitacion($user['id'], $user['email'], null, trim($_GET['token']));
-            if ($acepta['codigo'] === ReglasEspacio::OK && $acepta['id_espacio'] !== null) {
-                set_active_espacio($acepta['id_espacio']);
-                Flash::set('ok', "Te uniste al espacio compartido «{$acepta['nombre']}» y ya está activo.");
-            } elseif ($acepta['codigo'] === ReglasEspacio::CORREO_NO_VERIFICADO) {
-                Flash::set('error', 'Primero verifica tu correo (en Mi perfil) y vuelve a abrir el enlace de la invitación: solo se puede aceptar con un correo verificado.');
-            } else {
-                Flash::set('error', 'El enlace de invitación no es válido, ya caducó o fue enviado a otro correo electrónico.');
-            }
-            Response::redirect('/espacios.php');
-        }
+        // B2: el enlace del correo (?token=) es un GET y un GET no debe cambiar nada (un previsualizador de enlaces o un antivirus lo abriría):
+        // solo se muestra un botón «Aceptar»; aceptar es un POST con CSRF (acción `aceptar_token`).
+        $tokenPendiente = ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' ? Peticion::get('token') : '';
 
         if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             reject_foreign_origin();
@@ -177,6 +167,19 @@ final class EspacioController
                     Response::redirect('/espacios.php');
 
                     // no break
+                case 'aceptar_token':
+                    $acepta = $gestion->aceptarInvitacion($user['id'], $user['email'], null, Peticion::post('token'));
+                    if ($acepta['codigo'] === ReglasEspacio::OK && $acepta['id_espacio'] !== null) {
+                        set_active_espacio($acepta['id_espacio']);
+                        Flash::set('ok', "Te uniste al espacio compartido «{$acepta['nombre']}» y ya está activo.");
+                    } elseif ($acepta['codigo'] === ReglasEspacio::CORREO_NO_VERIFICADO) {
+                        Flash::set('error', 'Primero verifica tu correo (en Mi perfil) y vuelve a abrir el enlace de la invitación: solo se puede aceptar con un correo verificado.');
+                    } else {
+                        Flash::set('error', 'El enlace de invitación no es válido, ya caducó o fue enviado a otro correo electrónico.');
+                    }
+                    Response::redirect('/espacios.php');
+
+                    // no break
                 case 'aceptar_invitacion':
                     $invitacionId = self::id($_POST['id_invitacion'] ?? '');
                     if ($invitacionId < 1) {
@@ -296,6 +299,7 @@ final class EspacioController
             'errorsInvitar' => $errorsInvitar,
             'errorsEditar' => $errorsEditar,
             'flash' => Flash::pull(),
+            'tokenPendiente' => $tokenPendiente,
         ], 'Espacios y Cuenta Familiar', $user, 'app', 'espacios');
     }
 

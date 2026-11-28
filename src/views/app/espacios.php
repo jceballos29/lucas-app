@@ -20,9 +20,11 @@ use App\View\Ui;
  * @var array<string, string> $errorsInvitar
  * @var array<string, string> $errorsEditar
  * @var array{tone: string, message: string}|null $flash
+ * @var string $tokenPendiente Token del enlace de invitación del correo (GET): solo se muestra el botón para aceptar (B2).
  * @var array{id: int, name: string, email: string, espacio_id?: int|null, espacio_nombre?: string|null, espacio_rol?: string|null} $currentUser
  */
 $flash = $flash ?? null;
+$tokenPendiente = $tokenPendiente ?? '';
 $opcionesMoneda = [];
 foreach (array_keys(Dinero::MONEDAS) as $codigo) {
     $opcionesMoneda[$codigo] = $codigo . ' (' . Dinero::MONEDAS[$codigo] . ')';
@@ -37,6 +39,13 @@ foreach (array_keys(Dinero::MONEDAS) as $codigo) {
 ) ?>
 
 <?php if ($flash !== null): ?><?= Ui::notice($flash['message'], $flash['tone']) ?><?php endif; ?>
+
+<?php if ($tokenPendiente !== ''): ?>
+    <?= Ui::cardOpen(['title' => 'Tienes una invitación', 'subtitle' => 'Abriste el enlace de una invitación a un espacio compartido']) ?>
+        <p>Si la invitación es para tu correo, al aceptarla entrarás al espacio y verás sus cuentas y movimientos según el rol que te dieron.</p>
+        <?= Ui::postForm('/espacios.php', ['accion' => 'aceptar_token', 'token' => $tokenPendiente], Ui::button('Aceptar la invitación', ['type' => 'submit', 'icon' => 'check'])) ?>
+    <?= Ui::cardClose() ?>
+<?php endif; ?>
 
 <div class="stack stack--lg">
     <?php if ($invitacionesRecibidas !== []): ?>

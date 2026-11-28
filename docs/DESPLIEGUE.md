@@ -158,6 +158,13 @@ les pone permisos `600` y conserva las últimas 8 parejas. Programa una por sema
   espacio compartido Lucas borra sus archivos; para detectar restos: `docker compose -f docker-compose.prod.yml exec -T php php scripts/huerfanos-adjuntos.php`
   (solo informa; con `--borrar` los elimina; ignora lo más reciente de 24 h). También avisa de movimientos cuyo archivo falta.
 
+## 6b. Detrás de un proxy, sesiones y mantenimiento
+
+- **Proxy o CDN delante (B3).** Lucas limita los intentos de acceso por IP con la que ve nginx. Si hay un balanceador delante, todos los visitantes llegarían con la IP del proxy y 20 intentos globales bloquearían a todos: en `docker/nginx/production.conf.template` descomenta `set_real_ip_from` (**solo** la red del proxy, nunca un rango abierto: cualquiera falsificaría `X-Forwarded-For`), `real_ip_header` y `real_ip_recursive`. Sin proxy delante, déjalos comentados.
+- **Sesiones (B4, B7).** Cada visita al login crea un archivo de sesión pequeño (lleva el token CSRF); el recolector de PHP los borra (1 de cada 20 inicios) y `/tmp` del contenedor es una `tmpfs` de 128 MB. Si ves errores al iniciar sesión, mira `docker compose -f docker-compose.prod.yml exec php df -h /tmp`. Con HTTPS la cookie se llama `__Host-lucas_session`: **al actualizar desde una versión anterior, las sesiones abiertas se cierran una vez.**
+- **Mantenimiento (B9).** El servicio `correo` ejecuta `scripts/mantenimiento.php` una vez al día (enlaces vencidos, intentos viejos, sesiones caducadas, historial de la cola). Para lanzarlo a mano: `docker compose -f docker-compose.prod.yml exec -T php php scripts/mantenimiento.php`.
+- **Registro de accesos (B2).** nginx no escribe el valor de `token=` en `access.log` (lo sustituye por `oculto`).
+
 ## 7. Monitorización (RNF-14)
 
 **Correo.** Los correos de la aplicación salen por una cola: el servicio `correo` de `docker-compose.prod.yml` (arranca con el resto, se reinicia solo) los envía con reintentos. Comprueba que está vivo y la cola sana con

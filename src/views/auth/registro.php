@@ -28,7 +28,7 @@ $error = $error ?? null;
                 <?= csrf_field() ?>
                 <?= Ui::field(['id' => 'nombre', 'label' => 'Nombre completo', 'value' => $old['nombre'] ?? '', 'autocomplete' => 'name', 'required' => true, 'error' => $errors['nombre'] ?? null, 'attrs' => ['maxlength' => '80']]) ?>
                 <?= Ui::field(['id' => 'correo', 'label' => 'Correo electrónico', 'type' => 'email', 'value' => $old['correo'] ?? '', 'autocomplete' => 'email', 'placeholder' => 'tucorreo@ejemplo.com', 'required' => true, 'error' => $errors['correo'] ?? null, 'attrs' => ['maxlength' => '120']]) ?>
-                <?= Ui::field(['id' => 'clave', 'label' => 'Contraseña', 'type' => 'password', 'autocomplete' => 'new-password', 'required' => true, 'hint' => 'Mínimo 8 caracteres.', 'error' => $errors['clave'] ?? null, 'attrs' => ['minlength' => '8']]) ?>
+                <?= Ui::field(['id' => 'clave', 'label' => 'Contraseña', 'type' => 'password', 'autocomplete' => 'new-password', 'required' => true, 'hint' => 'Mínimo 10 caracteres.', 'error' => $errors['clave'] ?? null, 'attrs' => ['minlength' => '10']]) ?>
                 <?= Ui::field(['id' => 'clave2', 'label' => 'Repite la contraseña', 'type' => 'password', 'autocomplete' => 'new-password', 'required' => true, 'error' => $errors['clave2'] ?? null]) ?>
                 <?= Ui::button('Crear cuenta', ['type' => 'submit', 'block' => true]) ?>
             </form>

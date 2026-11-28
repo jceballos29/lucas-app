@@ -102,7 +102,7 @@ same('la columna de acciones no lleva etiqueta', false, str_contains($table, 'da
 
 section('RegistroValidator');
 $validator = new App\Validation\RegistroValidator();
-$ok = ['nombre' => '  Ana   María  ', 'correo' => ' ANA@Correo.COM ', 'clave' => 'secreta123', 'clave2' => 'secreta123'];
+$ok = ['nombre' => '  Ana   María  ', 'correo' => ' ANA@Correo.COM ', 'clave' => 'secreta1234', 'clave2' => 'secreta1234'];
 $result = $validator->validate($ok);
 same('un registro válido no da errores', [], $result['errors']);
 same('el nombre se limpia de espacios', 'Ana María', $result['data']['nombre']);
@@ -112,8 +112,8 @@ same('nombre de 81 caracteres', true, isset($validator->validate(['nombre' => st
 same('nombre de 80 caracteres', false, isset($validator->validate(['nombre' => str_repeat('a', 80)] + $ok)['errors']['nombre']));
 same('correo sin arroba', true, isset($validator->validate(['correo' => 'ana.correo.com'] + $ok)['errors']['correo']));
 same('correo de más de 120 caracteres', true, isset($validator->validate(['correo' => str_repeat('a', 115) . '@b.com'] + $ok)['errors']['correo']));
-same('contraseña de 7 caracteres', true, isset($validator->validate(['clave' => '1234567', 'clave2' => '1234567'] + $ok)['errors']['clave']));
-same('contraseña de 8 caracteres', [], $validator->validate(['clave' => '12345678', 'clave2' => '12345678'] + $ok)['errors']);
+same('contraseña de 9 caracteres', true, isset($validator->validate(['clave' => 'Zq7mK2xPw', 'clave2' => 'Zq7mK2xPw'] + $ok)['errors']['clave']));
+same('contraseña de 10 caracteres', [], $validator->validate(['clave' => 'Zq7mK2xPw9', 'clave2' => 'Zq7mK2xPw9'] + $ok)['errors']);
 same('contraseña de más de 72 bytes', true, isset($validator->validate(['clave' => str_repeat('a', 73), 'clave2' => str_repeat('a', 73)] + $ok)['errors']['clave']));
 same('contraseñas distintas', true, isset($validator->validate(['clave2' => 'otra-distinta'] + $ok)['errors']['clave2']));
 same('un campo en forma de arreglo cuenta como vacío', true, isset($validator->validate(['nombre' => ['x']] + $ok)['errors']['nombre']));
@@ -620,6 +620,22 @@ same('el 33,3 % de un tercio', 33.3, K::agrupar([$fila('A', '1'), $fila('B', '1'
 same('sin gastos', ['items' => [], 'total' => '0.00'], K::agrupar([]));
 same('con total cero no divide por cero', 0.0, K::agrupar([$fila('A', '0.00')])['items'][0]['percent']);
 
+section('Cookie de sesión con prefijo __Host- bajo HTTPS (B7)');
+same('con APP_ORIGIN https el nombre lleva el prefijo __Host- (y la cookie ya es Secure, Path=/ y sin Domain)', ['__Host-lucas_session', true, '/', ''], (static function (): array {
+    $antes = getenv('APP_ORIGIN');
+    putenv('APP_ORIGIN=https://lucas.ejemplo.com');
+    $r = [session_cookie_name(), session_cookie_options(true)['secure'], session_cookie_options(true)['path'], session_cookie_options(true)['domain']];
+    $antes === false ? putenv('APP_ORIGIN') : putenv("APP_ORIGIN=$antes");
+    return $r;
+})());
+same('con http (desarrollo) mantiene el nombre normal', 'lucas_session', (static function (): string {
+    $antes = getenv('APP_ORIGIN');
+    putenv('APP_ORIGIN=http://localhost:8090');
+    $r = session_cookie_name();
+    $antes === false ? putenv('APP_ORIGIN') : putenv("APP_ORIGIN=$antes");
+    return $r;
+})());
+
 section('ConfiguracionProduccion: sin claves de desarrollo ni débiles (B10)');
 use App\Security\ConfiguracionProduccion as CP;
 
@@ -644,7 +660,8 @@ same('ningún mensaje incluye el valor de una clave', false, str_contains(implod
 section('ManejadorErrores: un solo sitio traduce los fallos en respuestas (R6)');
 use App\Http\ManejadorErrores as ME;
 
-$logAntes = ini_get('error_log'); ini_set('error_log', '/dev/null');   // el detalle va al log: aquí no hace falta verlo
+$logAntes = ini_get('error_log');
+ini_set('error_log', '/dev/null');   // el detalle va al log: aquí no hace falta verlo
 ME::reiniciar();
 same('una RuntimeException (configuración) responde 500 con el aviso genérico', [500, 'Ocurrió un error inesperado. Inténtalo más tarde.'], ME::traducir(new RuntimeException('detalle secreto: clave=abc')));
 same('sin conexión a la base de datos responde 503', 503, ME::traducir(new App\Exceptions\DatabaseConnectionException('no conecta'))[0]);
@@ -654,7 +671,14 @@ same('una página puede cambiar el aviso de consulta para su petición (exportar
 ME::reiniciar();
 same('cualquier otro error (un fallo de programación) también da 500 con el aviso genérico, nunca una página en blanco', [500, 'Ocurrió un error inesperado. Inténtalo más tarde.'], ME::traducir(new TypeError('Argument #1 must be of type int')));
 same('el aviso nunca incluye el detalle técnico', false, str_contains(implode(' ', [ME::traducir(new PDOException('SELECT * FROM usuarios WHERE clave = 1'))[1], ME::traducir(new TypeError('secreto'))[1], ME::traducir(new RuntimeException('secreto'))[1]]), 'secreto'));
-same('en consola (CLI) registrar() no instala el manejador: allí un fallo debe verse como excepción', true, (static function (): bool { $antes = set_exception_handler(null); ME::registrar(); $despues = set_exception_handler(null); if ($antes !== null) { set_exception_handler($antes); } return $despues === null; })());
+same('en consola (CLI) registrar() no instala el manejador: allí un fallo debe verse como excepción', true, (static function (): bool {
+    $antes = set_exception_handler(null);
+    ME::registrar();
+    $despues = set_exception_handler(null);
+    if ($antes !== null) {
+        set_exception_handler($antes);
+    } return $despues === null;
+})());
 ini_set('error_log', (string) $logAntes);
 
 section('SmtpMailer: configuración que no se admite en producción (B5)');
@@ -752,12 +776,22 @@ same('un punto en medio de la línea no se toca', "a.b\r\n.\r\n", Msg::forData('
 section('ClaveValidator, tokens y huella de sesión');
 use App\Validation\ClaveValidator as CV;
 
-same('una contraseña válida', [], CV::errores('secreta123', 'secreta123'));
+same('una contraseña válida', [], CV::errores('secreta1234', 'secreta1234'));
 same('muy corta', ['clave'], array_keys(CV::errores('corta', 'corta')));
-same('de 8 caracteres exactos', [], CV::errores('12345678', '12345678'));
+same('de 9 caracteres ya no basta (mínimo 10, B6)', ['clave'], array_keys(CV::errores('Zq7mK2xPw', 'Zq7mK2xPw')));
+same('de 10 caracteres exactos', [], CV::errores('Zq7mK2xPw9', 'Zq7mK2xPw9'));
+same('una de las contraseñas más repetidas se rechaza aunque tenga 10 o más (en cualquier combinación de mayúsculas)', [true, true, true], [
+    isset(CV::errores('1234567890', '1234567890')['clave']), isset(CV::errores('PassWord123', 'PassWord123')['clave']), isset(CV::errores('Contraseña123', 'Contraseña123')['clave']),
+]);
+same('un solo carácter repetido o casi (aaaaaaaaaa, ababababab) se rechaza', [true, true], [isset(CV::errores('aaaaaaaaaa', 'aaaaaaaaaa')['clave']), isset(CV::errores('abababababab', 'abababababab')['clave'])]);
+same('la parte del correo antes de la @ dentro de la clave se rechaza; sin correo o con un nombre corto no', [true, false, false], [
+    isset(CV::errores('xx-juancarlos-99', 'xx-juancarlos-99', 'clave', 'clave2', 'juancarlos@correo.com')['clave']),
+    isset(CV::errores('xx-juancarlos-99', 'xx-juancarlos-99')['clave']),
+    isset(CV::errores('Zq7mK2xPw9ab', 'Zq7mK2xPw9ab', 'clave', 'clave2', 'ab@correo.com')['clave']),
+]);
 same('de más de 72 bytes', ['clave'], array_keys(CV::errores(str_repeat('a', 73), str_repeat('a', 73))));
-same('72 bytes exactos', [], CV::errores(str_repeat('a', 72), str_repeat('a', 72)));
-same('que no coincide', ['clave2'], array_keys(CV::errores('secreta123', 'otra-clave')));
+same('72 bytes exactos', [], CV::errores(str_repeat('aZ3k', 18), str_repeat('aZ3k', 18)));
+same('que no coincide', ['clave2'], array_keys(CV::errores('secreta1234', 'otra-clave')));
 same('con otros nombres de campo', ['clave_nueva2'], array_keys(CV::errores('secreta123', 'x', 'clave_nueva', 'clave_nueva2')));
 same('el registro usa las mismas reglas', true, CV::MIN === App\Validation\RegistroValidator::CLAVE_MIN && CV::MAX_BYTES === App\Validation\RegistroValidator::CLAVE_MAX_BYTES);
 use App\Auth\RecuperacionClave as RC;

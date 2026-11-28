@@ -34,7 +34,7 @@ final class VerificacionController
 
             if ($servicio->confirmar($token)) {
                 // Con sesión abierta se vuelve a Mi perfil; sin ella, al inicio de sesión.
-                if (isset($_COOKIE[SESSION_NAME]) && current_user() !== null) {
+                if (isset($_COOKIE[session_cookie_name()]) && current_user() !== null) {
                     Flash::set('ok', 'Listo: tu correo quedó verificado.');
                     Response::redirect('/perfil.php');
                 }

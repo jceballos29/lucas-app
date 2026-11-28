@@ -37,7 +37,7 @@ final class RegistroValidator
             $errors['correo'] = 'Escribe un correo válido (máximo ' . self::CORREO_MAX . ' caracteres).';
         }
 
-        $errors += ClaveValidator::errores($clave, $clave2);
+        $errors += ClaveValidator::errores($clave, $clave2, 'clave', 'clave2', $correo);
 
         return ['data' => ['nombre' => $nombre, 'correo' => $correo, 'clave' => $clave], 'errors' => $errors];
     }

@@ -1086,7 +1086,7 @@ contains "para elegir la contraseña nueva" "Contraseña nueva" "$TMP/body"
 contains "reenviando el token en un campo oculto" "name=\"token\" value=\"$TOK1\"" "$TMP/body"
 check "la página no se guarda en la caché" "Cache-Control: no-store" "$(grep -i '^cache-control' "$TMP/hdr" | tr -d '\r')"
 post_form "$J8" /restablecer.php "/restablecer.php?token=$TOK1" "token=$TOK1" "clave=corta" "clave2=corta"
-check "una contraseña corta se rechaza" "200" "$CODE"; contains "con un aviso" "al menos 8 caracteres" "$TMP/body"
+check "una contraseña corta se rechaza" "200" "$CODE"; contains "con un aviso" "al menos 10 caracteres" "$TMP/body"
 contains "y el formulario sigue disponible (el enlace no se gastó)" "Contraseña nueva" "$TMP/body"
 post_form "$J8" /restablecer.php "/restablecer.php?token=$TOK1" "token=$TOK1" "clave=$PN" "clave2=otra-distinta-1"
 contains "contraseñas distintas se rechazan" "no coinciden" "$TMP/body"
@@ -1189,7 +1189,7 @@ check "hay una segunda sesión abierta del mismo usuario" "302 /panel.php" "$COD
 cp_() { post_form "$JPF" /perfil.php /perfil.php "accion=clave" "clave_actual=$1" "clave_nueva=$2" "clave_nueva2=$3"; }
 cp_ "equivocada-1" "nueva-clave-56" "nueva-clave-56"
 check "con la contraseña actual equivocada se rechaza" "200" "$CODE"; contains "con un aviso" "La contraseña actual no es correcta" "$TMP/body"
-cp_ "$PPF" "corta" "corta";  contains "una nueva corta se rechaza" "al menos 8 caracteres" "$TMP/body"
+cp_ "$PPF" "corta" "corta";  contains "una nueva corta se rechaza" "al menos 10 caracteres" "$TMP/body"
 cp_ "$PPF" "nueva-clave-56" "distinta-clave-7";  contains "que no coincide se rechaza" "no coinciden" "$TMP/body"
 cp_ "$PPF" "$PPF" "$PPF";  contains "igual a la actual se rechaza" "distinta de la actual" "$TMP/body"
 JPF3="$(new_jar)"; login "$JPF3" "$UPF" "$PPF"
@@ -1846,6 +1846,34 @@ check "B10: la salida nunca contiene una clave" "0" "$(echo "$SALIDA" | grep -c 
 check "B10: un .env correcto pasa (exit 0)" "0" "$(docker compose exec -T php php scripts/comprobar-config.php /tmp/bueno.env >/dev/null 2>&1; echo $?)"
 check "B10: bin/comprobar-produccion rechaza el .env.example (exit 1)" "1" "$(ENV_FILE=.env.example bin/comprobar-produccion >/dev/null 2>&1; echo $?)"
 docker compose exec -T php rm -f /tmp/malo.env /tmp/bueno.env
+
+echo; echo "== Endurecimiento: enlace de invitación, registro de accesos, sesiones y contraseñas (B2, B4, B6, B7, B9)"
+UTOKID="$(uid "$USES")"
+sql "UPDATE usuarios SET correo_verificado_en = NOW() WHERE id_usuario=$UTOKID" >/dev/null
+TOKINV="$(printf 'b2-%s' "$RUN" | sha256)"   # un token de verdad: 64 caracteres hexadecimales
+sql "INSERT INTO espacio_invitaciones (id_espacio, correo, rol, token_hash, expira_en) VALUES ($ESPID, '$USES', 'lector', SHA2('$TOKINV', 256), NOW() + INTERVAL 1 DAY)" >/dev/null
+request "$JSES1" GET "/espacios.php?token=$TOKINV"
+check "B2: abrir el enlace de invitación (GET) no la acepta: muestra la página" "200" "$CODE"
+contains "B2: con un botón para aceptar" "Aceptar la invitación" "$TMP/body"
+check "B2: y no entró al espacio (un GET no cambia nada)" "0" "$(sql "SELECT COUNT(*) FROM espacio_miembros WHERE id_espacio=$ESPID AND id_usuario=$UTOKID")"
+post_form "$JSES1" /espacios.php "/espacios.php?token=$TOKINV" "accion=aceptar_token" "token=$(printf "no-existe-%s" "$RUN" | sha256)"
+check "B2: aceptar con un token que no existe no entra" "0" "$(sql "SELECT COUNT(*) FROM espacio_miembros WHERE id_espacio=$ESPID AND id_usuario=$UTOKID")"
+post_form "$JSES1" /espacios.php "/espacios.php?token=$TOKINV" "accion=aceptar_token" "token=$TOKINV"
+check "B2: aceptar con el botón (POST con CSRF) sí entra al espacio" "1" "$(sql "SELECT COUNT(*) FROM espacio_miembros WHERE id_espacio=$ESPID AND id_usuario=$UTOKID")"
+request "$JSES1" POST /espacios.php --data-urlencode "accion=aceptar_token" --data-urlencode "token=x"
+check "B2: sin token CSRF se rechaza (403)" "403" "$CODE"
+curl -s -o /dev/null "$BASE/restablecer.php?token=SECRETO-B2-$RUN&x=1"; sleep 1
+check "B2: el token de la URL no queda en el registro de accesos de nginx" "0" "$(docker compose logs nginx --tail 40 2>/dev/null | grep -c "SECRETO-B2-$RUN")"
+check "B2: (y la línea del registro sí está, con el token oculto)" "1" "$(docker compose logs nginx --tail 40 2>/dev/null | grep -c "restablecer.php?token=oculto&x=1")"
+check "B4: PHP recoge las sesiones viejas (gc 1 de cada 20)" "1/20" "$(docker compose exec -T php php -r 'echo ini_get("session.gc_probability") . "/" . ini_get("session.gc_divisor");')"
+check "B3: la plantilla de producción documenta el IP real detrás de un proxy (comentado)" "1" "$(grep -c '# real_ip_header X-Forwarded-For;' docker/nginx/production.conf.template)"
+check "B2: ...y el registro de accesos de producción oculta el token" "1" "$(grep -c 'access_log /var/log/nginx/access.log sin_token;' docker/nginx/production.conf.template | awk '{print ($1>=1)}')"
+check "B6: el registro rechaza una contraseña común de 10 caracteres" "200" "$(JB6="$(new_jar)"; register "$JB6" "smoke_${RUN}_b6@correo.com" "1234567890"; echo "$CODE")"
+contains "B6: y explica por qué" "demasiado fácil de adivinar" "$TMP/body"
+check "B6: (no se creó la cuenta)" "0" "$(sql "SELECT COUNT(*) FROM usuarios WHERE correo='smoke_${RUN}_b6@correo.com'")"
+request "$(new_jar)" GET /login.php
+check "B7: en desarrollo (HTTP) la cookie de sesión sigue llamándose lucas_session (con HTTPS sería __Host-lucas_session)" "1" "$(grep -i '^set-cookie: lucas_session=' "$TMP/hdr" | wc -l | tr -d ' ')"
+check "B9: el mantenimiento diario corre sin errores" "0" "$(docker compose exec -T php php scripts/mantenimiento.php >/dev/null 2>&1; echo $?)"
 
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

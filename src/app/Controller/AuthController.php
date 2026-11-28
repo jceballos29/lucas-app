@@ -230,7 +230,7 @@ final class AuthController
         reject_foreign_origin();
 
         // Sin sesión (caducó o ya salió) no hay token que comprobar: basta con ir a login.
-        if (isset($_COOKIE[SESSION_NAME])) {
+        if (isset($_COOKIE[session_cookie_name()])) {
             require_csrf();
             log_out_user();
         }

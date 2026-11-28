@@ -69,6 +69,8 @@ final class Esquema
         foreach (self::TABLAS_FINANCIERAS as $tabla) {
             $sentencias[] = ["DELETE FROM $tabla WHERE $propio", ['a']];
         }
+        // Las invitaciones pendientes a SU correo (de espacios ajenos) también son un dato personal suyo (RNF-20, B8).
+        $sentencias[] = ['DELETE FROM espacio_invitaciones WHERE correo = (SELECT correo FROM usuarios WHERE id_usuario = :a)', ['a']];
         foreach (['espacio_miembros', 'sesiones_usuario', 'restablecimientos'] as $tabla) {
             $sentencias[] = ["DELETE FROM $tabla WHERE id_usuario = :a", ['a']];
         }
