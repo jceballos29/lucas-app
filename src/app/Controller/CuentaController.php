@@ -6,7 +6,6 @@ namespace App\Controller;
 
 use App\Container;
 use App\Domain\Cuenta;
-use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Peticion;
 use App\Http\Response;
@@ -14,7 +13,6 @@ use App\Support\ConversorMoneda;
 use App\Support\Dinero;
 use App\Validation\CuentaValidator;
 use App\View\View;
-use RuntimeException;
 
 /** Cuentas del usuario (RF-05 a RF-07): listado con saldo calculado, alta, edición y desactivación. */
 final class CuentaController
@@ -28,28 +26,24 @@ final class CuentaController
         $user = require_login();
         $espacioId = $user['espacio_id'] ?? null;
 
-        try {
-            $cuentas = $this->container->cuentas();
+        $cuentas = $this->container->cuentas();
 
-            if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-                require_espacio_write($user);
-                $this->procesarPost($user['id'], $espacioId);
-            }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+            require_espacio_write($user);
+            $this->procesarPost($user['id'], $espacioId);
+        }
 
-            $lista = $cuentas->listByUser($user['id'], $espacioId);
-            $tasasRepo = $this->container->tasasCambio();
-            $tasasLista = $tasasRepo->listAll($user['id'], $espacioId);
-            $tasasMapa = $tasasRepo->listMap($user['id'], $espacioId);
-            $hoy = date('Y-m-d');
-            $resumenesTarjeta = [];
-            $cuotasRepo = $this->container->cuotasTarjeta();
-            foreach ($lista as $c) {
-                if ($c->tipo === 'tarjeta_credito') {
-                    $resumenesTarjeta[$c->id] = $cuotasRepo->resumenTarjeta($c->id, $c->diaCorte, $c->diaPagoLimite, $hoy);
-                }
+        $lista = $cuentas->listByUser($user['id'], $espacioId);
+        $tasasRepo = $this->container->tasasCambio();
+        $tasasLista = $tasasRepo->listAll($user['id'], $espacioId);
+        $tasasMapa = $tasasRepo->listMap($user['id'], $espacioId);
+        $hoy = date('Y-m-d');
+        $resumenesTarjeta = [];
+        $cuotasRepo = $this->container->cuotasTarjeta();
+        foreach ($lista as $c) {
+            if ($c->tipo === 'tarjeta_credito') {
+                $resumenesTarjeta[$c->id] = $cuotasRepo->resumenTarjeta($c->id, $c->diaCorte, $c->diaPagoLimite, $hoy);
             }
-        } catch (RuntimeException $error) {
-            self::fail($error);
         }
 
         // El patrimonio consolidado (RF-07, Fase 18) convierte las cuentas activas en otra moneda a la moneda base.
@@ -82,83 +76,79 @@ final class CuentaController
             Response::plain(404, "No encontrado.\n");
         }
 
-        try {
-            $repo = $this->container->cuentas();
-            $cuenta = $id > 0 ? $repo->findOwned($user['id'], $id, $espacioId) : null;
+        $repo = $this->container->cuentas();
+        $cuenta = $id > 0 ? $repo->findOwned($user['id'], $id, $espacioId) : null;
 
-            if ($id > 0 && $cuenta === null) {
-                Response::plain(404, "No encontrado.\n");
+        if ($id > 0 && $cuenta === null) {
+            Response::plain(404, "No encontrado.\n");
+        }
+
+        $errors = [];
+        $old = $cuenta === null
+            ? ['nombre' => '', 'tipo' => 'efectivo', 'moneda' => '', 'saldo_inicial' => '', 'dia_corte' => '', 'dia_pago_limite' => '', 'tasa_mensual' => '']
+            : [
+                'nombre' => $cuenta->nombre,
+                'tipo' => $cuenta->tipo,
+                'moneda' => $cuenta->moneda ?? '',
+                'saldo_inicial' => Dinero::paraCampo($cuenta->saldoInicial),
+                'dia_corte' => $cuenta->diaCorte !== null ? (string) $cuenta->diaCorte : '',
+                'dia_pago_limite' => $cuenta->diaPagoLimite !== null ? (string) $cuenta->diaPagoLimite : '',
+                'tasa_mensual' => $cuenta->tasaParaCampo(),
+            ];
+
+        if ($isPost) {
+            reject_foreign_origin();
+            require_csrf();
+
+            $result = (new CuentaValidator())->validate($_POST);
+            $data = $result['data'];
+            $errors = $result['errors'];
+            $old = [
+                'nombre' => $data['nombre'],
+                'tipo' => $data['tipo'],
+                'moneda' => strtoupper(Peticion::post('moneda')),
+                'saldo_inicial' => Peticion::post('saldo_inicial'),
+                'dia_corte' => Peticion::post('dia_corte'),
+                'dia_pago_limite' => Peticion::post('dia_pago_limite'),
+                'tasa_mensual' => Peticion::post('tasa_mensual'),
+            ];
+
+            if (!isset($errors['nombre']) && $repo->nameTaken($user['id'], $data['nombre'], $cuenta?->id, $espacioId)) {
+                $errors['nombre'] = 'Ya tienes una cuenta con ese nombre.';
             }
 
-            $errors = [];
-            $old = $cuenta === null
-                ? ['nombre' => '', 'tipo' => 'efectivo', 'moneda' => '', 'saldo_inicial' => '', 'dia_corte' => '', 'dia_pago_limite' => '', 'tasa_mensual' => '']
-                : [
-                    'nombre' => $cuenta->nombre,
-                    'tipo' => $cuenta->tipo,
-                    'moneda' => $cuenta->moneda ?? '',
-                    'saldo_inicial' => Dinero::paraCampo($cuenta->saldoInicial),
-                    'dia_corte' => $cuenta->diaCorte !== null ? (string) $cuenta->diaCorte : '',
-                    'dia_pago_limite' => $cuenta->diaPagoLimite !== null ? (string) $cuenta->diaPagoLimite : '',
-                    'tasa_mensual' => $cuenta->tasaParaCampo(),
-                ];
-
-            if ($isPost) {
-                reject_foreign_origin();
-                require_csrf();
-
-                $result = (new CuentaValidator())->validate($_POST);
-                $data = $result['data'];
-                $errors = $result['errors'];
-                $old = [
-                    'nombre' => $data['nombre'],
-                    'tipo' => $data['tipo'],
-                    'moneda' => strtoupper(Peticion::post('moneda')),
-                    'saldo_inicial' => Peticion::post('saldo_inicial'),
-                    'dia_corte' => Peticion::post('dia_corte'),
-                    'dia_pago_limite' => Peticion::post('dia_pago_limite'),
-                    'tasa_mensual' => Peticion::post('tasa_mensual'),
-                ];
-
-                if (!isset($errors['nombre']) && $repo->nameTaken($user['id'], $data['nombre'], $cuenta?->id, $espacioId)) {
-                    $errors['nombre'] = 'Ya tienes una cuenta con ese nombre.';
+            if ($errors === []) {
+                if ($cuenta === null) {
+                    $repo->create(
+                        $user['id'],
+                        $data['nombre'],
+                        $data['tipo'],
+                        $data['saldo_inicial'],
+                        $espacioId,
+                        $data['dia_corte'],
+                        $data['dia_pago_limite'],
+                        $data['tasa_mensual_bps'],
+                        $data['moneda'],
+                    );
+                    Flash::set('ok', "Se creó la cuenta «{$data['nombre']}».");
+                } else {
+                    $repo->update(
+                        $user['id'],
+                        $cuenta->id,
+                        $data['nombre'],
+                        $data['tipo'],
+                        $data['saldo_inicial'],
+                        $espacioId,
+                        $data['dia_corte'],
+                        $data['dia_pago_limite'],
+                        $data['tasa_mensual_bps'],
+                        $data['moneda'],
+                    );
+                    Flash::set('ok', "Se guardaron los cambios de «{$data['nombre']}».");
                 }
 
-                if ($errors === []) {
-                    if ($cuenta === null) {
-                        $repo->create(
-                            $user['id'],
-                            $data['nombre'],
-                            $data['tipo'],
-                            $data['saldo_inicial'],
-                            $espacioId,
-                            $data['dia_corte'],
-                            $data['dia_pago_limite'],
-                            $data['tasa_mensual_bps'],
-                            $data['moneda'],
-                        );
-                        Flash::set('ok', "Se creó la cuenta «{$data['nombre']}».");
-                    } else {
-                        $repo->update(
-                            $user['id'],
-                            $cuenta->id,
-                            $data['nombre'],
-                            $data['tipo'],
-                            $data['saldo_inicial'],
-                            $espacioId,
-                            $data['dia_corte'],
-                            $data['dia_pago_limite'],
-                            $data['tasa_mensual_bps'],
-                            $data['moneda'],
-                        );
-                        Flash::set('ok', "Se guardaron los cambios de «{$data['nombre']}».");
-                    }
-
-                    Response::redirect('/cuentas.php');
-                }
+                Response::redirect('/cuentas.php');
             }
-        } catch (RuntimeException $error) {
-            self::fail($error);
         }
 
         View::page('app/cuenta-form', ['cuenta' => $cuenta, 'old' => $old, 'errors' => $errors], $cuenta === null ? 'Nueva cuenta' : 'Editar cuenta', $user, 'app', 'cuentas');
@@ -178,101 +168,97 @@ final class CuentaController
             Response::plain(404, "No encontrado.\n");
         }
 
-        try {
-            $cuenta = $this->container->cuentas()->findOwned($user['id'], $id, $espacioId);
-            if ($cuenta === null) {
-                Response::plain(404, "No encontrado.\n");
-            }
-            if (!$cuenta->activa) {
-                Flash::set('error', "La cuenta «{$cuenta->nombre}» está inactiva. Actívala primero para conciliar su saldo.");
-                Response::redirect('/cuentas.php');
-            }
+        $cuenta = $this->container->cuentas()->findOwned($user['id'], $id, $espacioId);
+        if ($cuenta === null) {
+            Response::plain(404, "No encontrado.\n");
+        }
+        if (!$cuenta->activa) {
+            Flash::set('error', "La cuenta «{$cuenta->nombre}» está inactiva. Actívala primero para conciliar su saldo.");
+            Response::redirect('/cuentas.php');
+        }
 
-            $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
-            $catGastoDef = 0;
-            $catIngresoDef = 0;
-            foreach ($categorias as $k) {
-                if ($k->tipo === 'gasto' && ($catGastoDef === 0 || mb_strtolower($k->nombre) === 'otros gastos')) {
-                    $catGastoDef = $k->id;
-                }
-                if ($k->tipo === 'ingreso' && ($catIngresoDef === 0 || mb_strtolower($k->nombre) === 'otros ingresos')) {
-                    $catIngresoDef = $k->id;
-                }
+        $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
+        $catGastoDef = 0;
+        $catIngresoDef = 0;
+        foreach ($categorias as $k) {
+            if ($k->tipo === 'gasto' && ($catGastoDef === 0 || mb_strtolower($k->nombre) === 'otros gastos')) {
+                $catGastoDef = $k->id;
             }
+            if ($k->tipo === 'ingreso' && ($catIngresoDef === 0 || mb_strtolower($k->nombre) === 'otros ingresos')) {
+                $catIngresoDef = $k->id;
+            }
+        }
 
-            $errors = [];
+        $errors = [];
+        $old = [
+            'saldo_real' => Dinero::paraCampo($cuenta->saldo),
+            'id_categoria_gasto' => (string) $catGastoDef,
+            'id_categoria_ingreso' => (string) $catIngresoDef,
+            'fecha' => date('Y-m-d'),
+            'descripcion' => 'Ajuste por conciliación de saldo',
+        ];
+
+        if ($isPost) {
+            reject_foreign_origin();
+            require_csrf();
+
+            $saldoTexto = Peticion::post('saldo_real');
+            $catGastoId = Peticion::postEntero('id_categoria_gasto', $catGastoDef);
+            $catIngresoId = Peticion::postEntero('id_categoria_ingreso', $catIngresoDef);
+            $fecha = Peticion::post('fecha');
+            $descripcion = Peticion::post('descripcion');
+
             $old = [
-                'saldo_real' => Dinero::paraCampo($cuenta->saldo),
-                'id_categoria_gasto' => (string) $catGastoDef,
-                'id_categoria_ingreso' => (string) $catIngresoDef,
-                'fecha' => date('Y-m-d'),
-                'descripcion' => 'Ajuste por conciliación de saldo',
+                'saldo_real' => $saldoTexto,
+                'id_categoria_gasto' => (string) $catGastoId,
+                'id_categoria_ingreso' => (string) $catIngresoId,
+                'fecha' => $fecha,
+                'descripcion' => $descripcion,
             ];
 
-            if ($isPost) {
-                reject_foreign_origin();
-                require_csrf();
+            $saldoReal = Dinero::parse($saldoTexto);
+            if ($saldoReal === null) {
+                $errors['saldo_real'] = 'Escribe un monto válido, por ejemplo 1.250.000.';
+            } elseif ($cuenta->tipo !== 'tarjeta_credito' && str_starts_with($saldoReal, '-')) {
+                $errors['saldo_real'] = 'El saldo de esta cuenta no puede ser negativo (solo las tarjetas de crédito lo admiten).';
+            }
 
-                $saldoTexto = Peticion::post('saldo_real');
-                $catGastoId = Peticion::postEntero('id_categoria_gasto', $catGastoDef);
-                $catIngresoId = Peticion::postEntero('id_categoria_ingreso', $catIngresoDef);
-                $fecha = Peticion::post('fecha');
-                $descripcion = Peticion::post('descripcion');
+            if (!\App\Validation\MovimientoValidator::validDate($fecha)) {
+                $errors['fecha'] = 'Elige una fecha válida.';
+            }
 
-                $old = [
-                    'saldo_real' => $saldoTexto,
-                    'id_categoria_gasto' => (string) $catGastoId,
-                    'id_categoria_ingreso' => (string) $catIngresoId,
-                    'fecha' => $fecha,
-                    'descripcion' => $descripcion,
-                ];
+            if ($errors === [] && $saldoReal !== null) {
+                $res = $this->container->conciliacionCuenta()->conciliar(
+                    $user['id'],
+                    $cuenta->id,
+                    $saldoReal,
+                    $catIngresoId,
+                    $catGastoId,
+                    $fecha,
+                    $descripcion,
+                    $espacioId,
+                );
 
-                $saldoReal = Dinero::parse($saldoTexto);
-                if ($saldoReal === null) {
-                    $errors['saldo_real'] = 'Escribe un monto válido, por ejemplo 1.250.000.';
-                } elseif ($cuenta->tipo !== 'tarjeta_credito' && str_starts_with($saldoReal, '-')) {
-                    $errors['saldo_real'] = 'El saldo de esta cuenta no puede ser negativo (solo las tarjetas de crédito lo admiten).';
-                }
+                switch ($res['codigo']) {
+                    case \App\Cuentas\ConciliacionCuenta::OK:
+                        $tipoTxt = $res['tipo_ajuste'] === 'ingreso' ? 'un ingreso de ajuste' : 'un gasto de ajuste';
+                        Flash::set('ok', "Se concilió el saldo de «{$cuenta->nombre}» registrando $tipoTxt por " . Dinero::formatearEn($res['diferencia'], $cuenta->moneda) . '.');
+                        Response::redirect('/cuentas.php');
 
-                if (!\App\Validation\MovimientoValidator::validDate($fecha)) {
-                    $errors['fecha'] = 'Elige una fecha válida.';
-                }
+                        // no break
+                    case \App\Cuentas\ConciliacionCuenta::SIN_DIFERENCIA:
+                        Flash::set('info', "El saldo de «{$cuenta->nombre}» ya coincide con " . Dinero::formatearEn($saldoReal, $cuenta->moneda) . ': no hizo falta ningún ajuste.');
+                        Response::redirect('/cuentas.php');
 
-                if ($errors === [] && $saldoReal !== null) {
-                    $res = $this->container->conciliacionCuenta()->conciliar(
-                        $user['id'],
-                        $cuenta->id,
-                        $saldoReal,
-                        $catIngresoId,
-                        $catGastoId,
-                        $fecha,
-                        $descripcion,
-                        $espacioId,
-                    );
+                        // no break
+                    case \App\Cuentas\ConciliacionCuenta::SALDO_NEGATIVO_NO_PERMITIDO:
+                        $errors['saldo_real'] = 'El saldo de esta cuenta no puede ser negativo.';
+                        break;
 
-                    switch ($res['codigo']) {
-                        case \App\Cuentas\ConciliacionCuenta::OK:
-                            $tipoTxt = $res['tipo_ajuste'] === 'ingreso' ? 'un ingreso de ajuste' : 'un gasto de ajuste';
-                            Flash::set('ok', "Se concilió el saldo de «{$cuenta->nombre}» registrando $tipoTxt por " . Dinero::formatearEn($res['diferencia'], $cuenta->moneda) . '.');
-                            Response::redirect('/cuentas.php');
-
-                            // no break
-                        case \App\Cuentas\ConciliacionCuenta::SIN_DIFERENCIA:
-                            Flash::set('info', "El saldo de «{$cuenta->nombre}» ya coincide con " . Dinero::formatearEn($saldoReal, $cuenta->moneda) . ': no hizo falta ningún ajuste.');
-                            Response::redirect('/cuentas.php');
-
-                            // no break
-                        case \App\Cuentas\ConciliacionCuenta::SALDO_NEGATIVO_NO_PERMITIDO:
-                            $errors['saldo_real'] = 'El saldo de esta cuenta no puede ser negativo.';
-                            break;
-
-                        default:
-                            Response::plain(404, "No encontrado.\n");
-                    }
+                    default:
+                        Response::plain(404, "No encontrado.\n");
                 }
             }
-        } catch (RuntimeException $error) {
-            self::fail($error);
         }
 
         View::page('app/cuenta-conciliar', [
@@ -342,9 +328,4 @@ final class CuentaController
         Response::redirect('/cuentas.php');
     }
 
-    private static function fail(RuntimeException $error): never
-    {
-        [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
-        Response::plain($status, $message . "\n");
-    }
 }

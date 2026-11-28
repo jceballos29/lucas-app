@@ -6,13 +6,11 @@ namespace App\Controller;
 
 use App\Container;
 use App\Domain\Categoria;
-use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Peticion;
 use App\Http\Response;
 use App\Validation\CategoriaValidator;
 use App\View\View;
-use RuntimeException;
 
 /**
  * Categorías. `usuario()` (categorias.php): las predeterminadas, de solo lectura, y las propias del usuario, que puede
@@ -47,81 +45,76 @@ final class CategoriaController
         $old = ['nombre' => '', 'tipo' => 'gasto', 'color' => CategoriaValidator::COLOR_POR_DEFECTO];
         $editing = null;
 
-        try {
-            $repo = $this->container->categorias();
+        $repo = $this->container->categorias();
 
-            if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-                if (!$isAdmin) {
-                    require_espacio_write($user);
-                }
-                reject_foreign_origin();
-                require_csrf();
-
-                $accion = Peticion::postSinRecortar('accion');
-                $id = Peticion::postEntero('id');
-
-                switch ($accion) {
-                    case 'crear':
-                        $result = (new CategoriaValidator())->validate($_POST, true);
-                        $errors = $result['errors'];
-                        $old = $result['data'];
-
-                        if (!isset($errors['nombre']) && !isset($errors['tipo']) && $repo->nameTaken($owner, $old['nombre'], $old['tipo'], null, $espacioId)) {
-                            $errors['nombre'] = 'Ya existe una categoría con ese nombre en ' . Categoria::TIPOS[$old['tipo']] . '.';
-                        }
-
-                        if ($errors === []) {
-                            $repo->create($owner, $old['nombre'], $old['tipo'], $old['color'], $espacioId);
-                            Flash::set('ok', "Se creó la categoría «{$old['nombre']}».");
-                            Response::redirect($base);
-                        }
-                        break;
-
-                    case 'guardar':
-                        $editing = $this->target($repo, $user['id'], $isAdmin, $id, $espacioId);
-                        $result = (new CategoriaValidator())->validate($_POST, false);
-                        $errors = $result['errors'];
-                        $old = ['nombre' => $result['data']['nombre'], 'tipo' => $editing->tipo, 'color' => $result['data']['color']];
-
-                        if (!isset($errors['nombre']) && $repo->nameTaken($owner, $old['nombre'], $editing->tipo, $editing->id, $espacioId)) {
-                            $errors['nombre'] = 'Ya existe una categoría con ese nombre en ' . Categoria::TIPOS[$editing->tipo] . '.';
-                        }
-
-                        if ($errors === []) {
-                            $repo->update($owner, $editing->id, $old['nombre'], $old['color'], $espacioId);
-                            Flash::set('ok', "Se guardaron los cambios de «{$old['nombre']}».");
-                            Response::redirect($base);
-                        }
-                        break;
-
-                    case 'eliminar':
-                        $categoria = $this->target($repo, $user['id'], $isAdmin, $id, $espacioId);
-                        [$tone, $message] = match ($repo->delete($owner, $categoria->id, $espacioId)) {
-                            'ok' => ['ok', "Se eliminó la categoría «{$categoria->nombre}»."],
-                            'en_uso' => ['error', "No se puede eliminar «{$categoria->nombre}» porque tiene movimientos o presupuestos. Puedes cambiarle el nombre en su lugar."],
-                            default => ['error', 'Esa categoría ya no existe.'],
-                        };
-                        Flash::set($tone, $message);
-                        Response::redirect($base);
-
-                        // no break
-                    default:
-                        Response::plain(400, "Solicitud no válida.\n");
-                }
-            } elseif (isset($_GET['editar'])) {
-                if (!$isAdmin) {
-                    require_espacio_write($user);
-                }
-                $raw = $_GET['editar'];
-                $editing = $this->target($repo, $user['id'], $isAdmin, is_string($raw) && ctype_digit($raw) ? (int) $raw : 0, $espacioId);
-                $old = ['nombre' => $editing->nombre, 'tipo' => $editing->tipo, 'color' => $editing->color];
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+            if (!$isAdmin) {
+                require_espacio_write($user);
             }
+            reject_foreign_origin();
+            require_csrf();
 
-            $items = $isAdmin ? $repo->listDefaults() : $repo->listVisible($user['id'], $espacioId);
-        } catch (RuntimeException $error) {
-            [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
-            Response::plain($status, $message . "\n");
+            $accion = Peticion::postSinRecortar('accion');
+            $id = Peticion::postEntero('id');
+
+            switch ($accion) {
+                case 'crear':
+                    $result = (new CategoriaValidator())->validate($_POST, true);
+                    $errors = $result['errors'];
+                    $old = $result['data'];
+
+                    if (!isset($errors['nombre']) && !isset($errors['tipo']) && $repo->nameTaken($owner, $old['nombre'], $old['tipo'], null, $espacioId)) {
+                        $errors['nombre'] = 'Ya existe una categoría con ese nombre en ' . Categoria::TIPOS[$old['tipo']] . '.';
+                    }
+
+                    if ($errors === []) {
+                        $repo->create($owner, $old['nombre'], $old['tipo'], $old['color'], $espacioId);
+                        Flash::set('ok', "Se creó la categoría «{$old['nombre']}».");
+                        Response::redirect($base);
+                    }
+                    break;
+
+                case 'guardar':
+                    $editing = $this->target($repo, $user['id'], $isAdmin, $id, $espacioId);
+                    $result = (new CategoriaValidator())->validate($_POST, false);
+                    $errors = $result['errors'];
+                    $old = ['nombre' => $result['data']['nombre'], 'tipo' => $editing->tipo, 'color' => $result['data']['color']];
+
+                    if (!isset($errors['nombre']) && $repo->nameTaken($owner, $old['nombre'], $editing->tipo, $editing->id, $espacioId)) {
+                        $errors['nombre'] = 'Ya existe una categoría con ese nombre en ' . Categoria::TIPOS[$editing->tipo] . '.';
+                    }
+
+                    if ($errors === []) {
+                        $repo->update($owner, $editing->id, $old['nombre'], $old['color'], $espacioId);
+                        Flash::set('ok', "Se guardaron los cambios de «{$old['nombre']}».");
+                        Response::redirect($base);
+                    }
+                    break;
+
+                case 'eliminar':
+                    $categoria = $this->target($repo, $user['id'], $isAdmin, $id, $espacioId);
+                    [$tone, $message] = match ($repo->delete($owner, $categoria->id, $espacioId)) {
+                        'ok' => ['ok', "Se eliminó la categoría «{$categoria->nombre}»."],
+                        'en_uso' => ['error', "No se puede eliminar «{$categoria->nombre}» porque tiene movimientos o presupuestos. Puedes cambiarle el nombre en su lugar."],
+                        default => ['error', 'Esa categoría ya no existe.'],
+                    };
+                    Flash::set($tone, $message);
+                    Response::redirect($base);
+
+                    // no break
+                default:
+                    Response::plain(400, "Solicitud no válida.\n");
+            }
+        } elseif (isset($_GET['editar'])) {
+            if (!$isAdmin) {
+                require_espacio_write($user);
+            }
+            $raw = $_GET['editar'];
+            $editing = $this->target($repo, $user['id'], $isAdmin, is_string($raw) && ctype_digit($raw) ? (int) $raw : 0, $espacioId);
+            $old = ['nombre' => $editing->nombre, 'tipo' => $editing->tipo, 'color' => $editing->color];
         }
+
+        $items = $isAdmin ? $repo->listDefaults() : $repo->listVisible($user['id'], $espacioId);
 
         View::page($isAdmin ? 'admin/categorias' : 'app/categorias', [
             'base' => $base,

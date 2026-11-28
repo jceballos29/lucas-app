@@ -7,7 +7,6 @@ namespace App\Controller;
 use App\Container;
 use App\Domain\Cuenta;
 use App\Domain\Recurrente;
-use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Peticion;
 use App\Http\Response;
@@ -17,7 +16,6 @@ use App\Support\Frecuencia;
 use App\Validation\RecurrenteValidator;
 use App\View\Fecha;
 use App\View\View;
-use RuntimeException;
 
 /**
  * Movimientos recurrentes y gastos fijos programados (Fase 9):
@@ -41,14 +39,10 @@ final class RecurrenteController
             $this->procesarAccion($user['id'], $espacioId);
         }
 
-        try {
-            $auto = \App\Espacios\ReglasEspacio::puedeEscribir($user['espacio_rol'] ?? null)
-                ? $this->container->gestionRecurrentes()->procesarVencidos($user['id'], $hoy, $espacioId)
-                : ['aplicados' => 0, 'retenidosPorSaldo' => 0];
-            $recurrentes = $this->container->recurrentes()->listByUser($user['id'], $espacioId);
-        } catch (RuntimeException $error) {
-            self::fail($error);
-        }
+        $auto = \App\Espacios\ReglasEspacio::puedeEscribir($user['espacio_rol'] ?? null)
+            ? $this->container->gestionRecurrentes()->procesarVencidos($user['id'], $hoy, $espacioId)
+            : ['aplicados' => 0, 'retenidosPorSaldo' => 0];
+        $recurrentes = $this->container->recurrentes()->listByUser($user['id'], $espacioId);
 
         $gastosMensuales = [];
         $ingresosMensuales = [];
@@ -105,89 +99,85 @@ final class RecurrenteController
             Response::plain(404, "No encontrado.\n");
         }
 
-        try {
-            $recurrente = $id > 0 ? $this->container->recurrentes()->findOwned($user['id'], $id, $espacioId) : null;
+        $recurrente = $id > 0 ? $this->container->recurrentes()->findOwned($user['id'], $id, $espacioId) : null;
 
-            if ($id > 0 && $recurrente === null) {
-                Response::plain(404, "No encontrado.\n");
-            }
+        if ($id > 0 && $recurrente === null) {
+            Response::plain(404, "No encontrado.\n");
+        }
 
-            $errors = [];
-            $old = $recurrente === null
-                ? [
-                    'tipo' => 'gasto',
-                    'monto' => '',
-                    'frecuencia' => 'mensual',
-                    'proxima_fecha' => date('Y-m-d'),
-                    'id_cuenta' => '',
-                    'id_categoria' => '',
-                    'descripcion' => '',
-                    'auto_aplicar' => '1',
-                ]
-                : [
-                    'tipo' => $recurrente->tipo,
-                    'monto' => Dinero::paraCampo($recurrente->monto),
-                    'frecuencia' => $recurrente->frecuencia,
-                    'proxima_fecha' => $recurrente->proximaFecha,
-                    'id_cuenta' => (string) $recurrente->idCuenta,
-                    'id_categoria' => (string) $recurrente->idCategoria,
-                    'descripcion' => $recurrente->descripcion ?? '',
-                    'auto_aplicar' => $recurrente->autoAplicar ? '1' : '0',
-                ];
+        $errors = [];
+        $old = $recurrente === null
+            ? [
+                'tipo' => 'gasto',
+                'monto' => '',
+                'frecuencia' => 'mensual',
+                'proxima_fecha' => date('Y-m-d'),
+                'id_cuenta' => '',
+                'id_categoria' => '',
+                'descripcion' => '',
+                'auto_aplicar' => '1',
+            ]
+            : [
+                'tipo' => $recurrente->tipo,
+                'monto' => Dinero::paraCampo($recurrente->monto),
+                'frecuencia' => $recurrente->frecuencia,
+                'proxima_fecha' => $recurrente->proximaFecha,
+                'id_cuenta' => (string) $recurrente->idCuenta,
+                'id_categoria' => (string) $recurrente->idCategoria,
+                'descripcion' => $recurrente->descripcion ?? '',
+                'auto_aplicar' => $recurrente->autoAplicar ? '1' : '0',
+            ];
 
-            if ($isPost) {
-                reject_foreign_origin();
-                require_csrf();
+        if ($isPost) {
+            reject_foreign_origin();
+            require_csrf();
 
-                $result = (new RecurrenteValidator())->validate($_POST);
-                $errors = $result['errors'];
-                $old = [
-                    'tipo' => $result['data']['tipo'],
-                    'monto' => Peticion::post('monto'),
-                    'frecuencia' => $result['data']['frecuencia'],
-                    'proxima_fecha' => Peticion::post('proxima_fecha'),
-                    'id_cuenta' => (string) ($result['data']['id_cuenta'] ?: ''),
-                    'id_categoria' => (string) ($result['data']['id_categoria'] ?: ''),
-                    'descripcion' => $result['data']['descripcion'] ?? '',
-                    'auto_aplicar' => $result['data']['auto_aplicar'] ? '1' : '0',
-                ];
+            $result = (new RecurrenteValidator())->validate($_POST);
+            $errors = $result['errors'];
+            $old = [
+                'tipo' => $result['data']['tipo'],
+                'monto' => Peticion::post('monto'),
+                'frecuencia' => $result['data']['frecuencia'],
+                'proxima_fecha' => Peticion::post('proxima_fecha'),
+                'id_cuenta' => (string) ($result['data']['id_cuenta'] ?: ''),
+                'id_categoria' => (string) ($result['data']['id_categoria'] ?: ''),
+                'descripcion' => $result['data']['descripcion'] ?? '',
+                'auto_aplicar' => $result['data']['auto_aplicar'] ? '1' : '0',
+            ];
 
-                if ($errors === []) {
-                    $saved = $this->container->gestionRecurrentes()->guardar($user['id'], $recurrente?->id, $result['data'], $espacioId);
+            if ($errors === []) {
+                $saved = $this->container->gestionRecurrentes()->guardar($user['id'], $recurrente?->id, $result['data'], $espacioId);
 
-                    switch ($saved['codigo']) {
-                        case ReglasMovimiento::OK:
-                            $data = $result['data'];
-                            $etiqueta = $data['descripcion'] ?? ($data['tipo'] === 'ingreso' ? 'ingreso recurrente' : 'gasto fijo');
-                            $mensaje = $recurrente === null
-                                ? "Se programó «{$etiqueta}» (" . Dinero::formatear($data['monto']) . ' · ' . (Frecuencia::ETIQUETAS[$data['frecuencia']] ?? $data['frecuencia']) . ').'
-                                : 'Se guardaron los cambios del movimiento recurrente.';
-                            Flash::set('ok', $mensaje);
-                            Response::redirect('/recurrentes.php');
+                switch ($saved['codigo']) {
+                    case ReglasMovimiento::OK:
+                        $data = $result['data'];
+                        $etiqueta = $data['descripcion'] ?? ($data['tipo'] === 'ingreso' ? 'ingreso recurrente' : 'gasto fijo');
+                        $mensaje = $recurrente === null
+                            ? "Se programó «{$etiqueta}» (" . Dinero::formatear($data['monto']) . ' · ' . (Frecuencia::ETIQUETAS[$data['frecuencia']] ?? $data['frecuencia']) . ').'
+                            : 'Se guardaron los cambios del movimiento recurrente.';
+                        Flash::set('ok', $mensaje);
+                        Response::redirect('/recurrentes.php');
 
-                            // no break
-                        case ReglasMovimiento::TIPO_DISCORDANTE:
-                            $errors['id_categoria'] = 'Esa categoría no es de ' . ($result['data']['tipo'] === 'ingreso' ? 'ingresos' : 'gastos') . '. Elige otra o cambia el tipo.';
-                            break;
+                        // no break
+                    case ReglasMovimiento::TIPO_DISCORDANTE:
+                        $errors['id_categoria'] = 'Esa categoría no es de ' . ($result['data']['tipo'] === 'ingreso' ? 'ingresos' : 'gastos') . '. Elige otra o cambia el tipo.';
+                        break;
 
-                        case ReglasMovimiento::CUENTA_INACTIVA:
-                            $errors['id_cuenta'] = "La cuenta «{$saved['cuenta']}» está inactiva. Actívala en Cuentas o elige otra.";
-                            break;
+                    case ReglasMovimiento::CUENTA_INACTIVA:
+                        $errors['id_cuenta'] = "La cuenta «{$saved['cuenta']}» está inactiva. Actívala en Cuentas o elige otra.";
+                        break;
 
-                        default:
-                            Response::plain(404, "No encontrado.\n");
-                    }
+                    default:
+                        Response::plain(404, "No encontrado.\n");
                 }
             }
-
-            $cuentas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
-            ));
-            $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
-        } catch (RuntimeException $error) {
-            self::fail($error);
         }
+
+        $cuentas = array_values(array_filter(
+            $this->container->cuentas()->listByUser($user['id'], $espacioId),
+            static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
+        ));
+        $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
 
         View::page('app/recurrente-form', [
             'recurrente' => $recurrente,
@@ -210,70 +200,61 @@ final class RecurrenteController
             Response::plain(400, "Solicitud no válida.\n");
         }
 
-        try {
-            $repo = $this->container->recurrentes();
-            $rec = $repo->findOwned($userId, $id, $espacioId);
+        $repo = $this->container->recurrentes();
+        $rec = $repo->findOwned($userId, $id, $espacioId);
 
-            if ($rec === null) {
-                Response::plain(404, "No encontrado.\n");
-            }
+        if ($rec === null) {
+            Response::plain(404, "No encontrado.\n");
+        }
 
-            $nombre = $rec->nombreVisible();
+        $nombre = $rec->nombreVisible();
 
-            switch ($accion) {
-                case 'aplicar':
-                    $res = $this->container->gestionRecurrentes()->aplicarAhora($userId, $id, $espacioId);
-                    if ($res['codigo'] === ReglasMovimiento::OK) {
-                        $prox = Fecha::simple((string) $res['proximaFecha']);
-                        $mensaje = "Se registró «{$nombre}» (" . Dinero::formatear($rec->monto) . ") en «{$res['cuenta']}». Próxima fecha: $prox.";
-                        $aviso = !$rec->esIngreso() ? $this->container->avisoPresupuesto()->para($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId) : null;
-                        if (!$rec->esIngreso()) {
-                            $this->container->notificadorPresupuesto()->notificarGasto($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId);
-                        }
-                        Flash::set($aviso === null ? 'ok' : 'warn', $aviso === null ? $mensaje : "$mensaje $aviso");
-                    } elseif ($res['codigo'] === ReglasMovimiento::SALDO_INSUFICIENTE) {
-                        $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));
-                        Flash::set('error', "No se pudo registrar «{$nombre}»: la cuenta «{$res['cuenta']}» tiene $disp disponibles y no puede quedar en saldo negativo.");
-                    } elseif ($res['codigo'] === ReglasMovimiento::CUENTA_INACTIVA) {
-                        Flash::set('error', "No se pudo registrar «{$nombre}»: la cuenta «{$res['cuenta']}» está inactiva.");
-                    } else {
-                        Response::plain(404, "No encontrado.\n");
+        switch ($accion) {
+            case 'aplicar':
+                $res = $this->container->gestionRecurrentes()->aplicarAhora($userId, $id, $espacioId);
+                if ($res['codigo'] === ReglasMovimiento::OK) {
+                    $prox = Fecha::simple((string) $res['proximaFecha']);
+                    $mensaje = "Se registró «{$nombre}» (" . Dinero::formatear($rec->monto) . ") en «{$res['cuenta']}». Próxima fecha: $prox.";
+                    $aviso = !$rec->esIngreso() ? $this->container->avisoPresupuesto()->para($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId) : null;
+                    if (!$rec->esIngreso()) {
+                        $this->container->notificadorPresupuesto()->notificarGasto($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId);
                     }
-                    break;
+                    Flash::set($aviso === null ? 'ok' : 'warn', $aviso === null ? $mensaje : "$mensaje $aviso");
+                } elseif ($res['codigo'] === ReglasMovimiento::SALDO_INSUFICIENTE) {
+                    $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));
+                    Flash::set('error', "No se pudo registrar «{$nombre}»: la cuenta «{$res['cuenta']}» tiene $disp disponibles y no puede quedar en saldo negativo.");
+                } elseif ($res['codigo'] === ReglasMovimiento::CUENTA_INACTIVA) {
+                    Flash::set('error', "No se pudo registrar «{$nombre}»: la cuenta «{$res['cuenta']}» está inactiva.");
+                } else {
+                    Response::plain(404, "No encontrado.\n");
+                }
+                break;
 
-                case 'saltar':
-                    $siguiente = $this->container->gestionRecurrentes()->saltarPeriodo($userId, $id, $espacioId);
-                    if ($siguiente === null) {
-                        Response::plain(404, "No encontrado.\n");
-                    }
-                    Flash::set('info', "Se saltó este periodo de «{$nombre}». Próxima fecha: " . Fecha::simple($siguiente) . '.');
-                    break;
+            case 'saltar':
+                $siguiente = $this->container->gestionRecurrentes()->saltarPeriodo($userId, $id, $espacioId);
+                if ($siguiente === null) {
+                    Response::plain(404, "No encontrado.\n");
+                }
+                Flash::set('info', "Se saltó este periodo de «{$nombre}». Próxima fecha: " . Fecha::simple($siguiente) . '.');
+                break;
 
-                case 'pausar':
-                    $repo->setActivo($userId, $id, false, $espacioId);
-                    Flash::set('info', "Se pausó «{$nombre}». No se ejecutará hasta que lo vuelvas a activar.");
-                    break;
+            case 'pausar':
+                $repo->setActivo($userId, $id, false, $espacioId);
+                Flash::set('info', "Se pausó «{$nombre}». No se ejecutará hasta que lo vuelvas a activar.");
+                break;
 
-                case 'activar':
-                    $repo->setActivo($userId, $id, true, $espacioId);
-                    Flash::set('ok', "Se reactivó «{$nombre}».");
-                    break;
+            case 'activar':
+                $repo->setActivo($userId, $id, true, $espacioId);
+                Flash::set('ok', "Se reactivó «{$nombre}».");
+                break;
 
-                case 'eliminar':
-                    $repo->delete($userId, $id, $espacioId);
-                    Flash::set('ok', "Se eliminó la programación de «{$nombre}». Los movimientos ya registrados se conservan.");
-                    break;
-            }
-        } catch (RuntimeException $error) {
-            self::fail($error);
+            case 'eliminar':
+                $repo->delete($userId, $id, $espacioId);
+                Flash::set('ok', "Se eliminó la programación de «{$nombre}». Los movimientos ya registrados se conservan.");
+                break;
         }
 
         Response::redirect('/recurrentes.php');
     }
 
-    private static function fail(RuntimeException $error): never
-    {
-        [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
-        Response::plain($status, $message . "\n");
-    }
 }

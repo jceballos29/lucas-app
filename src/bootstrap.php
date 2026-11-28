@@ -27,3 +27,6 @@ if (!is_file($autoload)) {
 }
 
 require_once $autoload;
+
+// R6: un solo manejador de errores para todas las páginas (los fallos de la BD o de configuración responden 503/500 con un aviso genérico).
+\App\Http\ManejadorErrores::registrar();

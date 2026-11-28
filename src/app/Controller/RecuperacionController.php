@@ -82,28 +82,23 @@ final class RecuperacionController
         $token = is_string($source['token'] ?? null) ? $source['token'] : '';
         $errors = [];
 
-        try {
-            $servicio = $this->container->recuperacion();
+        $servicio = $this->container->recuperacion();
 
-            if ($isPost) {
-                reject_foreign_origin();
-                require_csrf();
+        if ($isPost) {
+            reject_foreign_origin();
+            require_csrf();
 
-                $clave = Peticion::postSinRecortar('clave');
-                $clave2 = Peticion::postSinRecortar('clave2');
-                $errors = ClaveValidator::errores($clave, $clave2);
+            $clave = Peticion::postSinRecortar('clave');
+            $clave2 = Peticion::postSinRecortar('clave2');
+            $errors = ClaveValidator::errores($clave, $clave2);
 
-                if ($errors === [] && $servicio->restablecer($token, $clave)) {
-                    Response::redirect('/login.php?msg=reset');
-                }
+            if ($errors === [] && $servicio->restablecer($token, $clave)) {
+                Response::redirect('/login.php?msg=reset');
             }
-
-            // Un enlace que no sirve (falso, usado o caducado) se muestra igual: no se distingue por qué.
-            $valido = $servicio->esValido($token);
-        } catch (RuntimeException $error) {
-            [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
-            Response::plain($status, $message . "\n");
         }
+
+        // Un enlace que no sirve (falso, usado o caducado) se muestra igual: no se distingue por qué.
+        $valido = $servicio->esValido($token);
 
         header('Cache-Control: no-store');
         View::page('auth/restablecer', ['token' => $token, 'valido' => $valido, 'errors' => $errors], 'Nueva contraseña', null, 'auth');

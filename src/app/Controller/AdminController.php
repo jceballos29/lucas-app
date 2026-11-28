@@ -6,7 +6,6 @@ namespace App\Controller;
 
 use App\Admin\ReglasAdmin;
 use App\Container;
-use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Peticion;
 use App\Http\Response;
@@ -14,7 +13,6 @@ use App\Security\AdminSemilla;
 use App\View\Fecha;
 use App\View\View;
 use DateTimeImmutable;
-use RuntimeException;
 
 /**
  * Dashboard de administración y gestión de usuarios (RF-28 a RF-33). Toda acción exige sesión Y rol `admin`
@@ -33,18 +31,14 @@ final class AdminController
     {
         $user = require_role('admin');
 
-        try {
-            $stats = $this->container->adminStats();
-            $totals = $stats->totals();
-            $registrations = array_map(
-                static fn (array $m): array => ['label' => Fecha::mesCorto($m['month']), 'value' => $m['value']],
-                $stats->registrationsByMonth(12),
-            );
-            $latest = $stats->latestUsers(4);
-            $semillaExpuesta = AdminSemilla::expuesto($this->container->usuarios()->findByEmail(AdminSemilla::CORREO), (string) getenv('APP_ENV'));
-        } catch (RuntimeException $error) {
-            self::fail($error);
-        }
+        $stats = $this->container->adminStats();
+        $totals = $stats->totals();
+        $registrations = array_map(
+            static fn (array $m): array => ['label' => Fecha::mesCorto($m['month']), 'value' => $m['value']],
+            $stats->registrationsByMonth(12),
+        );
+        $latest = $stats->latestUsers(4);
+        $semillaExpuesta = AdminSemilla::expuesto($this->container->usuarios()->findByEmail(AdminSemilla::CORREO), (string) getenv('APP_ENV'));
 
         View::page('admin/index', [
             'totals' => $totals,
@@ -59,20 +53,16 @@ final class AdminController
     {
         $user = require_role('admin');
 
-        try {
-            if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-                $this->change($user['id']);
-            }
-
-            $usuarios = $this->container->usuarios();
-            $q = self::query($_GET['q'] ?? '');
-            $total = $usuarios->countSearch($q);
-            $pages = max(1, (int) ceil($total / self::POR_PAGINA));
-            $page = min($pages, self::page($_GET['pagina'] ?? 1));
-            $rows = $usuarios->search($q, self::POR_PAGINA, ($page - 1) * self::POR_PAGINA);
-        } catch (RuntimeException $error) {
-            self::fail($error);
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+            $this->change($user['id']);
         }
+
+        $usuarios = $this->container->usuarios();
+        $q = self::query($_GET['q'] ?? '');
+        $total = $usuarios->countSearch($q);
+        $pages = max(1, (int) ceil($total / self::POR_PAGINA));
+        $page = min($pages, self::page($_GET['pagina'] ?? 1));
+        $rows = $usuarios->search($q, self::POR_PAGINA, ($page - 1) * self::POR_PAGINA);
 
         View::page('admin/usuarios', [
             'rows' => $rows,
@@ -140,9 +130,4 @@ final class AdminController
         return '/admin/usuarios.php' . ($params === [] ? '' : '?' . http_build_query($params));
     }
 
-    private static function fail(RuntimeException $error): never
-    {
-        [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
-        Response::plain($status, $message . "\n");
-    }
 }

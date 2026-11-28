@@ -9,14 +9,12 @@ use App\Deudas\GestionDeudas;
 use App\Deudas\PlanificadorDeudas;
 use App\Deudas\ReglasPagoDeuda;
 use App\Domain\Cuenta;
-use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Peticion;
 use App\Http\Response;
 use App\Support\Dinero;
 use App\Validation\DeudaValidator;
 use App\View\View;
-use RuntimeException;
 
 /**
  * Módulo de Deudas, cálculo de intereses y estrategias de pago Bola de Nieve / Avalancha (Fase 11).
@@ -32,16 +30,12 @@ final class DeudaController
         $user = require_login();
         $espacioId = $user['espacio_id'] ?? null;
 
-        try {
-            if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-                require_espacio_write($user);
-                $this->eliminar($user['id'], $espacioId);
-            }
-
-            $deudas = $this->container->deudas()->listByUser($user['id'], $espacioId);
-        } catch (RuntimeException $error) {
-            self::fail($error);
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+            require_espacio_write($user);
+            $this->eliminar($user['id'], $espacioId);
         }
+
+        $deudas = $this->container->deudas()->listByUser($user['id'], $espacioId);
 
         $extraTexto = Peticion::get('extra');
         $extraMonto = ($extraTexto !== '' ? Dinero::parse($extraTexto) : null) ?? '0.00';
@@ -73,66 +67,62 @@ final class DeudaController
             Response::plain(404, "No encontrado.\n");
         }
 
-        try {
-            $deuda = $id > 0 ? $this->container->deudas()->findOwned($user['id'], $id, $espacioId) : null;
+        $deuda = $id > 0 ? $this->container->deudas()->findOwned($user['id'], $id, $espacioId) : null;
 
-            if ($id > 0 && $deuda === null) {
+        if ($id > 0 && $deuda === null) {
+            Response::plain(404, "No encontrado.\n");
+        }
+
+        $errors = [];
+        $old = $deuda === null
+            ? [
+                'nombre' => '',
+                'acreedor' => '',
+                'monto_inicial' => '',
+                'tasa_mensual' => '0',
+                'cuota_minima' => '',
+                'dia_pago' => '',
+            ]
+            : [
+                'nombre' => $deuda->nombre,
+                'acreedor' => $deuda->acreedor ?? '',
+                'monto_inicial' => Dinero::paraCampo($deuda->montoInicial),
+                'tasa_mensual' => $deuda->tasaParaCampo(),
+                'cuota_minima' => Dinero::paraCampo($deuda->cuotaMinima),
+                'dia_pago' => $deuda->diaPago === null ? '' : (string) $deuda->diaPago,
+            ];
+
+        if ($isPost) {
+            reject_foreign_origin();
+            require_csrf();
+
+            $result = (new DeudaValidator())->validateDeuda($_POST);
+            $errors = $result['errors'];
+            $data = $result['data'];
+            $old = [
+                'nombre' => $data['nombre'],
+                'acreedor' => $data['acreedor'] ?? '',
+                'monto_inicial' => Peticion::post('monto_inicial'),
+                'tasa_mensual' => Peticion::post('tasa_mensual', '0'),
+                'cuota_minima' => Peticion::post('cuota_minima'),
+                'dia_pago' => Peticion::post('dia_pago'),
+            ];
+
+            if ($errors === []) {
+                if ($deuda === null) {
+                    $this->container->deudas()->create($user['id'], $data, $espacioId);
+                    Flash::set('ok', "Se registró la deuda «{$data['nombre']}». Revisa tu plan Bola de Nieve y Avalancha abajo.");
+                    Response::redirect('/deudas.php');
+                }
+
+                $saved = $this->container->gestionDeudas()->editar($user['id'], $deuda->id, $data, $espacioId);
+                if ($saved['codigo'] === GestionDeudas::OK) {
+                    Flash::set('ok', "Se guardaron los cambios de «{$data['nombre']}»." . ($saved['pagada'] ? ' ¡La deuda quedó pagada!' : ''));
+                    Response::redirect('/deudas.php');
+                }
+
                 Response::plain(404, "No encontrado.\n");
             }
-
-            $errors = [];
-            $old = $deuda === null
-                ? [
-                    'nombre' => '',
-                    'acreedor' => '',
-                    'monto_inicial' => '',
-                    'tasa_mensual' => '0',
-                    'cuota_minima' => '',
-                    'dia_pago' => '',
-                ]
-                : [
-                    'nombre' => $deuda->nombre,
-                    'acreedor' => $deuda->acreedor ?? '',
-                    'monto_inicial' => Dinero::paraCampo($deuda->montoInicial),
-                    'tasa_mensual' => $deuda->tasaParaCampo(),
-                    'cuota_minima' => Dinero::paraCampo($deuda->cuotaMinima),
-                    'dia_pago' => $deuda->diaPago === null ? '' : (string) $deuda->diaPago,
-                ];
-
-            if ($isPost) {
-                reject_foreign_origin();
-                require_csrf();
-
-                $result = (new DeudaValidator())->validateDeuda($_POST);
-                $errors = $result['errors'];
-                $data = $result['data'];
-                $old = [
-                    'nombre' => $data['nombre'],
-                    'acreedor' => $data['acreedor'] ?? '',
-                    'monto_inicial' => Peticion::post('monto_inicial'),
-                    'tasa_mensual' => Peticion::post('tasa_mensual', '0'),
-                    'cuota_minima' => Peticion::post('cuota_minima'),
-                    'dia_pago' => Peticion::post('dia_pago'),
-                ];
-
-                if ($errors === []) {
-                    if ($deuda === null) {
-                        $this->container->deudas()->create($user['id'], $data, $espacioId);
-                        Flash::set('ok', "Se registró la deuda «{$data['nombre']}». Revisa tu plan Bola de Nieve y Avalancha abajo.");
-                        Response::redirect('/deudas.php');
-                    }
-
-                    $saved = $this->container->gestionDeudas()->editar($user['id'], $deuda->id, $data, $espacioId);
-                    if ($saved['codigo'] === GestionDeudas::OK) {
-                        Flash::set('ok', "Se guardaron los cambios de «{$data['nombre']}»." . ($saved['pagada'] ? ' ¡La deuda quedó pagada!' : ''));
-                        Response::redirect('/deudas.php');
-                    }
-
-                    Response::plain(404, "No encontrado.\n");
-                }
-            }
-        } catch (RuntimeException $error) {
-            self::fail($error);
         }
 
         View::page('app/deuda-form', [
@@ -150,94 +140,90 @@ final class DeudaController
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
         $deudaId = self::id($isPost ? ($_POST['id'] ?? '') : ($_GET['id'] ?? ''));
 
-        try {
-            $deuda = $deudaId > 0 ? $this->container->deudas()->findOwned($user['id'], $deudaId, $espacioId) : null;
+        $deuda = $deudaId > 0 ? $this->container->deudas()->findOwned($user['id'], $deudaId, $espacioId) : null;
 
-            if ($deuda === null) {
-                Response::plain(404, "No encontrado.\n");
-            }
+        if ($deuda === null) {
+            Response::plain(404, "No encontrado.\n");
+        }
 
-            if (!$deuda->activa()) {
-                Flash::set('info', "La deuda «{$deuda->nombre}» ya está totalmente pagada.");
-                Response::redirect('/deudas.php');
-            }
+        if (!$deuda->activa()) {
+            Flash::set('info', "La deuda «{$deuda->nombre}» ya está totalmente pagada.");
+            Response::redirect('/deudas.php');
+        }
 
-            $interesSugerido = $deuda->interesMensual();
-            $saldoCapital = $deuda->saldoCapital();
-            $totalParaLiquidar = Dinero::sumar([$saldoCapital, $interesSugerido]);
-            $cuotaSugerida = Dinero::aCentavos($deuda->cuotaMinima) > Dinero::aCentavos($totalParaLiquidar)
-                ? $totalParaLiquidar
-                : $deuda->cuotaMinima;
+        $interesSugerido = $deuda->interesMensual();
+        $saldoCapital = $deuda->saldoCapital();
+        $totalParaLiquidar = Dinero::sumar([$saldoCapital, $interesSugerido]);
+        $cuotaSugerida = Dinero::aCentavos($deuda->cuotaMinima) > Dinero::aCentavos($totalParaLiquidar)
+            ? $totalParaLiquidar
+            : $deuda->cuotaMinima;
 
-            $errors = [];
+        $errors = [];
+        $old = [
+            'id_cuenta' => '',
+            'monto_total' => Dinero::paraCampo($cuotaSugerida),
+            'modo_pago' => 'cuota',
+            'fecha' => date('Y-m-d'),
+            'descripcion' => '',
+        ];
+
+        if ($isPost) {
+            reject_foreign_origin();
+            require_csrf();
+
+            $result = (new DeudaValidator())->validatePago($_POST);
+            $errors = $result['errors'];
+            $data = $result['data'];
             $old = [
-                'id_cuenta' => '',
-                'monto_total' => Dinero::paraCampo($cuotaSugerida),
-                'modo_pago' => 'cuota',
-                'fecha' => date('Y-m-d'),
-                'descripcion' => '',
+                'id_cuenta' => (string) ($data['id_cuenta'] ?: ''),
+                'monto_total' => Peticion::post('monto_total'),
+                'modo_pago' => $data['modo_pago'],
+                'fecha' => Peticion::post('fecha'),
+                'descripcion' => $data['descripcion'] ?? '',
             ];
 
-            if ($isPost) {
-                reject_foreign_origin();
-                require_csrf();
+            if ($errors === []) {
+                $saved = $this->container->gestionDeudas()->registrarPago($user['id'], $deuda->id, $data, $espacioId);
 
-                $result = (new DeudaValidator())->validatePago($_POST);
-                $errors = $result['errors'];
-                $data = $result['data'];
-                $old = [
-                    'id_cuenta' => (string) ($data['id_cuenta'] ?: ''),
-                    'monto_total' => Peticion::post('monto_total'),
-                    'modo_pago' => $data['modo_pago'],
-                    'fecha' => Peticion::post('fecha'),
-                    'descripcion' => $data['descripcion'] ?? '',
-                ];
+                switch ($saved['codigo']) {
+                    case ReglasPagoDeuda::OK:
+                        $msg = 'Se registró el pago de ' . Dinero::formatear($data['monto_total']) . " a «{$deuda->nombre}» desde «{$saved['cuenta']}» "
+                            . '(Capital amortizado: ' . Dinero::formatear($saved['abono_capital']) . ' · Intereses: ' . Dinero::formatear($saved['pago_interes']) . ').'
+                            . ($saved['pagada'] ? ' ¡Felicitaciones, liquidaste esta deuda!' : '');
+                        Flash::set('ok', $msg);
+                        Response::redirect('/deudas.php');
 
-                if ($errors === []) {
-                    $saved = $this->container->gestionDeudas()->registrarPago($user['id'], $deuda->id, $data, $espacioId);
+                        // no break
+                    case ReglasPagoDeuda::SALDO_INSUFICIENTE:
+                        $disp = Dinero::formatear((string) ($saved['saldo_cuenta'] ?? '0.00'));
+                        $errors['monto_total'] = "La cuenta «{$saved['cuenta']}» tiene $disp disponibles: no alcanza para realizar este pago.";
+                        break;
 
-                    switch ($saved['codigo']) {
-                        case ReglasPagoDeuda::OK:
-                            $msg = 'Se registró el pago de ' . Dinero::formatear($data['monto_total']) . " a «{$deuda->nombre}» desde «{$saved['cuenta']}» "
-                                . '(Capital amortizado: ' . Dinero::formatear($saved['abono_capital']) . ' · Intereses: ' . Dinero::formatear($saved['pago_interes']) . ').'
-                                . ($saved['pagada'] ? ' ¡Felicitaciones, liquidaste esta deuda!' : '');
-                            Flash::set('ok', $msg);
-                            Response::redirect('/deudas.php');
+                    case ReglasPagoDeuda::SUPERA_SALDO_DEUDA:
+                        $maximo = $data['modo_pago'] === 'capital' ? Dinero::formatear($saldoCapital) : Dinero::formatear($totalParaLiquidar);
+                        $errors['monto_total'] = "El abono a capital supera el saldo pendiente de la deuda. Para liquidarla hoy el máximo es $maximo.";
+                        break;
 
-                            // no break
-                        case ReglasPagoDeuda::SALDO_INSUFICIENTE:
-                            $disp = Dinero::formatear((string) ($saved['saldo_cuenta'] ?? '0.00'));
-                            $errors['monto_total'] = "La cuenta «{$saved['cuenta']}» tiene $disp disponibles: no alcanza para realizar este pago.";
-                            break;
+                    case ReglasPagoDeuda::CUENTA_INACTIVA:
+                        $errors['id_cuenta'] = "La cuenta «{$saved['cuenta']}» está inactiva. Actívala en Cuentas o elige otra.";
+                        break;
 
-                        case ReglasPagoDeuda::SUPERA_SALDO_DEUDA:
-                            $maximo = $data['modo_pago'] === 'capital' ? Dinero::formatear($saldoCapital) : Dinero::formatear($totalParaLiquidar);
-                            $errors['monto_total'] = "El abono a capital supera el saldo pendiente de la deuda. Para liquidarla hoy el máximo es $maximo.";
-                            break;
+                    case ReglasPagoDeuda::DEUDA_PAGADA:
+                        Flash::set('info', 'Esa deuda ya está pagada.');
+                        Response::redirect('/deudas.php');
 
-                        case ReglasPagoDeuda::CUENTA_INACTIVA:
-                            $errors['id_cuenta'] = "La cuenta «{$saved['cuenta']}» está inactiva. Actívala en Cuentas o elige otra.";
-                            break;
-
-                        case ReglasPagoDeuda::DEUDA_PAGADA:
-                            Flash::set('info', 'Esa deuda ya está pagada.');
-                            Response::redirect('/deudas.php');
-
-                            // no break
-                        default:
-                            Response::plain(404, "No encontrado.\n");
-                    }
+                        // no break
+                    default:
+                        Response::plain(404, "No encontrado.\n");
                 }
             }
-
-            $cuentas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
-            ));
-            $historial = $this->container->deudas()->listPagos($user['id'], $deuda->id, 30, $espacioId);
-        } catch (RuntimeException $error) {
-            self::fail($error);
         }
+
+        $cuentas = array_values(array_filter(
+            $this->container->cuentas()->listByUser($user['id'], $espacioId),
+            static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
+        ));
+        $historial = $this->container->deudas()->listPagos($user['id'], $deuda->id, 30, $espacioId);
 
         View::page('app/deuda-pago', [
             'deuda' => $deuda,
@@ -282,9 +268,4 @@ final class DeudaController
         return is_string($raw) && ctype_digit($raw) && strlen($raw) < 10 ? (int) $raw : 0;
     }
 
-    private static function fail(RuntimeException $error): never
-    {
-        [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
-        Response::plain($status, $message . "\n");
-    }
 }

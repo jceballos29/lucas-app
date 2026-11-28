@@ -6,15 +6,13 @@ namespace App\Controller;
 
 use App\Container;
 use App\Domain\Cuenta;
-use App\Http\Failure;
-use App\Http\Response;
+use App\Http\ManejadorErrores;
 use App\Reportes\Categorias;
 use App\Support\ConversorMoneda;
 use App\Support\Dinero;
 use App\Support\Mes;
 use App\View\View;
 use DateTimeImmutable;
-use RuntimeException;
 
 /** Reportes (RF-22): gastos por categoría de un mes y evolución mensual de ingresos y gastos. */
 final class ReporteController
@@ -30,17 +28,12 @@ final class ReporteController
         ['mes' => $mes, 'anio' => $anio] = Mes::desde($_GET, new DateTimeImmutable('now'));
         $meses = ($_GET['meses'] ?? '') === '12' ? 12 : 6;
 
-        try {
-            $monedaBase = Dinero::monedaActual();
-            $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
-            $reportes = $this->container->reportes();
-            $categorias = Categorias::agrupar($reportes->gastosPorCategoria($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas));
-            $etiquetasMes = $reportes->gastosPorEtiqueta($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
-            $evolucion = $reportes->evolucion($user['id'], $mes, $anio, $meses, $espacioId, $monedaBase, $tasas);
-        } catch (RuntimeException $error) {
-            [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
-            Response::plain($status, $message . "\n");
-        }
+        $monedaBase = Dinero::monedaActual();
+        $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
+        $reportes = $this->container->reportes();
+        $categorias = Categorias::agrupar($reportes->gastosPorCategoria($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas));
+        $etiquetasMes = $reportes->gastosPorEtiqueta($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
+        $evolucion = $reportes->evolucion($user['id'], $mes, $anio, $meses, $espacioId, $monedaBase, $tasas);
 
         $gastos = array_map(static fn (array $m): string => $m['gastos'], $evolucion);
 
@@ -67,24 +60,21 @@ final class ReporteController
         ['mes' => $mes, 'anio' => $anio] = Mes::desde($_GET, $hoy);
         $meses = ($_GET['meses'] ?? '') === '12' ? 12 : 6;
 
-        try {
-            $monedaBase = Dinero::monedaActual();
-            $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
-            $reportes = $this->container->reportes();
-            $totales = $reportes->totalesMes($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
-            $categorias = Categorias::agrupar($reportes->gastosPorCategoria($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas));
-            $etiquetasMes = $reportes->gastosPorEtiqueta($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
-            $evolucion = $reportes->evolucion($user['id'], $mes, $anio, $meses, $espacioId, $monedaBase, $tasas);
-            $presupuestos = $this->container->presupuestos()->listByMonth($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
-            $cuentas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa,
-            ));
-            $consolidado = ConversorMoneda::consolidarCuentas($cuentas, $monedaBase, $tasas);
-        } catch (RuntimeException $error) {
-            [$status, $message] = Failure::describe($error, 'No se pudo generar el reporte imprimible. Inténtalo más tarde.');
-            Response::plain($status, $message . "\n");
-        }
+        ManejadorErrores::mensajeDeConsulta('No se pudo generar el reporte imprimible. Inténtalo más tarde.');
+
+        $monedaBase = Dinero::monedaActual();
+        $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
+        $reportes = $this->container->reportes();
+        $totales = $reportes->totalesMes($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
+        $categorias = Categorias::agrupar($reportes->gastosPorCategoria($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas));
+        $etiquetasMes = $reportes->gastosPorEtiqueta($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
+        $evolucion = $reportes->evolucion($user['id'], $mes, $anio, $meses, $espacioId, $monedaBase, $tasas);
+        $presupuestos = $this->container->presupuestos()->listByMonth($user['id'], $mes, $anio, $espacioId, $monedaBase, $tasas);
+        $cuentas = array_values(array_filter(
+            $this->container->cuentas()->listByUser($user['id'], $espacioId),
+            static fn (Cuenta $c): bool => $c->activa,
+        ));
+        $consolidado = ConversorMoneda::consolidarCuentas($cuentas, $monedaBase, $tasas);
 
         $gastos = array_map(static fn (array $m): string => $m['gastos'], $evolucion);
 

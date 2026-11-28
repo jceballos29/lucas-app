@@ -6,7 +6,6 @@ namespace App\Controller;
 
 use App\Container;
 use App\Domain\Cuenta;
-use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Peticion;
 use App\Http\Response;
@@ -16,7 +15,6 @@ use App\Movimientos\ReglasMovimiento;
 use App\Support\AlmacenAdjuntos;
 use App\Support\Dinero;
 use App\View\View;
-use RuntimeException;
 
 /** Movimientos del usuario (RF-10 a RF-14): listado con filtros y paginación, alta, edición y eliminación. */
 final class MovimientoController
@@ -31,21 +29,17 @@ final class MovimientoController
         $espacioId = $user['espacio_id'] ?? null;
         $filtros = Filtros::desde($_GET);
 
-        try {
-            $repo = $this->container->movimientos();
-            $monedaBase = Dinero::monedaActual();
-            $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
-            $total = $repo->count($user['id'], $filtros, $espacioId);
-            $paginas = max(1, (int) ceil($total / Filtros::POR_PAGINA));
-            $pagina = min($paginas, self::page($_GET['pagina'] ?? 1));
-            $filas = $repo->search($user['id'], $filtros, Filtros::POR_PAGINA, ($pagina - 1) * Filtros::POR_PAGINA, $espacioId);
-            $totales = $repo->totals($user['id'], $filtros, $espacioId, $monedaBase, $tasas);
-            $etiquetas = $repo->listEtiquetas($user['id'], $espacioId);
-            $cuentas = $this->container->cuentas()->listByUser($user['id'], $espacioId);
-            $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
-        } catch (RuntimeException $error) {
-            self::fail($error);
-        }
+        $repo = $this->container->movimientos();
+        $monedaBase = Dinero::monedaActual();
+        $tasas = $this->container->tasasCambio()->listMap($user['id'], $espacioId);
+        $total = $repo->count($user['id'], $filtros, $espacioId);
+        $paginas = max(1, (int) ceil($total / Filtros::POR_PAGINA));
+        $pagina = min($paginas, self::page($_GET['pagina'] ?? 1));
+        $filas = $repo->search($user['id'], $filtros, Filtros::POR_PAGINA, ($pagina - 1) * Filtros::POR_PAGINA, $espacioId);
+        $totales = $repo->totals($user['id'], $filtros, $espacioId, $monedaBase, $tasas);
+        $etiquetas = $repo->listEtiquetas($user['id'], $espacioId);
+        $cuentas = $this->container->cuentas()->listByUser($user['id'], $espacioId);
+        $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
 
         View::page('app/movimientos', [
             'rows' => $filas,
@@ -76,49 +70,45 @@ final class MovimientoController
             Response::plain(404, "No encontrado.\n");
         }
 
-        try {
-            $movimiento = $id > 0 ? $this->container->movimientos()->findOwned($user['id'], $id, $espacioId) : null;
+        $movimiento = $id > 0 ? $this->container->movimientos()->findOwned($user['id'], $id, $espacioId) : null;
 
-            if ($id > 0 && $movimiento === null) {
-                Response::plain(404, "No encontrado.\n");
-            }
-
-            $errors = [];
-            $splitOld = FormularioMovimiento::filasDivisionVacias();
-            $old = FormularioMovimiento::inicial($movimiento);
-
-            if ($isPost) {
-                reject_foreign_origin();
-                require_csrf();
-
-                $envio = FormularioMovimiento::leer($_POST, is_array($_FILES['comprobante'] ?? null) ? $_FILES['comprobante'] : null, $movimiento !== null);
-                [$old, $splitOld, $errors] = [$envio->old, $envio->splitOld, $envio->errors];
-
-                if ($envio->valido()) {
-                    $res = $this->container->guardarMovimiento()->guardar($user['id'], $movimiento, $envio, $espacioId);
-
-                    if ($res->noEncontrado) {
-                        Response::plain(404, "No encontrado.\n");
-                    }
-
-                    if ($res->ok) {
-                        Flash::set($res->tono, $res->mensaje);
-                        Response::redirect('/movimientos.php');
-                    }
-
-                    $errors = $res->errors;
-                }
-            }
-
-            // Cuentas activas; si el movimiento está en una que ya no lo es, también esa (marcada), para que el formulario diga la verdad.
-            $cuentas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
-            ));
-            $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
-        } catch (RuntimeException $error) {
-            self::fail($error);
+        if ($id > 0 && $movimiento === null) {
+            Response::plain(404, "No encontrado.\n");
         }
+
+        $errors = [];
+        $splitOld = FormularioMovimiento::filasDivisionVacias();
+        $old = FormularioMovimiento::inicial($movimiento);
+
+        if ($isPost) {
+            reject_foreign_origin();
+            require_csrf();
+
+            $envio = FormularioMovimiento::leer($_POST, is_array($_FILES['comprobante'] ?? null) ? $_FILES['comprobante'] : null, $movimiento !== null);
+            [$old, $splitOld, $errors] = [$envio->old, $envio->splitOld, $envio->errors];
+
+            if ($envio->valido()) {
+                $res = $this->container->guardarMovimiento()->guardar($user['id'], $movimiento, $envio, $espacioId);
+
+                if ($res->noEncontrado) {
+                    Response::plain(404, "No encontrado.\n");
+                }
+
+                if ($res->ok) {
+                    Flash::set($res->tono, $res->mensaje);
+                    Response::redirect('/movimientos.php');
+                }
+
+                $errors = $res->errors;
+            }
+        }
+
+        // Cuentas activas; si el movimiento está en una que ya no lo es, también esa (marcada), para que el formulario diga la verdad.
+        $cuentas = array_values(array_filter(
+            $this->container->cuentas()->listByUser($user['id'], $espacioId),
+            static fn (Cuenta $c): bool => $c->activa || (string) $c->id === $old['id_cuenta'],
+        ));
+        $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
 
         View::page('app/movimiento-form', [
             'movimiento' => $movimiento,
@@ -142,11 +132,7 @@ final class MovimientoController
             Response::plain(404, "No encontrado.\n");
         }
 
-        try {
-            $mov = $this->container->movimientos()->findOwned($user['id'], $id, $espacioId);
-        } catch (RuntimeException $error) {
-            self::fail($error);
-        }
+        $mov = $this->container->movimientos()->findOwned($user['id'], $id, $espacioId);
 
         if ($mov === null || !$mov->tieneAdjunto()) {
             Response::plain(404, "No encontrado.\n");
@@ -192,11 +178,7 @@ final class MovimientoController
             Response::plain(400, "Solicitud no válida.\n");
         }
 
-        try {
-            $borrado = $this->container->gestionMovimientos()->eliminar($user['id'], $id, $espacioId);
-        } catch (RuntimeException $error) {
-            self::fail($error);
-        }
+        $borrado = $this->container->gestionMovimientos()->eliminar($user['id'], $id, $espacioId);
 
         if (!$borrado) {
             Response::plain(404, "No encontrado.\n");
@@ -219,139 +201,135 @@ final class MovimientoController
         $espacioId = $user['espacio_id'] ?? null;
         $isPost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
 
-        try {
-            $cuentas = array_values(array_filter(
-                $this->container->cuentas()->listByUser($user['id'], $espacioId),
-                static fn (Cuenta $c): bool => $c->activa,
-            ));
-            $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
+        $cuentas = array_values(array_filter(
+            $this->container->cuentas()->listByUser($user['id'], $espacioId),
+            static fn (Cuenta $c): bool => $c->activa,
+        ));
+        $categorias = $this->container->categorias()->listVisible($user['id'], $espacioId);
 
-            $catGastoDef = 0;
-            $catIngresoDef = 0;
-            foreach ($categorias as $k) {
-                if ($k->tipo === 'gasto' && ($catGastoDef === 0 || mb_strtolower($k->nombre) === 'otros gastos')) {
-                    $catGastoDef = $k->id;
-                }
-                if ($k->tipo === 'ingreso' && ($catIngresoDef === 0 || mb_strtolower($k->nombre) === 'otros ingresos')) {
-                    $catIngresoDef = $k->id;
+        $catGastoDef = 0;
+        $catIngresoDef = 0;
+        foreach ($categorias as $k) {
+            if ($k->tipo === 'gasto' && ($catGastoDef === 0 || mb_strtolower($k->nombre) === 'otros gastos')) {
+                $catGastoDef = $k->id;
+            }
+            if ($k->tipo === 'ingreso' && ($catIngresoDef === 0 || mb_strtolower($k->nombre) === 'otros ingresos')) {
+                $catIngresoDef = $k->id;
+            }
+        }
+
+        $errors = [];
+        $erroresCsv = [];
+        $preview = null;
+        $old = [
+            'id_cuenta' => isset($cuentas[0]) ? (string) $cuentas[0]->id : '',
+            'id_categoria_gasto' => (string) $catGastoDef,
+            'id_categoria_ingreso' => (string) $catIngresoDef,
+            'csv_texto' => '',
+        ];
+
+        if ($isPost) {
+            reject_foreign_origin();
+            require_csrf();
+
+            $cuentaId = Peticion::postEntero('id_cuenta');
+            $catGastoId = Peticion::postEntero('id_categoria_gasto');
+            $catIngresoId = Peticion::postEntero('id_categoria_ingreso');
+            $csvTexto = Peticion::post('csv_texto');
+
+            // Si subió un archivo .csv, usar su contenido si es válido.
+            if (isset($_FILES['csv_archivo']) && is_array($_FILES['csv_archivo']) && ($_FILES['csv_archivo']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $tmpName = (string) ($_FILES['csv_archivo']['tmp_name'] ?? '');
+                $size = (int) ($_FILES['csv_archivo']['size'] ?? 0);
+                if ($size > 0 && $size <= 512_000 && is_uploaded_file($tmpName)) {
+                    $csvTexto = trim((string) file_get_contents($tmpName));
                 }
             }
 
-            $errors = [];
-            $erroresCsv = [];
-            $preview = null;
             $old = [
-                'id_cuenta' => isset($cuentas[0]) ? (string) $cuentas[0]->id : '',
-                'id_categoria_gasto' => (string) $catGastoDef,
-                'id_categoria_ingreso' => (string) $catIngresoDef,
-                'csv_texto' => '',
+                'id_cuenta' => (string) ($cuentaId ?: ''),
+                'id_categoria_gasto' => (string) ($catGastoId ?: ''),
+                'id_categoria_ingreso' => (string) ($catIngresoId ?: ''),
+                'csv_texto' => $csvTexto,
             ];
 
-            if ($isPost) {
-                reject_foreign_origin();
-                require_csrf();
+            if ($cuentaId < 1) {
+                $errors['id_cuenta'] = 'Elige la cuenta donde se importarán los movimientos.';
+            }
+            if ($catGastoId < 1) {
+                $errors['id_categoria_gasto'] = 'Elige la categoría por defecto para los gastos.';
+            }
+            if ($catIngresoId < 1) {
+                $errors['id_categoria_ingreso'] = 'Elige la categoría por defecto para los ingresos.';
+            }
+            if ($csvTexto === '') {
+                $errors['csv_texto'] = 'Pega las líneas CSV o selecciona un archivo .csv.';
+            }
 
-                $cuentaId = Peticion::postEntero('id_cuenta');
-                $catGastoId = Peticion::postEntero('id_categoria_gasto');
-                $catIngresoId = Peticion::postEntero('id_categoria_ingreso');
-                $csvTexto = Peticion::post('csv_texto');
+            // M8/U4: primero una VISTA PREVIA; solo «confirmar» guarda. «editar» vuelve al formulario con el texto.
+            $accion = Peticion::postSinRecortar('accion', 'previsualizar');
 
-                // Si subió un archivo .csv, usar su contenido si es válido.
-                if (isset($_FILES['csv_archivo']) && is_array($_FILES['csv_archivo']) && ($_FILES['csv_archivo']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
-                    $tmpName = (string) ($_FILES['csv_archivo']['tmp_name'] ?? '');
-                    $size = (int) ($_FILES['csv_archivo']['size'] ?? 0);
-                    if ($size > 0 && $size <= 512_000 && is_uploaded_file($tmpName)) {
-                        $csvTexto = trim((string) file_get_contents($tmpName));
+            if ($accion === 'editar') {
+                $errors = [];
+            } elseif ($errors === []) {
+                $parsed = \App\Movimientos\ImportadorCsv::parsearTexto($csvTexto);
+                if ($parsed['errores'] !== []) {
+                    $n = count($parsed['errores']);
+                    // Se listan todos los problemas con su línea, hasta 50 (un archivo basura de 500 KB no debe generar una página gigante).
+                    $erroresCsv = array_slice($parsed['errores'], 0, 50);
+                    if ($n > 50) {
+                        $erroresCsv[] = '… y ' . ($n - 50) . ' problemas más.';
                     }
-                }
+                    $errors['csv_texto'] = $n === 1 ? 'Hay 1 línea con problemas. Corrígela y vuelve a previsualizar.' : "Hay $n líneas con problemas. Corrígelas y vuelve a previsualizar.";
+                } elseif ($parsed['filas'] === []) {
+                    $errors['csv_texto'] = 'No se encontraron filas de movimientos válidas en el CSV.';
+                } else {
+                    $importador = $this->container->importadorCsv();
+                    $preview = $importador->vistaPrevia($user['id'], $cuentaId, $parsed['filas'], $espacioId);
 
-                $old = [
-                    'id_cuenta' => (string) ($cuentaId ?: ''),
-                    'id_categoria_gasto' => (string) ($catGastoId ?: ''),
-                    'id_categoria_ingreso' => (string) ($catIngresoId ?: ''),
-                    'csv_texto' => $csvTexto,
-                ];
+                    if ($preview === null) {
+                        Response::plain(404, "No encontrado.\n");
+                    }
 
-                if ($cuentaId < 1) {
-                    $errors['id_cuenta'] = 'Elige la cuenta donde se importarán los movimientos.';
-                }
-                if ($catGastoId < 1) {
-                    $errors['id_categoria_gasto'] = 'Elige la categoría por defecto para los gastos.';
-                }
-                if ($catIngresoId < 1) {
-                    $errors['id_categoria_ingreso'] = 'Elige la categoría por defecto para los ingresos.';
-                }
-                if ($csvTexto === '') {
-                    $errors['csv_texto'] = 'Pega las líneas CSV o selecciona un archivo .csv.';
-                }
+                    $preview['filas'] = $parsed['filas'];
+                    $preview['truncado'] = $parsed['truncado'];
 
-                // M8/U4: primero una VISTA PREVIA; solo «confirmar» guarda. «editar» vuelve al formulario con el texto.
-                $accion = Peticion::postSinRecortar('accion', 'previsualizar');
-
-                if ($accion === 'editar') {
-                    $errors = [];
-                } elseif ($errors === []) {
-                    $parsed = \App\Movimientos\ImportadorCsv::parsearTexto($csvTexto);
-                    if ($parsed['errores'] !== []) {
-                        $n = count($parsed['errores']);
-                        // Se listan todos los problemas con su línea, hasta 50 (un archivo basura de 500 KB no debe generar una página gigante).
-                        $erroresCsv = array_slice($parsed['errores'], 0, 50);
-                        if ($n > 50) {
-                            $erroresCsv[] = '… y ' . ($n - 50) . ' problemas más.';
-                        }
-                        $errors['csv_texto'] = $n === 1 ? 'Hay 1 línea con problemas. Corrígela y vuelve a previsualizar.' : "Hay $n líneas con problemas. Corrígelas y vuelve a previsualizar.";
-                    } elseif ($parsed['filas'] === []) {
-                        $errors['csv_texto'] = 'No se encontraron filas de movimientos válidas en el CSV.';
-                    } else {
-                        $importador = $this->container->importadorCsv();
-                        $preview = $importador->vistaPrevia($user['id'], $cuentaId, $parsed['filas'], $espacioId);
-
-                        if ($preview === null) {
-                            Response::plain(404, "No encontrado.\n");
-                        }
-
-                        $preview['filas'] = $parsed['filas'];
-                        $preview['truncado'] = $parsed['truncado'];
-
-                        if ($accion === 'confirmar') {
-                            $marcadas = [];
-                            foreach (is_array($_POST['incluir'] ?? null) ? $_POST['incluir'] : [] as $l) {
-                                if (is_string($l) && ctype_digit($l) && strlen($l) < 9) {
-                                    $marcadas[(int) $l] = true;
-                                }
+                    if ($accion === 'confirmar') {
+                        $marcadas = [];
+                        foreach (is_array($_POST['incluir'] ?? null) ? $_POST['incluir'] : [] as $l) {
+                            if (is_string($l) && ctype_digit($l) && strlen($l) < 9) {
+                                $marcadas[(int) $l] = true;
                             }
-                            $elegidas = array_values(array_filter($parsed['filas'], static fn (array $f): bool => isset($marcadas[$f['linea']])));
-                            $preview['marcadas'] = array_keys($marcadas);
+                        }
+                        $elegidas = array_values(array_filter($parsed['filas'], static fn (array $f): bool => isset($marcadas[$f['linea']])));
+                        $preview['marcadas'] = array_keys($marcadas);
 
-                            if ($elegidas === []) {
-                                $errors['incluir'] = 'Marca al menos un movimiento para importarlo.';
-                            } else {
-                                $res = $importador->importar($user['id'], $cuentaId, $catGastoId, $catIngresoId, $elegidas, $espacioId);
+                        if ($elegidas === []) {
+                            $errors['incluir'] = 'Marca al menos un movimiento para importarlo.';
+                        } else {
+                            $res = $importador->importar($user['id'], $cuentaId, $catGastoId, $catIngresoId, $elegidas, $espacioId);
 
-                                switch ($res['codigo']) {
-                                    case ReglasMovimiento::OK:
-                                        $n = $res['importados'];
-                                        $omitidas = count($parsed['filas']) - $n;
-                                        Flash::set('ok', 'Se ' . ($n === 1 ? 'importó 1 movimiento' : "importaron $n movimientos") . " en «{$res['cuenta']}»."
-                                            . ($omitidas > 0 ? ' Se omitieron ' . $omitidas . ($omitidas === 1 ? ' fila.' : ' filas.') : ''));
-                                        Response::redirect('/movimientos.php');
+                            switch ($res['codigo']) {
+                                case ReglasMovimiento::OK:
+                                    $n = $res['importados'];
+                                    $omitidas = count($parsed['filas']) - $n;
+                                    Flash::set('ok', 'Se ' . ($n === 1 ? 'importó 1 movimiento' : "importaron $n movimientos") . " en «{$res['cuenta']}»."
+                                        . ($omitidas > 0 ? ' Se omitieron ' . $omitidas . ($omitidas === 1 ? ' fila.' : ' filas.') : ''));
+                                    Response::redirect('/movimientos.php');
 
-                                        // no break
-                                    case ReglasMovimiento::SALDO_INSUFICIENTE:
-                                        $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));
-                                        $errors['incluir'] = "La cuenta «{$res['cuenta']}» tiene $disp disponibles y al aplicar los movimientos marcados quedaría en saldo negativo.";
-                                        break;
+                                    // no break
+                                case ReglasMovimiento::SALDO_INSUFICIENTE:
+                                    $disp = Dinero::formatear((string) ($res['saldo'] ?? '0.00'));
+                                    $errors['incluir'] = "La cuenta «{$res['cuenta']}» tiene $disp disponibles y al aplicar los movimientos marcados quedaría en saldo negativo.";
+                                    break;
 
-                                    default:
-                                        Response::plain(404, "No encontrado.\n");
-                                }
+                                default:
+                                    Response::plain(404, "No encontrado.\n");
                             }
                         }
                     }
                 }
             }
-        } catch (RuntimeException $error) {
-            self::fail($error);
         }
 
         View::page('app/movimientos-importar', [
@@ -369,9 +347,4 @@ final class MovimientoController
         return is_string($value) && ctype_digit($value) ? max(1, (int) $value) : 1;
     }
 
-    private static function fail(RuntimeException $error): never
-    {
-        [$status, $message] = Failure::describe($error, 'No se pudo completar la operación. Inténtalo más tarde.');
-        Response::plain($status, $message . "\n");
-    }
 }

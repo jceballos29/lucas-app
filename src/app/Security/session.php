@@ -310,12 +310,8 @@ function require_login(): array
 {
     header('Cache-Control: no-store');
 
-    try {
-        ['user' => $user, 'expired' => $expired, 'revoked' => $revoked] = resolve_user_session();
-    } catch (RuntimeException $error) {
-        [$status, $message] = \App\Http\Failure::describe($error, 'Ocurrió un error inesperado. Inténtalo más tarde.');
-        \App\Http\Response::plain($status, $message . "\n");
-    }
+    // Si la BD falla aquí, la excepción sube al manejador central (App\Http\ManejadorErrores) y responde 503/500.
+    ['user' => $user, 'expired' => $expired, 'revoked' => $revoked] = resolve_user_session();
 
     if ($user === null) {
         $reason = $expired ? '?msg=expired' : ($revoked ? '?msg=revoked' : '');

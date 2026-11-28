@@ -641,6 +641,22 @@ same('APP_ORIGIN sin https o con localhost se detecta', [1, 1, 0], [count(CP::pr
 same('solo se revisa lo que está en el entorno (la aplicación solo ve DB_PASSWORD y APP_KEY)', [], CP::problemas(['DB_PASSWORD' => 'k7Vq2nXr9LmT4zWb8Hc3']));
 same('ningún mensaje incluye el valor de una clave', false, str_contains(implode(' ', CP::problemas(['DB_PASSWORD' => 'lucas_app_dev_2026', 'APP_KEY' => 'corta'])), 'lucas_app_dev_2026'));
 
+section('ManejadorErrores: un solo sitio traduce los fallos en respuestas (R6)');
+use App\Http\ManejadorErrores as ME;
+
+$logAntes = ini_get('error_log'); ini_set('error_log', '/dev/null');   // el detalle va al log: aquí no hace falta verlo
+ME::reiniciar();
+same('una RuntimeException (configuración) responde 500 con el aviso genérico', [500, 'Ocurrió un error inesperado. Inténtalo más tarde.'], ME::traducir(new RuntimeException('detalle secreto: clave=abc')));
+same('sin conexión a la base de datos responde 503', 503, ME::traducir(new App\Exceptions\DatabaseConnectionException('no conecta'))[0]);
+same('un fallo de consulta (PDOException) responde 500 con el aviso por defecto', [500, ME::MENSAJE_POR_DEFECTO], ME::traducir(new PDOException('SQLSTATE[42S02] tabla inexistente')));
+ME::mensajeDeConsulta('No se pudo exportar. Inténtalo más tarde.');
+same('una página puede cambiar el aviso de consulta para su petición (exportar, reporte)', [500, 'No se pudo exportar. Inténtalo más tarde.'], ME::traducir(new PDOException('x')));
+ME::reiniciar();
+same('cualquier otro error (un fallo de programación) también da 500 con el aviso genérico, nunca una página en blanco', [500, 'Ocurrió un error inesperado. Inténtalo más tarde.'], ME::traducir(new TypeError('Argument #1 must be of type int')));
+same('el aviso nunca incluye el detalle técnico', false, str_contains(implode(' ', [ME::traducir(new PDOException('SELECT * FROM usuarios WHERE clave = 1'))[1], ME::traducir(new TypeError('secreto'))[1], ME::traducir(new RuntimeException('secreto'))[1]]), 'secreto'));
+same('en consola (CLI) registrar() no instala el manejador: allí un fallo debe verse como excepción', true, (static function (): bool { $antes = set_exception_handler(null); ME::registrar(); $despues = set_exception_handler(null); if ($antes !== null) { set_exception_handler($antes); } return $despues === null; })());
+ini_set('error_log', (string) $logAntes);
+
 section('SmtpMailer: configuración que no se admite en producción (B5)');
 use App\Mail\SmtpMailer as SM;
 

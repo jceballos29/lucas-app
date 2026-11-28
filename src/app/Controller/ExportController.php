@@ -7,7 +7,7 @@ namespace App\Controller;
 use App\Container;
 use App\Export\Csv;
 use App\Http\Failure;
-use App\Http\Response;
+use App\Http\ManejadorErrores;
 use App\Movimientos\Filtros;
 use RuntimeException;
 
@@ -35,13 +35,10 @@ final class ExportController
         $filtros = Filtros::desde($_GET);
         $repo = $this->container->movimientos();
 
-        try {
-            // La primera consulta va ANTES de enviar cabeceras: si la BD falla, se responde un error normal, no un CSV a medias.
-            $lote = $repo->searchAfter($user['id'], $filtros, null, self::LOTE, $espacioId);
-        } catch (RuntimeException $error) {
-            [$status, $message] = Failure::describe($error, 'No se pudo exportar. Inténtalo más tarde.');
-            Response::plain($status, $message . "\n");
-        }
+        ManejadorErrores::mensajeDeConsulta('No se pudo exportar. Inténtalo más tarde.');
+
+        // La primera consulta va ANTES de enviar cabeceras: si la BD falla, se responde un error normal, no un CSV a medias.
+        $lote = $repo->searchAfter($user['id'], $filtros, null, self::LOTE, $espacioId);
 
         header('Content-Type: text/csv; charset=UTF-8');
         header('Content-Disposition: attachment; filename="lucas-movimientos-' . date('Y-m-d') . '.csv"');
