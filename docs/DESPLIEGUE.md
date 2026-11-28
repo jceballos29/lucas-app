@@ -112,8 +112,9 @@ verificación salen por el SMTP de producción: pruébalo registrando una cuenta
 
 ## 6. Copias de seguridad (RNF-15)
 
-`bin/backup-db` genera un volcado comprimido y consistente (no bloquea la aplicación), comprueba que se pueda leer, le pone permisos `600`
-y conserva las últimas 8. Programa una por semana:
+`bin/backup-db` genera un volcado comprimido y consistente (no bloquea la aplicación) **y un archivo con los comprobantes**
+(`src/storage/adjuntos`), con el mismo nombre base: `lucas-FECHA.sql.gz` + `lucas-FECHA.adjuntos.tar.gz`. Comprueba que ambos se puedan leer,
+les pone permisos `600` y conserva las últimas 8 parejas. Programa una por semana:
 
 ```cron
 0 3 * * 0  cd /ruta/a/lucas-app && COMPOSE_FILE=docker-compose.prod.yml bin/backup-db /var/backups/lucas >> /var/log/lucas-backup.log 2>&1
@@ -125,10 +126,13 @@ y conserva las últimas 8. Programa una por semana:
   la carga en una base temporal `lucas_test_restore` y se niega a pisar datos existentes. `tests/backup.sh` automatiza esa comprobación
   (copia, restaura y compara el número de filas de cada tabla).
 - **Recuperación tras un desastre:** los pasos están en la cabecera de `bin/restore-db`.
-- **Los comprobantes NO van en el volcado.** Los archivos adjuntos (facturas, recibos) viven en `src/storage/adjuntos/` del servidor,
-  fuera de la base de datos y de `public/`. Cópialos junto con la base, por ejemplo:
-  `rsync -a /ruta/a/lucas-app/src/storage/adjuntos/ /var/backups/lucas/adjuntos/` (contienen datos financieros: protégelos igual que el volcado).
-  Una restauración de la base sin esos archivos deja movimientos con «comprobante» que ya no se puede abrir.
+- **Los comprobantes van en la copia, en su propio archivo.** Los adjuntos (facturas, recibos) viven en `src/storage/adjuntos/`, fuera de la
+  base de datos; por eso `bin/backup-db` genera `lucas-FECHA.adjuntos.tar.gz` junto al volcado (si `ADJUNTOS_DIR` no es el de siempre, indícalo
+  como variable). Contiene documentos financieros: protégelo igual que el volcado y **sincroniza los dos archivos** fuera del servidor.
+  Para recuperarlos: `bin/restore-adjuntos backups/<archivo>.adjuntos.tar.gz` (extrae en `src/storage/adjuntos`; se niega si la carpeta ya
+  tiene contenido y rechaza archivos con rutas fuera de `adjuntos/` o con `..`; acepta una carpeta destino para probarla). Una restauración de
+  la base sin sus comprobantes deja movimientos con «comprobante» que ya no se puede abrir; `bin/restore-db` avisa de ello. Tras restaurar,
+  `scripts/huerfanos-adjuntos.php` informa de archivos sin movimiento y de movimientos cuyo archivo falta.
 - **Comprobantes huérfanos** (archivos sin ningún movimiento, p. ej. tras un borrado interrumpido). Al eliminar una cuenta, un movimiento o un
   espacio compartido Lucas borra sus archivos; para detectar restos: `docker compose -f docker-compose.prod.yml exec -T php php scripts/huerfanos-adjuntos.php`
   (solo informa; con `--borrar` los elimina; ignora lo más reciente de 24 h). También avisa de movimientos cuyo archivo falta.

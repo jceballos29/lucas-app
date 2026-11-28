@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 #
-# Copia de seguridad de la base de datos (RNF-15: semanal). Genera un volcado comprimido y consistente (--single-transaction: no
-# bloquea la aplicación) con la fecha en el nombre, comprueba que sea legible y borra las copias más viejas.
+# Copia de seguridad de la base de datos Y de los comprobantes (RNF-15: semanal). Genera un volcado comprimido y consistente
+# (--single-transaction: no bloquea la aplicación) con la fecha en el nombre, comprueba que sea legible y borra las copias más viejas.
+# Junto al volcado guarda los comprobantes (src/storage/adjuntos) en un archivo con el MISMO nombre base:
+#   lucas-2026-11-22-030000.sql.gz  +  lucas-2026-11-22-030000.adjuntos.tar.gz
+# Sin los comprobantes, restaurar la base deja movimientos con «comprobante» que ya no se puede abrir (B12).
 #
 #   bin/backup-db [carpeta]            # por defecto «backups/»; se conservan las últimas 8 (BACKUP_KEEP=n para cambiarlo)
 #
@@ -41,10 +44,32 @@ if ! gzip -t "$FILE.tmp" 2>/dev/null || ! gzip -dc "$FILE.tmp" | grep -q 'CREATE
     exit 1
 fi
 
+# Comprobantes: se empaqueta la carpeta completa (puede estar vacía o no existir todavía: el archivo se crea igual, para que cada copia
+# tenga siempre su pareja). Se escribe aparte y solo se da por buena si el archivo se puede leer.
+ADJ_DIR="${ADJUNTOS_DIR:-src/storage/adjuntos}"
+ADJ_FILE="${FILE%.sql.gz}.adjuntos.tar.gz"
+if [ -d "$ADJ_DIR" ]; then
+    tar -czf "$ADJ_FILE.tmp" -C "$(dirname "$ADJ_DIR")" "$(basename "$ADJ_DIR")" || { rm -f "$FILE.tmp" "$ADJ_FILE.tmp"; echo "No se pudieron empaquetar los comprobantes ($ADJ_DIR): no se guardó la copia." >&2; exit 1; }
+else
+    tar -czf "$ADJ_FILE.tmp" -T /dev/null
+fi
+if ! tar -tzf "$ADJ_FILE.tmp" >/dev/null 2>&1; then
+    rm -f "$FILE.tmp" "$ADJ_FILE.tmp"
+    echo "El archivo de comprobantes salió dañado: no se guardó la copia." >&2
+    exit 1
+fi
+
 mv "$FILE.tmp" "$FILE"
-chmod 600 "$FILE"   # contiene datos personales y hashes de contraseñas: solo para quien la hizo
+mv "$ADJ_FILE.tmp" "$ADJ_FILE"
+chmod 600 "$FILE" "$ADJ_FILE"   # contienen datos personales, hashes de contraseñas y documentos financieros: solo para quien la hizo
 
-# Conserva las últimas $KEEP copias.
-ls -1t "$DEST"/lucas-*.sql.gz 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r vieja; do rm -f -- "$vieja"; done
+# Conserva las últimas $KEEP copias (volcado y comprobantes van juntos).
+ls -1t "$DEST"/lucas-*.sql.gz 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r vieja; do rm -f -- "$vieja" "${vieja%.sql.gz}.adjuntos.tar.gz"; done
 
-echo "Copia creada: $FILE ($(du -h "$FILE" | cut -f1)); se conservan las últimas $KEEP."
+# Y los archivos de comprobantes que se quedaron sin su volcado (p. ej. si alguien borró el .sql.gz a mano).
+for a in "$DEST"/lucas-*.adjuntos.tar.gz; do
+    [ -e "$a" ] || continue
+    [ -f "${a%.adjuntos.tar.gz}.sql.gz" ] || rm -f -- "$a"
+done
+
+echo "Copia creada: $FILE ($(du -h "$FILE" | cut -f1)) y $ADJ_FILE ($(du -h "$ADJ_FILE" | cut -f1)); se conservan las últimas $KEEP."

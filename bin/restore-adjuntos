@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#
+# Restaura los comprobantes de una copia (bin/backup-db: lucas-FECHA.adjuntos.tar.gz) en src/storage/adjuntos. Nunca pisa archivos: si
+# la carpeta destino ya tiene contenido, se niega. Antes de extraer revisa el archivo y rechaza rutas absolutas, «..» o entradas fuera de
+# «adjuntos/» (un archivo manipulado no puede escribir en otro sitio).
+#
+#   bin/restore-adjuntos backups/lucas-2026-11-22-030000.adjuntos.tar.gz [carpeta_destino]
+#
+# Sin carpeta_destino se usa src/storage/adjuntos (tras un desastre, con la carpeta vacía). Para PROBAR la copia, pasa una carpeta temporal.
+# Después comprueba huérfanos y archivos que faltan:  docker compose exec -T php php scripts/huerfanos-adjuntos.php
+
+set -eu
+export MSYS_NO_PATHCONV=1
+cd "$(dirname "$0")/.."
+
+FILE="${1:-}"
+DEST="${2:-src/storage/adjuntos}"
+[ -f "$FILE" ] || { echo "Uso: bin/restore-adjuntos <archivo.adjuntos.tar.gz> [carpeta_destino]" >&2; exit 2; }
+tar -tzf "$FILE" >/dev/null 2>&1 || { echo "El archivo no se puede leer (¿está dañado?): $FILE" >&2; exit 1; }
+
+# Todas las entradas deben vivir bajo «adjuntos/» (o ser la propia carpeta), sin rutas absolutas ni «..».
+if tar -tzf "$FILE" | grep -Ev '^adjuntos(/|$)' | grep -q .; then
+    echo "El archivo trae entradas fuera de «adjuntos/»: se rechaza." >&2; exit 1
+fi
+if tar -tzf "$FILE" | grep -Eq '(^|/)\.\.(/|$)|^/'; then
+    echo "El archivo trae rutas peligrosas (.. o absolutas): se rechaza." >&2; exit 1
+fi
+
+mkdir -p "$DEST"
+if [ -n "$(ls -A "$DEST" 2>/dev/null)" ]; then
+    echo "La carpeta «$DEST» ya tiene contenido: no se restaura sobre archivos existentes." >&2; exit 1
+fi
+
+# Se extrae quitando el primer nivel («adjuntos/») para que el contenido quede directamente en la carpeta destino.
+tar -xzf "$FILE" -C "$DEST" --strip-components=1 --no-same-owner --no-same-permissions
+echo "Comprobantes restaurados en «$DEST»: $(find "$DEST" -type f | wc -l | tr -d ' ') archivos."

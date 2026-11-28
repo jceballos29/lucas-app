@@ -270,7 +270,7 @@ Lo crea `04-dev-admin.sh` (con `dev/admin.sql`) **solo si el servicio `db` recib
 
 ## Copias de seguridad (RNF-15)
 
-`bin/backup-db` genera un volcado comprimido y consistente (`--single-transaction`, no bloquea la aplicación), comprueba que sea legible y conserva las últimas 8; `bin/restore-db` lo carga en una base **vacía** (nunca pisa datos; por defecto en `lucas_test_restore`, para probarlo). `tests/backup.sh` verifica el ciclo completo comparando las filas de cada tabla. Programación semanal y recuperación tras un desastre: [`DESPLIEGUE.md`](DESPLIEGUE.md).
+`bin/backup-db` genera un volcado comprimido y consistente (`--single-transaction`, no bloquea la aplicación), comprueba que sea legible y conserva las últimas 8 (junto al volcado guarda `lucas-FECHA.adjuntos.tar.gz` con los comprobantes de `src/storage/adjuntos`, que `bin/restore-adjuntos` recupera); `bin/restore-db` lo carga en una base **vacía** (nunca pisa datos; por defecto en `lucas_test_restore`, para probarlo). `tests/backup.sh` verifica el ciclo completo comparando las filas de cada tabla. Programación semanal y recuperación tras un desastre: [`DESPLIEGUE.md`](DESPLIEGUE.md).
 
 ## Permisos de MySQL
 

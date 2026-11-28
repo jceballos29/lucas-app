@@ -129,7 +129,7 @@ Lucas está **bien construida y la base de seguridad es sólida** para una aplic
   - `EspacioRepository::deleteWithAllData()` ahora devuelve las rutas de comprobantes del espacio (las lee antes de borrar) y `GestionEspacios::eliminarEspacio()` las elimina del disco **después de confirmar la transacción** (si la transacción fallara, no se pierde ningún archivo). Es el mismo patrón de `EliminarCuenta`.
   - Nueva herramienta de mantenimiento `scripts/huerfanos-adjuntos.php` (clase `App\Support\HuerfanosAdjuntos`): lista —y con `--borrar` elimina— los archivos de `storage/adjuntos` que ninguna fila referencia; solo toca nombres canónicos (`YYYY/MM/<32 hex>.<ext>`) de más de 24 h, para no pisar una subida en curso; avisa además de filas cuyo archivo falta.
   - Pruebas: 5 unitarias del detector y 8 de integración (editor sin permiso no borra nada, el propietario borra los comprobantes de **todos** los miembros, los de otro espacio no se tocan, sin huérfanos después, un archivo suelto sí se detecta). Comprobado que las pruebas **fallan** si se quita el borrado. `ataques.py` ya no marca M3 como conocido.
-  - **Hallazgo nuevo al hacerlo (B12):** las copias de seguridad (`bin/backup-db`) solo incluyen la base de datos, **no los comprobantes**. Una restauración deja movimientos con «comprobante» que no se puede abrir. Está documentado en `docs/DESPLIEGUE.md` (qué copiar con `rsync`); queda pendiente decidir si `bin/backup-db` debe empaquetarlos.
+  - **Hallazgo nuevo al hacerlo (B12, ✅ resuelto después):** las copias de seguridad (`bin/backup-db`) solo incluían la base de datos, **no los comprobantes**. Ahora `bin/backup-db` genera también `lucas-FECHA.adjuntos.tar.gz` (ver B12 en la tabla de hallazgos bajos).
 
 #### M4 · El correo se envía dentro de la petición web — ✅ RESUELTO (2026-11-28)
 - **Dónde:** `NotificadorPresupuesto::notificarGasto()` (se llama desde `MovimientoController::form`), `GestionEspacios::invitar()`, `PerfilController` (resumen de prueba). `SmtpMailer` tiene timeout de 10 s.
@@ -212,7 +212,7 @@ Lucas está **bien construida y la base de seguridad es sólida** para una aplic
 | B8 | Al eliminar una cuenta quedan invitaciones pendientes a ese correo en `espacio_invitaciones` (dato personal residual, RNF-20). | `DELETE FROM espacio_invitaciones WHERE correo = :c` dentro de `deleteWithAllData`. |
 | B9 | `RestablecimientoRepository::purge()` nunca se llama: los enlaces caducados se acumulan. La purga de `intentos_acceso` es probabilística (1/50). | Llamarlos desde un script de mantenimiento diario. |
 | B10 | Valores de desarrollo por defecto (`lucas_app_dev_2026`, `lucas_root_dev_2026`) en `.env.example` y en `docker-compose.yml`. El compose de producción exige variables pero no valida su fortaleza. | Validación al arrancar (`APP_ENV != local` y contraseña contiene `dev` → fallar), o `openssl rand` en la guía. |
-| B12 | **Nuevo.** Las copias de seguridad no incluyen los comprobantes de `src/storage/adjuntos/` (ni `tests/backup.sh` lo comprueba). | Documentado en `DESPLIEGUE.md` (copiar con `rsync`/`tar`). Mejor: que `bin/backup-db` genere también `adjuntos-<fecha>.tar.gz` y `bin/restore-db`/`tests/backup.sh` lo prueben. |
+| B12 ✅ | **Nuevo.** Las copias de seguridad no incluyen los comprobantes de `src/storage/adjuntos/` (ni `tests/backup.sh` lo comprueba). | Documentado en `DESPLIEGUE.md` (copiar con `rsync`/`tar`). Mejor: que `bin/backup-db` genere también `adjuntos-<fecha>.tar.gz` y `bin/restore-db`/`tests/backup.sh` lo prueben. **✅ RESUELTO (2026-11-28):** `bin/backup-db` genera `lucas-FECHA.adjuntos.tar.gz` junto al volcado (legible, permisos 600, rotan juntos y se limpian los huérfanos), `bin/restore-adjuntos` los recupera (no pisa archivos y rechaza rutas absolutas, `..` o fuera de `adjuntos/`), `bin/restore-db` avisa de la pareja y `tests/backup.sh` pasó de 20 a 35 comprobaciones (incluye archivos manipulados). |
 | B11 | Un fallo al guardar el comprobante después de guardar el movimiento devuelve 500 con el movimiento ya creado (no es atómico). | Guardar el archivo primero y borrarlo si la transacción falla, o capturar la excepción y mostrar «Movimiento guardado, pero el comprobante falló». |
 
 ### Lo que se probó y está bien (no tocar)
@@ -372,7 +372,7 @@ Los hallazgos de este reporte que siguieran abiertos (hoy ninguno) se marcan en 
 - [x] A1 resuelto.
 - [ ] `APP_ORIGIN` con `https://`, certificados, `APP_ENV=production`, contraseñas de BD generadas (B10).
 - [ ] SMTP real con TLS (B5) y SPF/DKIM/DMARC del dominio.
-- [ ] Copias de seguridad probadas con restauración real (no cubierto en esta auditoría) **y que incluyan los comprobantes** (B12).
+- [ ] Copias de seguridad probadas con restauración real (no cubierto en esta auditoría) **y que incluyan los comprobantes** (B12 ✅: ya los incluyen; falta que pruebes la restauración real en tu servidor).
 - [ ] CI con `tests/run-all.sh` (R8).
 
 ## 10. Conclusión

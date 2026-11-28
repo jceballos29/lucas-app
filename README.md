@@ -172,7 +172,8 @@ tests/backup.sh                                     # copia de seguridad real + 
 tests/run-all.sh                                    # todas las suites, en orden
 python3 tests/carga.py --setup --users 500          # prueba de carga (ver docs/DESPLIEGUE.md; --cleanup al terminar)
 bin/as-migrator php scripts/migrate.php             # aplica las migraciones pendientes
-bin/backup-db                                       # copia de seguridad de la base (semanal en producción)
+bin/backup-db                                       # copia de seguridad de la base y de los comprobantes (semanal en producción)
+bin/restore-adjuntos backups/<archivo>.adjuntos.tar.gz   # recupera los comprobantes de una copia
 bin/as-migrator php scripts/create-admin.php correo # crear un administrador (pide la contraseña)
 docker compose exec php composer dump-autoload      # tras añadir clases
 bin/as-migrator php scripts/<script>.php            # scripts que cambian datos o esquema (usuario de migraciones)

@@ -11,6 +11,7 @@
 #   docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "DROP DATABASE lucas; CREATE DATABASE lucas CHARACTER SET utf8mb4"'
 #   gunzip -c backups/<archivo>.sql.gz | docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" lucas'
 #   docker compose exec db bash /docker-entrypoint-initdb.d/03-users.sh    # vuelve a dar los permisos a los usuarios
+#   bin/restore-adjuntos backups/<archivo>.adjuntos.tar.gz                  # los comprobantes (src/storage/adjuntos)
 
 set -eu
 export MSYS_NO_PATHCONV=1
@@ -34,3 +35,11 @@ TABLAS="$(mysql_ -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE tab
 
 gzip -dc "$FILE" | mysql_ "$TARGET"
 echo "Restaurado en la base «$TARGET»: $(mysql_ -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$TARGET'") tablas."
+
+# Los comprobantes van en otro archivo (misma fecha en el nombre): se restauran con bin/restore-adjuntos.
+ADJ="${FILE%.sql.gz}.adjuntos.tar.gz"
+if [ -f "$ADJ" ]; then
+    echo "Esta copia trae sus comprobantes: para recuperarlos usa  bin/restore-adjuntos $ADJ"
+else
+    echo "Aviso: no hay archivo de comprobantes junto a esta copia ($ADJ): los movimientos con comprobante no se podrán abrir." >&2
+fi
