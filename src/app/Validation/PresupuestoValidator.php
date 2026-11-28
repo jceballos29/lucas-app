@@ -32,7 +32,7 @@ final class PresupuestoValidator
 
         $limite = Dinero::parse($texto);
         if ($limite === null) {
-            $errors['monto_limite'] = 'Escribe un monto válido, por ejemplo 400.000 o 1.250.000,50.';
+            $errors['monto_limite'] = 'Escribe un monto válido, por ejemplo 400.000 o 1.250.000,50.' . Dinero::pistaDeFormato($texto);
         } elseif ($limite === '0.00' || str_starts_with($limite, '-')) {
             $errors['monto_limite'] = 'El límite debe ser mayor que cero.';
         }

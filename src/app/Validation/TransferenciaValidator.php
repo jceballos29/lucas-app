@@ -42,7 +42,7 @@ final class TransferenciaValidator
 
         $monto = Dinero::parse($montoTexto);
         if ($monto === null) {
-            $errors['monto'] = 'Escribe un monto válido, por ejemplo 100.000 o 1.250.000,50.';
+            $errors['monto'] = 'Escribe un monto válido, por ejemplo 100.000 o 1.250.000,50.' . Dinero::pistaDeFormato($montoTexto);
         } elseif ($monto === '0.00' || str_starts_with($monto, '-')) {
             $errors['monto'] = 'El monto a transferir debe ser mayor que cero.';
         }

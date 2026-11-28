@@ -80,11 +80,12 @@ function require_csrf(): void
         return;
     }
 
-    http_response_code(403);
-    header('Content-Type: text/plain; charset=UTF-8');
-    header('Cache-Control: no-store');
-    echo "Token de seguridad no válido o caducado. Vuelve a la página anterior, recárgala e inténtalo de nuevo.\n";
-    exit;
+    // E4: si el cuerpo superó `post_max_size`, PHP descarta todo el POST y el token «desaparece»: el motivo real es el tamaño, no la seguridad.
+    if (\App\Http\Peticion::cuerpoExcedido()) {
+        \App\Http\Response::plain(413, "El archivo es demasiado grande: el máximo para un comprobante es de 5 MB.\n", ['Cache-Control: no-store']);
+    }
+
+    \App\Http\Response::plain(403, "Token de seguridad no válido o caducado. Vuelve a la página anterior, recárgala e inténtalo de nuevo.\n", ['Cache-Control: no-store']);
 }
 
 /** El campo oculto con el token, listo para pintar dentro de un <form method="post">. */

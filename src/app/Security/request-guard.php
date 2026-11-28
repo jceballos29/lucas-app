@@ -31,9 +31,6 @@ function reject_foreign_origin(): void
     }
 
     if (!$allowed) {
-        http_response_code(403);
-        header('Content-Type: text/plain; charset=UTF-8');
-        echo "Origen no permitido. Abre la aplicación con la dirección configurada en APP_ORIGIN.\n";
-        exit;
+        \App\Http\Response::plain(403, "Origen no permitido. Abre la aplicación con la dirección configurada en APP_ORIGIN.\n");
     }
 }

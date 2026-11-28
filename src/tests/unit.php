@@ -620,6 +620,33 @@ same('el 33,3 % de un tercio', 33.3, K::agrupar([$fila('A', '1'), $fila('B', '1'
 same('sin gastos', ['items' => [], 'total' => '0.00'], K::agrupar([]));
 same('con total cero no divide por cero', 0.0, K::agrupar([$fila('A', '0.00')])['items'][0]['percent']);
 
+section('Mensajes de error: monto en formato inglés (E2) y cuerpo demasiado grande (E4)');
+use App\Http\Peticion as PE;
+use App\Support\Dinero as DE;
+
+same('E2: «1,234.56» y «$ 12,500.5» dan la pista del formato; «abc», «12,50» y vacío no', [true, true, false, false, false], [
+    DE::pistaDeFormato('1,234.56') !== '', DE::pistaDeFormato('$ 12,500.5') !== '', DE::pistaDeFormato('abc') !== '', DE::pistaDeFormato('12,50') !== '', DE::pistaDeFormato('') !== '',
+]);
+same('E2: la pista explica el formato correcto', true, str_contains(DE::pistaDeFormato('1,234.56'), '1.234,56'));
+same('E2: el error de monto de un movimiento la incluye solo cuando aplica', [true, false], [
+    str_contains((new App\Validation\MovimientoValidator())->validate(['tipo' => 'gasto', 'monto' => '1,234.56', 'fecha' => '2026-11-25', 'id_cuenta' => '1', 'id_categoria' => '1'])['errors']['monto'] ?? '', 'formato inglés'),
+    str_contains((new App\Validation\MovimientoValidator())->validate(['tipo' => 'gasto', 'monto' => 'abc', 'fecha' => '2026-11-25', 'id_cuenta' => '1', 'id_categoria' => '1'])['errors']['monto'] ?? '', 'formato inglés'),
+]);
+same('E4: los tamaños de php.ini («6M», «512K», «1G», «100») pasan a bytes', [6291456, 524288, 1073741824, 100, 0], [PE::enBytes('6M'), PE::enBytes('512K'), PE::enBytes('1G'), PE::enBytes('100'), PE::enBytes('')]);
+same('E4: cuerpo mayor que post_max_size con $_POST vacío = excedido; con datos o más pequeño, no', [true, false, false], (static function (): array {
+    $limite = PE::enBytes((string) ini_get('post_max_size'));
+    $_POST = [];
+    $_SERVER['CONTENT_LENGTH'] = (string) ($limite + 1);
+    $a = PE::cuerpoExcedido();
+    $_POST = ['x' => '1'];
+    $b = PE::cuerpoExcedido();
+    $_POST = [];
+    $_SERVER['CONTENT_LENGTH'] = '100';
+    $c = PE::cuerpoExcedido();
+    unset($_SERVER['CONTENT_LENGTH']);
+    return [$a, $b, $c];
+})());
+
 section('Cookie de sesión con prefijo __Host- bajo HTTPS (B7)');
 same('con APP_ORIGIN https el nombre lleva el prefijo __Host- (y la cookie ya es Secure, Path=/ y sin Domain)', ['__Host-lucas_session', true, '/', ''], (static function (): array {
     $antes = getenv('APP_ORIGIN');

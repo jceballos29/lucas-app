@@ -49,7 +49,7 @@ final class CuentaValidator
         // Vacío = 0. Solo una tarjeta de crédito puede empezar en negativo (lo que se debe).
         $saldo = $saldoTexto === '' ? '0.00' : Dinero::parse($saldoTexto);
         if ($saldo === null) {
-            $errors['saldo_inicial'] = 'Escribe un monto válido, por ejemplo 1.250.000 o 1.250.000,50.';
+            $errors['saldo_inicial'] = 'Escribe un monto válido, por ejemplo 1.250.000 o 1.250.000,50.' . Dinero::pistaDeFormato($saldoTexto);
         } elseif (str_starts_with($saldo, '-') && $tipo !== 'tarjeta_credito') {
             $errors['saldo_inicial'] = 'El saldo inicial no puede ser negativo (solo una tarjeta de crédito puede empezar debiendo).';
         }

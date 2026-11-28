@@ -26,7 +26,7 @@ final class AporteValidator
 
         $monto = Dinero::parse($texto('monto'));
         if ($monto === null) {
-            $errors['monto'] = 'Escribe un monto válido, por ejemplo 100.000.';
+            $errors['monto'] = 'Escribe un monto válido, por ejemplo 100.000.' . Dinero::pistaDeFormato($texto('monto'));
         } elseif ($monto === '0.00' || str_starts_with($monto, '-')) {
             $errors['monto'] = 'El aporte debe ser mayor que cero.';
         }

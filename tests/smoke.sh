@@ -1805,7 +1805,7 @@ contains "U1: …se oculta con un campo enfocado" "body:has(input:focus, select:
 request "$JMU" GET /js/app.js
 contains "U2: el foco pasa al primer campo con error al volver el formulario" '[aria-invalid="true"]' "$TMP/body"
 request "$JMU" GET /sw.js
-contains "los recursos estáticos cambiaron: la caché del service worker se renovó (v3)" "lucas-static-v3" "$TMP/body"
+contains "los recursos estáticos cambiaron: la caché del service worker se renovó (v4)" "lucas-static-v4" "$TMP/body"
 post_form "$JMU" /perfil.php /perfil.php "accion=clave" "clave_actual=incorrecta" "clave_nueva=abc" "clave_nueva2=x"
 contains "U2: el campo con error queda marcado aria-invalid y enlazado a su mensaje" 'aria-invalid="true" aria-describedby="e-clave_actual"' "$TMP/body"
 
@@ -1874,6 +1874,27 @@ check "B6: (no se creó la cuenta)" "0" "$(sql "SELECT COUNT(*) FROM usuarios WH
 request "$(new_jar)" GET /login.php
 check "B7: en desarrollo (HTTP) la cookie de sesión sigue llamándose lucas_session (con HTTPS sería __Host-lucas_session)" "1" "$(grep -i '^set-cookie: lucas_session=' "$TMP/hdr" | wc -l | tr -d ' ')"
 check "B9: el mantenimiento diario corre sin errores" "0" "$(docker compose exec -T php php scripts/mantenimiento.php >/dev/null 2>&1; echo $?)"
+
+echo; echo "== Errores con marca y mensajes claros (E2, E3, E4, U5)"
+HTML_HDR='Accept: text/html'
+ORIG_OK="${ORIGIN_SENT:-$ORIGIN}"
+CODE="$(curl -s -H "$HTML_HDR" -H "Origin: $ORIG_OK" -d "x=1" -o "$TMP/body" -w '%{http_code}' "$BASE/login.php")"
+check "E3: sin token CSRF, el navegador recibe una página de error (403, HTML)" "403" "$CODE"
+contains "E3: con la marca y el mensaje" "Token de seguridad no válido" "$TMP/body"
+contains "E3: y un botón para volver" "Volver" "$TMP/body"
+contains "E3: y otro al inicio" "Ir al inicio" "$TMP/body"
+check "E3: las herramientas sin Accept (curl) siguen recibiendo texto plano" "text/plain; charset=UTF-8" "$(curl -s -H "Origin: $ORIG_OK" -d "x=1" -o /dev/null -w '%{content_type}' "$BASE/login.php")"
+check "E3: un origen ajeno también da la página de error" "403" "$(curl -s -H "$HTML_HDR" -H "Origin: http://evil.example" -d "x=1" -o "$TMP/body" -w '%{http_code}' "$BASE/login.php")"
+contains "E3: …con el mensaje de origen" "Origen no permitido" "$TMP/body"
+request "$JTR" GET "/movimiento-form.php?id=99999999"
+CODE="$(curl -s -H "$HTML_HDR" -b "$JTR" -o "$TMP/body" -w '%{http_code}' "$BASE/movimiento-form.php?id=99999999")"
+check "E3: un movimiento que no existe es un 404 con página" "404" "$CODE"
+contains "E3: …titulada «No encontrado»" "No encontrado" "$TMP/body"
+check "E4/U5: un cuerpo de más de 6 MB lo corta nginx con un 413" "413" "$(head -c 7000000 /dev/zero | curl -s -X POST -H 'Content-Type: application/octet-stream' --data-binary @- -o "$TMP/body" -w '%{http_code}' "$BASE/movimiento-form.php")"
+contains "U5: …con una página con la marca, no la de nginx" "Archivo demasiado grande" "$TMP/body"
+absent "U5: (no se ve «nginx»)" "nginx" "$TMP/body"
+post_form "$JTR" /movimiento-form.php /movimiento-form.php "tipo=gasto" "monto=1,234.56" "fecha=$HOY_APP" "id_cuenta=$CBANCO" "id_categoria=$KG" "descripcion=ingles"
+contains "E2: un monto en formato inglés explica cómo escribirlo" "Parece formato inglés" "$TMP/body"
 
 echo; echo "Resultado: $passed correctas, $failed fallidas"
 [ "$failed" -eq 0 ]

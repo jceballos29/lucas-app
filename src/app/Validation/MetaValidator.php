@@ -32,7 +32,7 @@ final class MetaValidator
 
         $objetivo = Dinero::parse($texto('monto_objetivo'));
         if ($objetivo === null) {
-            $errors['monto_objetivo'] = 'Escribe un monto válido, por ejemplo 3.000.000.';
+            $errors['monto_objetivo'] = 'Escribe un monto válido, por ejemplo 3.000.000.' . Dinero::pistaDeFormato($texto('monto_objetivo'));
         } elseif ($objetivo === '0.00' || str_starts_with($objetivo, '-')) {
             $errors['monto_objetivo'] = 'El objetivo debe ser mayor que cero.';
         }

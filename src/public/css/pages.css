@@ -254,3 +254,8 @@ input[type="color"].input { width: 96px; height: 44px; padding: 4px; cursor: poi
 .summary dd { margin: 0; font-weight: 650; color: var(--ink); }
 .error-list { margin: var(--s-2) 0 0; padding-left: 1.25rem; }
 .table td input[type="checkbox"] { width: 20px; height: 20px; }
+
+/* Páginas de error (E3, U5) */
+.error-page { margin: 6vh auto; max-width: 28rem; text-align: center; display: grid; gap: var(--s-3, 12px); justify-items: center; }
+.error-page__code { font-size: 3.5rem; font-weight: 700; line-height: 1; color: var(--teal-strong, #0a6e78); margin: var(--s-4, 16px) 0 0; }
+.error-page .form-actions { justify-content: center; }

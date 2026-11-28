@@ -53,6 +53,8 @@ server {
     server_tokens off;
     access_log /var/log/nginx/access.log sin_token;
     client_max_body_size 6m;
+    # U5: un cuerpo mayor que el límite lo corta nginx con un 413 sin pasar por PHP: se muestra una página con la marca, no la de nginx.
+    error_page 413 /archivo-demasiado-grande.html;
 
     include /etc/nginx/snippets/security-headers.conf;
     # HSTS: durante un año el navegador usará SIEMPRE https con este dominio. Activa `preload` solo cuando estés seguro.

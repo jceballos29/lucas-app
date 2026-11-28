@@ -52,6 +52,28 @@ final class Peticion
         return is_string($v) && ctype_digit($v) && strlen($v) < 19 ? (int) $v : $porDefecto;
     }
 
+    /** «6M», «512K», «1G» o un número de bytes (el formato de los valores de php.ini) → bytes. 0 o -1 = sin límite. */
+    public static function enBytes(string $tamano): int
+    {
+        $tamano = trim($tamano);
+        $n = (int) $tamano;
+
+        return match (strtoupper(substr($tamano, -1))) {
+            'G' => $n * 1024 * 1024 * 1024,
+            'M' => $n * 1024 * 1024,
+            'K' => $n * 1024,
+            default => $n,
+        };
+    }
+
+    /** E4: ¿el cuerpo de esta petición superó `post_max_size` (y por eso PHP dejó `$_POST` vacío)? */
+    public static function cuerpoExcedido(): bool
+    {
+        $limite = self::enBytes((string) ini_get('post_max_size'));
+
+        return $limite > 0 && $_POST === [] && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > $limite;
+    }
+
     public static function esPost(): bool
     {
         return ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';

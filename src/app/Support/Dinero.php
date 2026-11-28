@@ -59,6 +59,19 @@ final class Dinero
     }
 
     /**
+     * E2: pista para el mensaje de error cuando alguien escribe un monto en formato inglés («1,234.56»: coma para los miles, punto para
+     * los decimales), que `parse()` no acepta. Vacía si no lo parece, para no añadir ruido a otros errores.
+     */
+    public static function pistaDeFormato(string $texto): string
+    {
+        $t = preg_replace('/[\s$]/u', '', $texto) ?? '';
+
+        return preg_match('/^[-−]?\d{1,3}(,\d{3})+(\.\d+)?$/', $t) === 1
+            ? ' Parece formato inglés: aquí el punto separa los miles y la coma los decimales (1.234,56).'
+            : '';
+    }
+
+    /**
      * Lee un monto escrito por una persona, con formato colombiano: punto para los miles y coma para los decimales
      * («1.250.000», «1.250.000,50», «$ 80.000», «−500,5»); también «1234.5» (punto decimal) y «1234».
      * Ante la duda manda el punto de miles: «1.234» es mil doscientos treinta y cuatro. «1,234.56» (formato inglés) no se acepta.

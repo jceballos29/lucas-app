@@ -43,7 +43,7 @@ final class DeudaValidator
 
         $monto = Dinero::parse($montoTexto);
         if ($monto === null) {
-            $errors['monto_inicial'] = 'Escribe un monto válido, por ejemplo 5.000.000.';
+            $errors['monto_inicial'] = 'Escribe un monto válido, por ejemplo 5.000.000.' . Dinero::pistaDeFormato($montoTexto);
         } elseif ($monto === '0.00' || str_starts_with($monto, '-')) {
             $errors['monto_inicial'] = 'El monto inicial de la deuda debe ser mayor que cero.';
         }
