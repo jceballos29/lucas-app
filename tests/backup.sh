@@ -40,6 +40,7 @@ check "el archivo se puede leer (gzip válido)" "0" "$(gzip -t "$FILE" >/dev/nul
 check "contiene el esquema y los datos" "true" "$(gzip -dc "$FILE" | grep -q 'CREATE TABLE `usuarios`' && gzip -dc "$FILE" | grep -q 'INSERT INTO `categorias`' && echo true || echo false)"
 check "con las tildes bien (utf8mb4)" "true" "$(gzip -dc "$FILE" | grep -q 'Alimentación' && echo true || echo false)"
 check "solo el dueño puede leerlo (permisos 600)" "600" "$(permisos "$FILE")"
+check "la carpeta de copias nace solo para su dueño (700): umask 077 desde el principio" "700" "$(permisos "$TMP/copias")"
 check "no deja archivos temporales" "0" "$(ls -1 "$TMP"/copias/*.tmp 2>/dev/null | wc -l | tr -d ' ')"
 ADJ_COPIA="${FILE%.sql.gz}.adjuntos.tar.gz"
 check "B12: junto al volcado crea el archivo de comprobantes con el mismo nombre base" "true" "$([ -f "$ADJ_COPIA" ] && echo true || echo false)"
@@ -82,6 +83,13 @@ tar -czf "$TMP/fuera.tar.gz" -C "$TMP/malo" adjuntos pwn.txt
 check "un archivo con entradas fuera de «adjuntos/» se rechaza" "1" "$(bin/restore-adjuntos "$TMP/fuera.tar.gz" "$TMP/x3" >/dev/null 2>&1; echo $?)"
 tar -czf "$TMP/travesia.tar.gz" -C "$TMP/malo/adjuntos" --transform 's,^,adjuntos/../,' ok.txt
 check "un archivo con «..» en las rutas se rechaza" "1" "$(bin/restore-adjuntos "$TMP/travesia.tar.gz" "$TMP/x4" >/dev/null 2>&1; echo $?)"
+mkdir -p "$TMP/enl/adjuntos" && ln -s /tmp "$TMP/enl/adjuntos/salida" && echo "dentro" > "$TMP/enl/adjuntos/ok.txt"
+tar -czf "$TMP/enlace.tar.gz" -C "$TMP/enl" adjuntos
+check "un archivo con un enlace simbólico se rechaza (no se puede escribir a través de él)" "1" "$(bin/restore-adjuntos "$TMP/enlace.tar.gz" "$TMP/x5" >/dev/null 2>&1; echo $?)"
+check "…y no se extrajo nada" "0" "$(ls -A "$TMP/x5" 2>/dev/null | wc -l | tr -d ' ')"
+mkdir -p "$TMP/duro/adjuntos" && echo "dato" > "$TMP/duro/adjuntos/a.txt" && ln "$TMP/duro/adjuntos/a.txt" "$TMP/duro/adjuntos/b.txt"
+tar -czf "$TMP/duro.tar.gz" -C "$TMP/duro" adjuntos
+check "un archivo con un enlace duro se rechaza" "1" "$(bin/restore-adjuntos "$TMP/duro.tar.gz" "$TMP/x6" >/dev/null 2>&1; echo $?)"
 check "y no escribió nada fuera de la carpeta destino" "false" "$([ -e "$TMP/x3/pwn.txt" ] || [ -e "$TMP/pwn.txt" ] && echo true || echo false)"
 
 echo; echo "== Conservar solo las últimas copias"

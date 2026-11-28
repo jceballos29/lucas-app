@@ -301,8 +301,8 @@ final class MovimientoController
             Response::plain(404, "No encontrado.\n");
         }
 
-        $abs = AlmacenAdjuntos::rutaAbsoluta($mov->adjuntoRuta);
-        if ($abs === null || !is_file($abs) || !is_readable($abs)) {
+        $abs = AlmacenAdjuntos::rutaLegible($mov->adjuntoRuta);
+        if ($abs === null) {
             Response::plain(404, "No encontrado.\n");
         }
 

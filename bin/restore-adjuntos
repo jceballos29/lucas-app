@@ -18,6 +18,12 @@ DEST="${2:-src/storage/adjuntos}"
 [ -f "$FILE" ] || { echo "Uso: bin/restore-adjuntos <archivo.adjuntos.tar.gz> [carpeta_destino]" >&2; exit 2; }
 tar -tzf "$FILE" >/dev/null 2>&1 || { echo "El archivo no se puede leer (¿está dañado?): $FILE" >&2; exit 1; }
 
+# Solo archivos y carpetas normales: un enlace simbólico o duro dentro del archivo permitiría escribir fuera de la carpeta destino
+# (primero un enlace «adjuntos/x → /etc» y luego un archivo «adjuntos/x/y»). El primer carácter del listado largo es el tipo de entrada.
+if tar -tvzf "$FILE" | cut -c1 | grep -qv '[-d]'; then
+    echo "El archivo trae enlaces u otros tipos de entrada que no son archivos ni carpetas: se rechaza." >&2; exit 1
+fi
+
 # Todas las entradas deben vivir bajo «adjuntos/» (o ser la propia carpeta), sin rutas absolutas ni «..».
 if tar -tzf "$FILE" | grep -Ev '^adjuntos(/|$)' | grep -q .; then
     echo "El archivo trae entradas fuera de «adjuntos/»: se rechaza." >&2; exit 1
@@ -33,4 +39,8 @@ fi
 
 # Se extrae quitando el primer nivel («adjuntos/») para que el contenido quede directamente en la carpeta destino.
 tar -xzf "$FILE" -C "$DEST" --strip-components=1 --no-same-owner --no-same-permissions
+# Cinturón y tirantes: tras extraer, no debe haber nada que no sea archivo o carpeta.
+if [ -n "$(find "$DEST" ! -type f ! -type d | head -n1)" ]; then
+    echo "Algo no es un archivo normal tras extraer: revisa «$DEST»." >&2; exit 1
+fi
 echo "Comprobantes restaurados en «$DEST»: $(find "$DEST" -type f | wc -l | tr -d ' ') archivos."

@@ -234,6 +234,24 @@ final class AlmacenAdjuntos
         return self::directorioBase($baseDir) . '/' . $rutaRelativa;
     }
 
+    /**
+     * Ruta del comprobante SOLO si es un archivo normal dentro de la carpeta de comprobantes: no sigue enlaces simbólicos ni sale de ella
+     * (defensa en profundidad: la ruta ya sale de la base de datos con un formato fijo, pero una carpeta restaurada o tocada a mano podría
+     * traer un enlace hacia otro sitio del servidor).
+     */
+    public static function rutaLegible(?string $rutaRelativa, ?string $baseDir = null): ?string
+    {
+        $abs = self::rutaAbsoluta($rutaRelativa, $baseDir);
+        if ($abs === null || is_link($abs) || !is_file($abs) || !is_readable($abs)) {
+            return null;
+        }
+
+        $real = realpath($abs);
+        $base = realpath(self::directorioBase($baseDir));
+
+        return $real !== false && $base !== false && str_starts_with($real, $base . DIRECTORY_SEPARATOR) ? $abs : null;
+    }
+
     /** Borra el archivo físico del comprobante si existe (ignora rutas inválidas o ya inexistentes). */
     public static function eliminar(?string $rutaRelativa, ?string $baseDir = null): void
     {

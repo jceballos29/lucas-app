@@ -1246,6 +1246,21 @@ same('rutaAbsoluta acepta patrón YYYY/MM/<32-hex>.<ext> y bloquea path traversa
     AA::rutaAbsoluta('archivo.jpg', '/tmp/adj'),
 ]);
 $tmpAdjDir = sys_get_temp_dir() . '/lucas_adj_unit_' . bin2hex(random_bytes(4));
+// rutaLegible: solo archivos normales dentro de la carpeta; un enlace simbólico hacia fuera se rechaza.
+$legBase = sys_get_temp_dir() . '/lucas_leg_' . bin2hex(random_bytes(4));
+mkdir($legBase . '/2026/11', 0700, true);
+$legRuta = '2026/11/' . str_repeat('b', 32) . '.pdf';
+$legEnl = '2026/11/' . str_repeat('c', 32) . '.pdf';
+file_put_contents($legBase . '/' . $legRuta, '%PDF-1.4');
+file_put_contents(sys_get_temp_dir() . '/lucas_secreto_' . getmypid(), 'secreto');
+symlink(sys_get_temp_dir() . '/lucas_secreto_' . getmypid(), $legBase . '/' . $legEnl);
+same('rutaLegible (R/M6): archivo normal sí; enlace simbólico hacia fuera, ruta inválida e inexistente no', [true, null, null, null], [
+    AA::rutaLegible($legRuta, $legBase) === $legBase . '/' . $legRuta,
+    AA::rutaLegible($legEnl, $legBase),
+    AA::rutaLegible('../../etc/passwd', $legBase),
+    AA::rutaLegible('2026/11/' . str_repeat('d', 32) . '.pdf', $legBase),
+]);
+@unlink($legBase . '/' . $legEnl); @unlink($legBase . '/' . $legRuta); @unlink(sys_get_temp_dir() . '/lucas_secreto_' . getmypid()); @rmdir($legBase . '/2026/11'); @rmdir($legBase . '/2026'); @rmdir($legBase);
 $tmpPng = sys_get_temp_dir() . '/lucas_png_' . bin2hex(random_bytes(4));
 $tmpPhp = sys_get_temp_dir() . '/lucas_php_' . bin2hex(random_bytes(4));
 file_put_contents($tmpPng, (string) $pngMinimo);

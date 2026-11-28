@@ -16,6 +16,7 @@
 # Una copia que vive en el mismo servidor no protege de perder el servidor: copia la carpeta a otro sitio (ver docs/DESPLIEGUE.md).
 
 set -eu
+umask 077   # todo lo que se cree (volcado, comprobantes, carpeta de copias, temporales) nace solo para quien lo hace
 export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 
