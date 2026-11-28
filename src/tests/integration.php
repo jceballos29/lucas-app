@@ -1299,6 +1299,32 @@ same('vista previa: avisa si la cuenta quedaría en negativo', true, $importador
 same('vista previa de una cuenta ajena: null (no revela nada)', null, $importador->vistaPrevia($uOtroImp = (int) $usuarios->create('Intruso Imp', 'intruso.imp@correo.com', 'x'), $cCuenta, $lotePrev));
 same('vista previa sin filas: null', null, $importador->vistaPrevia($cUser, $cCuenta, []));
 
+// R1: GuardarMovimiento (aplica un envío ya validado) y AvisoPresupuesto.
+$gm = $container->guardarMovimiento();
+$subVacia = ['ok' => true, 'vacio' => true, 'error' => null, 'tmp' => null, 'mime' => null, 'ext' => null, 'nombre' => null];
+$envNormal = static fn (array $over = []): App\Movimientos\EnvioMovimiento => new App\Movimientos\EnvioMovimiento(false, $over + ['tipo' => 'gasto', 'monto' => '1000.00', 'fecha' => '2026-11-26', 'id_cuenta' => $cCuenta, 'id_categoria' => $rCatGasto, 'descripcion' => 'Prueba R1', 'etiqueta' => null, 'num_cuotas' => 1], [], [], [], [], $subVacia);
+$saldoR1 = (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo;
+$r1 = $gm->guardar($cUser, null, $envNormal());
+same('GuardarMovimiento: un gasto normal se guarda, dice qué se registró y baja el saldo', [true, 'ok', true, App\Support\Dinero::sumar([$saldoR1, '-1000.00'])], [$r1->ok, $r1->tono, str_starts_with($r1->mensaje, 'Se registró el gasto de '), (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo]);
+$idR1 = (int) $pdo->query("SELECT id_transaccion FROM transacciones WHERE descripcion = 'Prueba R1' AND id_usuario = $cUser")->fetchColumn();
+$r2 = $gm->guardar($cUser, $container->movimientos()->findOwned($cUser, $idR1), $envNormal(['monto' => '2500.00']));
+same('GuardarMovimiento: editar un movimiento responde «Se guardaron los cambios» y ajusta el saldo', [true, 'Se guardaron los cambios del movimiento.', App\Support\Dinero::sumar([$saldoR1, '-2500.00'])], [$r2->ok, $r2->mensaje, (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo]);
+$r3 = $gm->guardar($cUser, null, $envNormal(['id_categoria' => $rCatIngreso]));
+same('GuardarMovimiento: una categoría de ingresos en un gasto da el error de la categoría y no guarda', [false, ['id_categoria']], [$r3->ok, array_keys($r3->errors)]);
+$r4 = $gm->guardar($cUser, null, $envNormal(['monto' => '999999999.00']));
+same('GuardarMovimiento: sin saldo suficiente da el error del monto', [false, ['monto']], [$r4->ok, array_keys($r4->errors)]);
+$r5 = $gm->guardar($cUser, null, $envNormal(['id_cuenta' => 99999999]));
+same('GuardarMovimiento: una cuenta que no existe (o ajena) es «no encontrado»', [false, true], [$r5->ok, $r5->noEncontrado]);
+$otroUsr = (int) $usuarios->create('Intruso R1', 'intruso.r1@correo.com', 'x');
+$saldoAntesIntruso = (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo;
+same('GuardarMovimiento: la cuenta de otra persona es «no encontrado» y no se toca su saldo', [true, $saldoAntesIntruso], [$gm->guardar($otroUsr, null, $envNormal())->noEncontrado, (string) $cuentas->findOwned($cUser, $cCuenta)?->saldo]);
+$partes = [['id_categoria' => $rCatGasto, 'monto' => '700.00', 'descripcion' => 'a'], ['id_categoria' => $rCatGasto, 'monto' => '300.00', 'descripcion' => 'b']];
+$envDiv = new App\Movimientos\EnvioMovimiento(true, ['tipo' => 'gasto', 'monto_total' => '1000.00', 'fecha' => '2026-11-26', 'id_cuenta' => $cCuenta, 'descripcion' => 'Dividido R1', 'etiqueta' => null, 'num_cuotas' => 1], $partes, [], [], [], $subVacia);
+$r6 = $gm->guardar($cUser, null, $envDiv);
+same('GuardarMovimiento: un gasto dividido crea una fila por parte y lo cuenta en el mensaje', [true, true, 2], [$r6->ok, str_contains($r6->mensaje, '(2 categorías) por '), (int) $pdo->query("SELECT COUNT(*) FROM transacciones WHERE id_usuario = $cUser AND descripcion IN ('a', 'b')")->fetchColumn()]);
+same('AvisoPresupuesto: sin presupuesto para esa categoría no hay aviso', null, $container->avisoPresupuesto()->para($cUser, $rCatGasto, '2026-11-26'));
+same('AvisoPresupuesto: una fecha inválida tampoco', null, $container->avisoPresupuesto()->para($cUser, $rCatGasto, 'no-es-fecha'));
+
 section('División de movimientos (Splits) y etiquetas transversales #tags (Fase 14)');
 $sUser = (int) $usuarios->create('Sofía Splits', 'sofia.splits@correo.com', 'x');
 $sCuenta = $cuentas->create($sUser, 'Banco Sofía', 'bancaria', '500000.00');

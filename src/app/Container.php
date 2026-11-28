@@ -135,6 +135,18 @@ final class Container
         return new CuotaTarjetaRepository($this->pdo());
     }
 
+    /** El aviso de presupuesto al registrar un gasto (RF-17). */
+    public function avisoPresupuesto(): \App\Movimientos\AvisoPresupuesto
+    {
+        return new \App\Movimientos\AvisoPresupuesto($this->presupuestos(), $this->tasasCambio());
+    }
+
+    /** Guarda lo que llega del formulario de movimiento: movimiento, comprobante y avisos (R1). */
+    public function guardarMovimiento(): \App\Movimientos\GuardarMovimiento
+    {
+        return new \App\Movimientos\GuardarMovimiento($this->gestionMovimientos(), $this->movimientos(), $this->notificadorPresupuesto(), $this->avisoPresupuesto());
+    }
+
     public function gestionMovimientos(): GestionMovimientos
     {
         return new GestionMovimientos($this->pdo(), $this->movimientos(), $this->cuentas(), $this->categorias(), $this->cuotasTarjeta());

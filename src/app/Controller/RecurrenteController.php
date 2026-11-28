@@ -13,7 +13,6 @@ use App\Http\Response;
 use App\Movimientos\ReglasMovimiento;
 use App\Support\Dinero;
 use App\Support\Frecuencia;
-use App\Support\Mes;
 use App\Validation\RecurrenteValidator;
 use App\View\Fecha;
 use App\View\View;
@@ -226,7 +225,7 @@ final class RecurrenteController
                     if ($res['codigo'] === ReglasMovimiento::OK) {
                         $prox = Fecha::simple((string) $res['proximaFecha']);
                         $mensaje = "Se registró «{$nombre}» (" . Dinero::formatear($rec->monto) . ") en «{$res['cuenta']}». Próxima fecha: $prox.";
-                        $aviso = !$rec->esIngreso() ? $this->avisoPresupuesto($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId) : null;
+                        $aviso = !$rec->esIngreso() ? $this->container->avisoPresupuesto()->para($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId) : null;
                         if (!$rec->esIngreso()) {
                             $this->container->notificadorPresupuesto()->notificarGasto($userId, $rec->idCategoria, $rec->proximaFecha, $espacioId);
                         }
@@ -269,27 +268,6 @@ final class RecurrenteController
         }
 
         Response::redirect('/recurrentes.php');
-    }
-
-    private function avisoPresupuesto(int $userId, int $categoriaId, string $fecha, ?int $espacioId = null): ?string
-    {
-        $mes = Mes::deFecha($fecha);
-        $presupuesto = $mes === null ? null : $this->container->presupuestos()->findForCategory($userId, $categoriaId, $mes['mes'], $mes['anio'], $espacioId);
-
-        if ($presupuesto === null) {
-            return null;
-        }
-
-        $pr = $presupuesto->progreso();
-        $gastado = Dinero::formatear($presupuesto->gastado);
-        $limite = Dinero::formatear($presupuesto->montoLimite);
-
-        return match ($pr['estado']) {
-            'cerca' => "Aviso: llevas el {$pr['percent']} % del presupuesto de «{$presupuesto->categoriaNombre}» ($gastado de $limite).",
-            'limite' => "Aviso: llegaste al límite del presupuesto de «{$presupuesto->categoriaNombre}» ($limite).",
-            'excedido' => "Aviso: superaste el presupuesto de «{$presupuesto->categoriaNombre}» ($gastado de $limite).",
-            default => null,
-        };
     }
 
     private static function fail(RuntimeException $error): never

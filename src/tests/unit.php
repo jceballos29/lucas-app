@@ -980,6 +980,29 @@ $valSplitUnaSola = $mv14->validateSplit([
 same('validateSplit exige al menos 2 partes', true, isset($valSplitUnaSola['errors']['split']));
 same('Filtros::desde incluye y normaliza la etiqueta', 'vacaciones-2026', App\Movimientos\Filtros::desde(['etiqueta' => '#Vacaciones 2026'])['etiqueta']);
 
+section('FormularioMovimiento: lee y valida el formulario de movimiento sin tocar la base de datos (R1)');
+use App\Movimientos\FormularioMovimiento as FM;
+
+$sinArchivo = ['error' => UPLOAD_ERR_NO_FILE, 'tmp_name' => '', 'size' => 0, 'name' => ''];
+same('inicial() de un movimiento nuevo: gasto de hoy, sin cuenta ni categoría', ['gasto', date('Y-m-d'), '', '', '1'], (static function (): array { $o = FM::inicial(null); return [$o['tipo'], $o['fecha'], $o['id_cuenta'], $o['id_categoria'], $o['num_cuotas']]; })());
+same('filasDivisionVacias() son 4 filas con los 3 campos vacíos', [4, ['id_categoria' => '', 'monto' => '', 'descripcion' => '']], [count(FM::filasDivisionVacias()), FM::filasDivisionVacias()[3]]);
+$post = ['tipo' => 'gasto', 'monto' => '50.000', 'fecha' => '2026-11-25', 'id_cuenta' => '1', 'id_categoria' => '2', 'descripcion' => '  Taxi  ', 'etiqueta' => ' #viaje ', 'num_cuotas' => '1'];
+$e = FM::leer($post, $sinArchivo, false);
+same('leer: gasto normal válido → no dividido, sin errores, con los datos validados', [false, true, 'gasto', '50000.00', 'Taxi'], [$e->dividido, $e->valido(), $e->datos['tipo'], $e->datos['monto'], $e->datos['descripcion']]);
+same('leer: repuebla el formulario con lo escrito (monto y etiqueta tal cual, recortados)', ['50.000', '#viaje', '1', '2'], [$e->old['monto'], $e->old['etiqueta'], $e->old['id_cuenta'], $e->old['id_categoria']]);
+same('leer: un monto inválido deja errores y el envío no es válido', [false, true], [FM::leer([...$post, 'monto' => 'abc'], $sinArchivo, false)->valido(), isset(FM::leer([...$post, 'monto' => 'abc'], $sinArchivo, false)->errors['monto'])]);
+$div = FM::leer([...$post, 'id_categoria' => '', 'split_categoria' => ['2', '3', '', ''], 'split_monto' => ['30.000', '20.000', '', '']], $sinArchivo, false);
+same('leer: con filas de división (al crear) es un movimiento dividido con sus partes', [true, true, 2, '50000.00', '2', '30.000'], [$div->dividido, $div->valido(), count($div->partes), $div->datos['monto_total'], $div->splitOld[0]['id_categoria'], $div->splitOld[0]['monto']]);
+same('leer: al EDITAR nunca es dividido aunque lleguen filas de división', [false, ''], (static function () use ($post, $sinArchivo): array { $x = FM::leer([...$post, 'split_categoria' => ['2', '3'], 'split_monto' => ['30.000', '20.000']], $sinArchivo, true); return [$x->dividido, $x->splitOld[0]['id_categoria'] === '2' ? '' : 'distinto']; })());
+same('leer: «dividir=1» sin filas entra en modo dividido y exige al menos 2 partes', [true, true], (static function () use ($post, $sinArchivo): array { $x = FM::leer([...$post, 'dividir' => '1'], $sinArchivo, false); return [$x->dividido, isset($x->errors['split'])]; })());
+$grande = FM::leer($post, ['error' => UPLOAD_ERR_INI_SIZE, 'tmp_name' => '', 'size' => 0, 'name' => 'enorme.pdf'], false);
+same('leer: un comprobante rechazado agrega el error «comprobante»', [false, true], [$grande->valido(), isset($grande->errors['comprobante'])]);
+same('ResultadoGuardado: guardado / con errores / no encontrado', [[true, false, 'warn'], [false, false, 'error'], [false, true, 'error']], [
+    (static function (): array { $r = App\Movimientos\ResultadoGuardado::guardado('warn', 'x'); return [$r->ok, $r->noEncontrado, $r->tono]; })(),
+    (static function (): array { $r = App\Movimientos\ResultadoGuardado::conErrores(['monto' => 'x']); return [$r->ok, $r->noEncontrado, $r->tono]; })(),
+    (static function (): array { $r = App\Movimientos\ResultadoGuardado::noEncontrado(); return [$r->ok, $r->noEncontrado, $r->tono]; })(),
+]);
+
 section('PlanCuotas y CicloTarjeta: compras a cuotas, fecha de corte y fecha de pago (Fase 15)');
 use App\Tarjetas\CicloTarjeta as CT;
 use App\Tarjetas\PlanCuotas as PC;

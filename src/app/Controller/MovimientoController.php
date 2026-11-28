@@ -10,11 +10,10 @@ use App\Http\Failure;
 use App\Http\Flash;
 use App\Http\Response;
 use App\Movimientos\Filtros;
+use App\Movimientos\FormularioMovimiento;
 use App\Movimientos\ReglasMovimiento;
 use App\Support\AlmacenAdjuntos;
 use App\Support\Dinero;
-use App\Support\Mes;
-use App\Validation\MovimientoValidator;
 use App\View\View;
 use RuntimeException;
 
@@ -62,7 +61,7 @@ final class MovimientoController
         ], 'Movimientos', $user, 'app', 'movimientos');
     }
 
-    /** Alta (sin `id`) o edición (`?id=`) de un movimiento. */
+    /** Alta (sin `id`) o edición (`?id=`) de un movimiento. La lectura del formulario y el guardado viven en `Movimientos\\*` (R1). */
     public function form(): void
     {
         $user = require_login();
@@ -84,180 +83,29 @@ final class MovimientoController
             }
 
             $errors = [];
-            $splitOld = [
-                ['id_categoria' => '', 'monto' => '', 'descripcion' => ''],
-                ['id_categoria' => '', 'monto' => '', 'descripcion' => ''],
-                ['id_categoria' => '', 'monto' => '', 'descripcion' => ''],
-                ['id_categoria' => '', 'monto' => '', 'descripcion' => ''],
-            ];
-            $old = $movimiento === null
-                ? ['tipo' => 'gasto', 'monto' => '', 'fecha' => date('Y-m-d'), 'id_cuenta' => '', 'id_categoria' => '', 'descripcion' => '', 'etiqueta' => '', 'num_cuotas' => '1', 'con_intereses' => '1']
-                : [
-                    'tipo' => $movimiento->tipo,
-                    'monto' => Dinero::paraCampo($movimiento->monto),
-                    'fecha' => $movimiento->fecha,
-                    'id_cuenta' => (string) $movimiento->idCuenta,
-                    'id_categoria' => (string) $movimiento->idCategoria,
-                    'descripcion' => $movimiento->descripcion ?? '',
-                    'etiqueta' => $movimiento->etiqueta ?? '',
-                    'num_cuotas' => (string) $movimiento->numCuotas,
-                    'con_intereses' => $movimiento->conIntereses ? '1' : '0',
-                ];
+            $splitOld = FormularioMovimiento::filasDivisionVacias();
+            $old = FormularioMovimiento::inicial($movimiento);
 
             if ($isPost) {
                 reject_foreign_origin();
                 require_csrf();
 
-                $subida = AlmacenAdjuntos::validarSubida(is_array($_FILES['comprobante'] ?? null) ? $_FILES['comprobante'] : null);
+                $envio = FormularioMovimiento::leer($_POST, is_array($_FILES['comprobante'] ?? null) ? $_FILES['comprobante'] : null, $movimiento !== null);
+                [$old, $splitOld, $errors] = [$envio->old, $envio->splitOld, $envio->errors];
 
-                $catsSplit = is_array($_POST['split_categoria'] ?? null) ? $_POST['split_categoria'] : [];
-                $montosSplit = is_array($_POST['split_monto'] ?? null) ? $_POST['split_monto'] : [];
-                $descsSplit = is_array($_POST['split_descripcion'] ?? null) ? $_POST['split_descripcion'] : [];
+                if ($envio->valido()) {
+                    $res = $this->container->guardarMovimiento()->guardar($user['id'], $movimiento, $envio, $espacioId);
 
-                $usaSplit = false;
-                for ($i = 0; $i < 4; $i++) {
-                    $cVal = is_string($catsSplit[$i] ?? null) ? trim($catsSplit[$i]) : '';
-                    $mVal = is_string($montosSplit[$i] ?? null) ? trim($montosSplit[$i]) : '';
-                    $dVal = is_string($descsSplit[$i] ?? null) ? trim($descsSplit[$i]) : '';
-                    $splitOld[$i] = ['id_categoria' => $cVal, 'monto' => $mVal, 'descripcion' => $dVal];
-                    if ($cVal !== '' || $mVal !== '') {
-                        $usaSplit = true;
+                    if ($res->noEncontrado) {
+                        Response::plain(404, "No encontrado.\n");
                     }
-                }
 
-                if ($movimiento === null && ($usaSplit || ($_POST['dividir'] ?? '') === '1')) {
-                    $splitRes = (new MovimientoValidator())->validateSplit($_POST);
-                    $errors = $splitRes['errors'];
-                    if (!$subida['ok'] && $subida['error'] !== null) {
-                        $errors['comprobante'] = $subida['error'];
+                    if ($res->ok) {
+                        Flash::set($res->tono, $res->mensaje);
+                        Response::redirect('/movimientos.php');
                     }
-                    $old = [
-                        'tipo' => $splitRes['base']['tipo'],
-                        'monto' => is_string($_POST['monto'] ?? null) ? trim($_POST['monto']) : '',
-                        'fecha' => is_string($_POST['fecha'] ?? null) ? trim($_POST['fecha']) : '',
-                        'id_cuenta' => (string) ($splitRes['base']['id_cuenta'] ?: ''),
-                        'id_categoria' => '',
-                        'descripcion' => $splitRes['base']['descripcion'] ?? '',
-                        'etiqueta' => is_string($_POST['etiqueta'] ?? null) ? trim($_POST['etiqueta']) : '',
-                        'num_cuotas' => (string) ($splitRes['base']['num_cuotas'] ?? 1),
-                        'con_intereses' => ($splitRes['base']['con_intereses'] ?? true) ? '1' : '0',
-                    ];
 
-                    if ($errors === []) {
-                        $saved = $this->container->gestionMovimientos()->guardarDividido(
-                            $user['id'],
-                            $splitRes['base'],
-                            $splitRes['partes'],
-                            $espacioId,
-                        );
-
-                        switch ($saved['codigo']) {
-                            case ReglasMovimiento::OK:
-                                if (!$subida['vacio'] && $subida['tmp'] !== null && $subida['mime'] !== null && isset($saved['ids'][0])) {
-                                    $guardado = AlmacenAdjuntos::guardarDesdeArchivo($subida['tmp'], $subida['mime'], (string) $subida['nombre']);
-                                    $this->container->movimientos()->actualizarAdjunto($user['id'], (int) $saved['ids'][0], $guardado['ruta'], $guardado['nombre'], $guardado['mime'], $espacioId);
-                                }
-                                $base = $splitRes['base'];
-                                $nPartes = count($splitRes['partes']);
-                                $mensaje = 'Se registró ' . ($base['tipo'] === 'ingreso' ? 'el ingreso dividido' : 'el gasto dividido')
-                                    . " ($nPartes categorías) por " . Dinero::formatear($base['monto_total']) . " en «{$saved['cuenta']}».";
-                                $avisos = [];
-                                if ($base['tipo'] === 'gasto') {
-                                    foreach ($splitRes['partes'] as $p) {
-                                        $this->container->notificadorPresupuesto()->notificarGasto($user['id'], $p['id_categoria'], $base['fecha'], $espacioId);
-                                        $av = $this->avisoPresupuesto($user['id'], $p['id_categoria'], $base['fecha'], $espacioId);
-                                        if ($av !== null && !in_array($av, $avisos, true)) {
-                                            $avisos[] = $av;
-                                        }
-                                    }
-                                }
-                                $avisoTexto = implode(' ', $avisos);
-                                Flash::set($avisoTexto === '' ? 'ok' : 'warn', $avisoTexto === '' ? $mensaje : "$mensaje $avisoTexto");
-                                Response::redirect('/movimientos.php');
-
-                                // no break
-                            case ReglasMovimiento::TIPO_DISCORDANTE:
-                                $errors['split'] = 'Alguna categoría de la división no coincide con el tipo (' . ($splitRes['base']['tipo'] === 'ingreso' ? 'ingresos' : 'gastos') . ').';
-                                break;
-
-                            case ReglasMovimiento::CUENTA_INACTIVA:
-                                $errors['id_cuenta'] = "La cuenta «{$saved['cuenta']}» está inactiva. Actívala en Cuentas o elige otra.";
-                                break;
-
-                            case ReglasMovimiento::SALDO_INSUFICIENTE:
-                                $disponible = Dinero::formatear((string) ($saved['saldo'] ?? '0.00'));
-                                $errors['monto'] = "La cuenta «{$saved['cuenta']}» tiene $disponible disponibles: no alcanza para registrar este movimiento dividido sin dejarla en negativo.";
-                                break;
-
-                            default:
-                                Response::plain(404, "No encontrado.\n");
-                        }
-                    }
-                } else {
-                    $result = (new MovimientoValidator())->validate($_POST);
-                    $errors = $result['errors'];
-                    if (!$subida['ok'] && $subida['error'] !== null) {
-                        $errors['comprobante'] = $subida['error'];
-                    }
-                    $old = [
-                        'tipo' => $result['data']['tipo'],
-                        'monto' => is_string($_POST['monto'] ?? null) ? trim($_POST['monto']) : '',
-                        'fecha' => is_string($_POST['fecha'] ?? null) ? trim($_POST['fecha']) : '',
-                        'id_cuenta' => (string) ($result['data']['id_cuenta'] ?: ''),
-                        'id_categoria' => (string) ($result['data']['id_categoria'] ?: ''),
-                        'descripcion' => $result['data']['descripcion'] ?? '',
-                        'etiqueta' => is_string($_POST['etiqueta'] ?? null) ? trim($_POST['etiqueta']) : '',
-                        'num_cuotas' => (string) ($result['data']['num_cuotas'] ?? 1),
-                        'con_intereses' => ($result['data']['con_intereses'] ?? true) ? '1' : '0',
-                    ];
-
-                    if ($errors === []) {
-                        $saved = $this->container->gestionMovimientos()->guardar($user['id'], $movimiento?->id, $result['data'], $espacioId);
-
-                        switch ($saved['codigo']) {
-                            case ReglasMovimiento::OK:
-                                $movIdGuardado = (int) $saved['id'];
-                                if (!$subida['vacio'] && $subida['tmp'] !== null && $subida['mime'] !== null) {
-                                    $guardado = AlmacenAdjuntos::guardarDesdeArchivo($subida['tmp'], $subida['mime'], (string) $subida['nombre']);
-                                    $this->container->movimientos()->actualizarAdjunto($user['id'], $movIdGuardado, $guardado['ruta'], $guardado['nombre'], $guardado['mime'], $espacioId);
-                                    if ($movimiento !== null && $movimiento->adjuntoRuta !== null) {
-                                        AlmacenAdjuntos::eliminar($movimiento->adjuntoRuta);
-                                    }
-                                } elseif ($movimiento !== null && ($_POST['eliminar_adjunto'] ?? '') === '1' && $movimiento->adjuntoRuta !== null) {
-                                    $this->container->movimientos()->actualizarAdjunto($user['id'], $movIdGuardado, null, null, null, $espacioId);
-                                    AlmacenAdjuntos::eliminar($movimiento->adjuntoRuta);
-                                }
-                                $data = $result['data'];
-                                $mensaje = $movimiento === null
-                                    ? 'Se registró ' . ($data['tipo'] === 'ingreso' ? 'el ingreso' : 'el gasto') . ' de ' . Dinero::formatear($data['monto']) . " en «{$saved['cuenta']}»."
-                                    : 'Se guardaron los cambios del movimiento.';
-                                // RF-17: si el gasto deja la categoría cerca o por encima de su presupuesto del mes, se avisa aquí mismo.
-                                if ($data['tipo'] === 'gasto') {
-                                    $this->container->notificadorPresupuesto()->notificarGasto($user['id'], $data['id_categoria'], $data['fecha'], $espacioId);
-                                }
-                                $aviso = $data['tipo'] === 'gasto' ? $this->avisoPresupuesto($user['id'], $data['id_categoria'], $data['fecha'], $espacioId) : null;
-                                Flash::set($aviso === null ? 'ok' : 'warn', $aviso === null ? $mensaje : "$mensaje $aviso");
-                                Response::redirect('/movimientos.php');
-
-                                // no break
-                            case ReglasMovimiento::TIPO_DISCORDANTE:
-                                $errors['id_categoria'] = 'Esa categoría no es de ' . ($result['data']['tipo'] === 'ingreso' ? 'ingresos' : 'gastos') . '. Elige otra o cambia el tipo.';
-                                break;
-
-                            case ReglasMovimiento::CUENTA_INACTIVA:
-                                $errors['id_cuenta'] = "La cuenta «{$saved['cuenta']}» está inactiva. Actívala en Cuentas o elige otra.";
-                                break;
-
-                            case ReglasMovimiento::SALDO_INSUFICIENTE:
-                                $disponible = Dinero::formatear((string) ($saved['saldo'] ?? '0.00'));
-                                $errors['monto'] = "La cuenta «{$saved['cuenta']}» tiene $disponible disponibles: no alcanza para registrar este movimiento sin dejarla en negativo.";
-                                break;
-
-                                // Un movimiento, una cuenta o una categoría que no son tuyos: como si no existieran (RNF-04).
-                            default:
-                                Response::plain(404, "No encontrado.\n");
-                        }
-                    }
+                    $errors = $res->errors;
                 }
             }
 
@@ -513,36 +361,6 @@ final class MovimientoController
             'erroresCsv' => $erroresCsv,
             'preview' => $preview,
         ], 'Importar movimientos CSV', $user, 'app', 'movimientos');
-    }
-
-    /**
-     * El aviso de RF-17 para un gasto de esa categoría y fecha, o null si no hay presupuesto o está en orden (menos del
-     * 80 %). Se calcula al momento, no se guarda.
-     */
-    private function avisoPresupuesto(int $userId, int $categoriaId, string $fecha, ?int $espacioId = null): ?string
-    {
-        $mes = Mes::deFecha($fecha);
-        if ($mes === null) {
-            return null;
-        }
-        $monedaBase = Dinero::monedaActual();
-        $tasas = $this->container->tasasCambio()->listMap($userId, $espacioId);
-        $presupuesto = $this->container->presupuestos()->findForCategory($userId, $categoriaId, $mes['mes'], $mes['anio'], $espacioId, $monedaBase, $tasas);
-
-        if ($presupuesto === null) {
-            return null;
-        }
-
-        $pr = $presupuesto->progreso();
-        $gastado = Dinero::formatear($presupuesto->gastado);
-        $limite = Dinero::formatear($presupuesto->montoLimite);
-
-        return match ($pr['estado']) {
-            'cerca' => "Aviso: llevas el {$pr['percent']} % del presupuesto de «{$presupuesto->categoriaNombre}» ($gastado de $limite).",
-            'limite' => "Aviso: llegaste al límite del presupuesto de «{$presupuesto->categoriaNombre}» ($limite).",
-            'excedido' => "Aviso: superaste el presupuesto de «{$presupuesto->categoriaNombre}» ($gastado de $limite).",
-            default => null,
-        };
     }
 
     private static function page(mixed $value): int
