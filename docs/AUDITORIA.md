@@ -1,6 +1,8 @@
 # Auditoría de Lucas: seguridad, calidad de código y UX/UI
 
-**Fecha:** 2026-11-26 · **Alcance:** todo el repositorio hasta el commit `30764d4` (Fase 20) · **Entorno probado:** stack Docker de desarrollo (PHP 8.4.28, MySQL 8.4, nginx 1.30) en `http://localhost:8090`.
+**Fecha:** 2026-11-26 · **Última actualización:** 2026-11-28 · **Alcance:** todo el repositorio hasta el commit `30764d4` (Fase 20) · **Entorno probado:** stack Docker de desarrollo (PHP 8.4, MySQL 8.4, nginx 1.30) en `http://localhost:8090`.
+
+> **Estado a 2026-11-28:** de los hallazgos de seguridad (C1, A1–A2, M1–M8) **no queda ninguno abierto** (M5 se resolvió salvo el `SessionHandler`, decisión consciente). También están resueltos B12 (copias con comprobantes), U1–U4, R1–R4, R8 y R9. Siguen abiertos los hallazgos **bajos** (B1–B11, E2–E5), los refactores R5–R7, los de UX U5–U11 y el cierre de la lista previa al despliegue (sección 9). Cada hallazgo resuelto lleva su «Qué se hizo»; los commits están en el historial, uno por hallazgo.
 
 ## 1. Veredicto
 
@@ -11,23 +13,23 @@ Lucas está **bien construida y la base de seguridad es sólida** para una aplic
 | Crítica | 1 (resuelta) | Compromete producción si se despliega tal cual. |
 | Alta | 2 (2 resueltas) | Explotable hoy por un usuario registrado o anónimo. |
 | Media | 8 (8 resueltas) | Debilita seguridad, disponibilidad o integridad de datos; conviene corregir antes de abrir la app al público. |
-| Baja | 12 | Endurecimiento y buenas prácticas. |
-| Refactor / código muerto | 9 | Deuda técnica; no afecta a usuarios hoy. |
-| UX/UI | 11 | Accesibilidad, móvil y flujos. |
+| Baja | 12 (1 resuelta: B12) | Endurecimiento y buenas prácticas. |
+| Refactor / código muerto | 9 (6 resueltos: R1–R4, R8, R9) | Deuda técnica; no afecta a usuarios hoy. |
+| UX/UI | 11 (4 resueltos: U1–U4) | Accesibilidad, móvil y flujos. |
 
-**Orden recomendado de trabajo:** C1 → A1 → A2 → M1, M2, M3 → resto (ver sección 9).
+**Orden recomendado de trabajo:** el plan original (C1 → A1 → A2 → M1, M2, M3 → resto) ya está cumplido; lo pendiente es la lista previa al despliegue y los hallazgos bajos (ver sección 9).
 
 ---
 
 ## 2. Cómo se hizo la auditoría
 
 1. **Revisión de código** de la capa de seguridad (sesión, CSRF, origen, login, recuperación, límites de intentos), adjuntos, importador/exportador CSV, perfil, administración, espacios compartidos, borrado de cuentas, correo, repositorios (consultas SQL), vistas (escape de salida), Docker, nginx, PHP y scripts de base de datos.
-2. **Suites del proyecto:** unitarias (504), integración con BD temporal (436) y humo con curl (792). **Todas pasan, 0 fallos.** `php -l` sobre todos los `.php` de `app/`, `public/`, `views/` y `scripts/`: sin errores de sintaxis.
+2. **Suites del proyecto:** unitarias (504), integración con BD temporal (436) y humo con curl (792). **Todas pasaban, 0 fallos** (hoy, tras los arreglos, son 588, 563 y 875; ver sección 8). `php -l` sobre todos los `.php` de `app/`, `public/`, `views/` y `scripts/`: sin errores de sintaxis.
 3. **Pruebas de ataque en vivo** (scripts en Python contra la app en marcha, con 3 usuarios de prueba y un espacio compartido; ver sección 7).
 4. **UX/UI** con las skills `ui-ux-pro-max` y `frontend-design`: capturas a 375 px, auditoría de accesibilidad de 16 páginas y revisión del CSS.
-5. **Limpieza:** los usuarios `audit_*`/`victima_*`, sus datos, comprobantes en disco y correos de prueba se borraron al terminar. No se modificó ningún archivo del código.
+5. **Limpieza:** los usuarios `audit_*`/`victima_*`, sus datos, comprobantes en disco y correos de prueba se borraron al terminar. Durante la auditoría original no se modificó ningún archivo del código; los arreglos vinieron después, uno por hallazgo.
 
-**Lo que NO se revisó a fondo** (para que no se dé por cubierto): `bin/backup-db`/`restore-db` y `tests/backup.sh`, `tests/carga.py`, la lógica matemática de `PlanificadorDeudas`/`PlanCuotas`/`ConversorMoneda` (solo mediante sus pruebas existentes) y los scripts de cron `procesar-recurrentes`/`enviar-resumen-mensual` más allá de leerlos. No se hizo prueba de carga ni escaneo de dependencias (no hay dependencias de terceros: `composer.lock` vacío).
+**Lo que NO se revisó a fondo** (para que no se dé por cubierto): `tests/carga.py`, la lógica matemática de `PlanificadorDeudas`/`PlanCuotas`/`ConversorMoneda` (solo mediante sus pruebas existentes) y los scripts de cron `procesar-recurrentes`/`enviar-resumen-mensual` más allá de leerlos. No se hizo prueba de carga. (Las copias de seguridad, que en la auditoría original no se revisaron, se ampliaron y probaron después: B12. Dependencias: la aplicación no tiene de terceros; el `composer.json` de la raíz solo trae PHPStan y PHP CS Fixer para desarrollo.)
 
 ---
 
@@ -241,11 +243,11 @@ No se encontraron errores que corrompan datos. Los que hay son de comportamiento
 
 | ID | Hallazgo | Severidad | Solución |
 |---|---|---|---|
-| E1 | Si el servidor SMTP falla en `invitar`, la invitación queda guardada y el mensaje de éxito dice «Se envió la invitación» aunque el correo no salió (el `catch` está vacío). | Media | Devolver `correoEnviado` y avisar «Invitación creada, pero no pudimos enviar el correo; comparte este enlace». Con la cola (M4) queda resuelto. |
+| E1 ✅ | Si el servidor SMTP falla en `invitar`, la invitación queda guardada y el mensaje de éxito dice «Se envió la invitación» aunque el correo no salió (el `catch` está vacío). | Media | Devolver `correoEnviado` y avisar «Invitación creada, pero no pudimos enviar el correo; comparte este enlace». Con la cola (M4) queda resuelto. **✅ Resuelto por la cola de correo (M4):** la invitación queda guardada y su correo se reintenta solo (5 intentos con espera creciente); un fallo definitivo queda en el log y en `scripts/enviar-cola.php --estado`. |
 | E2 | `Dinero::parse` trata `1.234` como mil doscientos treinta y cuatro (documentado) pero en un campo de monto de formulario el usuario europeo/anglosajón podría escribir `12.50` esperando 12,50: funciona; `1,234.56` se rechaza con un mensaje genérico. | Baja | Mensaje de error específico: «Usa punto para miles y coma para decimales: 1.234,56». |
 | E3 | Los errores en `Response::plain` (403 CSRF, 404, 429 del perfil) salen como **texto plano sin layout** ni enlace de vuelta. | Baja | Vista de error común (`views/errors/*.php`) con el layout y un botón «Volver». |
 | E4 | `post_max_size` superado deja `$_POST` vacío → mensaje «Token de seguridad no válido» confuso. | Baja | Detectar `$_SERVER['CONTENT_LENGTH'] > post_max_size` y mostrar «El archivo es demasiado grande». |
-| E5 | El service worker nunca elimina entradas antiguas de la caché (`lucas-static-v1` fijo; cada `?v=` nuevo añade una entrada). | Baja | Incluir la versión del despliegue en `CACHE_NAME` o limpiar las URLs viejas del mismo path. |
+| E5 (parcial) | El service worker nunca elimina entradas antiguas de la caché (`lucas-static-v1` fijo; cada `?v=` nuevo añade una entrada). | Baja | Incluir la versión del despliegue en `CACHE_NAME` o limpiar las URLs viejas del mismo path. Parcial: al cambiar CSS/JS se sube a mano la versión (`lucas-static-v3`) y el `activate` borra las cachés de versiones anteriores; sigue sin ser automático. |
 
 ---
 
@@ -261,7 +263,7 @@ No se encontraron errores que corrompan datos. Los que hay son de comportamiento
 | ID | Qué | Por qué | Cómo |
 |---|---|---|---|
 | R1 ✅ | `MovimientoController::form()` (~300 líneas, ramas de división y normal casi duplicadas) | Es el archivo más difícil de cambiar sin romper algo; ya concentra adjuntos, cuotas, presupuesto y correo. | Extraer `FormularioMovimiento` (lee/valida) y `GuardarMovimiento` (aplica + adjunto + avisos) y dejar el controlador en <100 líneas. **✅ RESUELTO (2026-11-28):** `form()` pasó de ~220 a ~60 líneas. Nuevas clases en `Movimientos\\`: `FormularioMovimiento` (lee y valida el POST, también el movimiento dividido; sin base de datos) → `EnvioMovimiento`; `GuardarMovimiento` (guarda, gestiona el comprobante, avisos y correo) → `ResultadoGuardado`; y `AvisoPresupuesto`, que sustituye las **dos** copias de `avisoPresupuesto()` (la de `RecurrenteController` no convertía monedas: ahora los avisos de recurrentes usan la misma lógica multimoneda). Las dos ramas casi idénticas (normal y dividido) siguen siendo dos métodos privados, pero cada uno es corto y ya no mezcla leer, validar y guardar. 10 pruebas unitarias y 10 de integración nuevas; el comportamiento no cambió (smoke y ataques en verde). `importar()` (~150 líneas) sigue en el controlador. |
-| R2 | La lista de tablas a borrar se repite en **3 sitios** (`UsuarioRepository::deleteWithAllData` ×2 y `EspacioRepository::deleteWithAllData`), además de `APP_TABLES` en `03-users.sh` y `cleanup()` en `smoke.sh`. | Añadir una tabla nueva exige tocar 5 lugares; olvidar uno deja datos huérfanos o un error de permisos. | Una sola constante `Esquema::TABLAS_POR_ESPACIO`; test de integración que compare las tablas de `information_schema` con las listas. |
+| R2 ✅ | La lista de tablas a borrar se repite en **3 sitios** (`UsuarioRepository::deleteWithAllData` ×2 y `EspacioRepository::deleteWithAllData`), además de `APP_TABLES` en `03-users.sh` y `cleanup()` en `smoke.sh`. | Añadir una tabla nueva exige tocar 5 lugares; olvidar uno deja datos huérfanos o un error de permisos. | Una sola constante `Esquema::TABLAS_POR_ESPACIO`; test de integración que compare las tablas de `information_schema` con las listas. **✅ RESUELTO (2026-11-28):** nueva `Database\Esquema` (`TODAS`, `TABLAS_FINANCIERAS`, `POR_CASCADA`, `EXPLICITAS_EXTRA`, `borrarEspacio()` y `borrarPersonales()`): `UsuarioRepository` y `EspacioRepository` ya no repiten el SQL de borrado (de paso, la copia de `EspacioRepository` omitía `tasas_cambio`, que solo se borraba por cascada). 6 pruebas de integración comparan las listas con `information_schema` y con `APP_TABLES` de `03-users.sh`: una tabla nueva con `id_usuario`/`id_espacio` sin tratar, o fuera de `03-users.sh`, hace fallar la suite. (`cleanup()` de `smoke.sh` sigue siendo una lista aparte: es código de pruebas.) |
 | R3 ✅ | `AlmacenAdjuntos::validarSubida` devuelve el mismo array de 7 claves ocho veces; `guardarDesdeArchivo/Contenido` duplican la creación de ruta. | Código largo y propenso a divergir. | Objeto `ResultadoSubida` con constructores estáticos `ok()`, `vacio()`, `error()`; método privado `rutaNueva()`. **✅ RESUELTO (2026-11-28):** `Support\ResultadoSubida` (`vacio()`, `rechazado($motivo)`, `valido(...)`, `hayArchivo()`) sustituye al array de 7 claves repetido 8 veces, y `rutaNueva()` es la única que elige el nombre `YYYY/MM/<32 hex>.<ext>` y prepara la carpeta (`guardarDesdeArchivo` y `guardarDesdeContenido` ya no la duplican). Los consumidores (`FormularioMovimiento`, `GuardarMovimiento`, `EnvioMovimiento`) leen propiedades en vez de claves de array. 2 pruebas unitarias nuevas. |
 | R4 ✅ | `is_string($_POST['x'] ?? null) ? trim($_POST['x']) : ''` aparece decenas de veces en controladores. | Ruido y riesgo de olvidar `is_string`. | Clase `Request` con `texto('x')`, `entero('id')`, `esPost()`. **✅ RESUELTO (2026-11-28):** `Http\Peticion` (`post`, `postSinRecortar`, `postEntero`, `get`, `getEntero`, `esPost`): ningún método devuelve algo que no sea del tipo prometido (un `campo[]=x` cuenta como ausente) y los enteros exigen solo dígitos y menos de 19 caracteres. Se sustituyeron **55** apariciones en 12 controladores. 5 pruebas unitarias nuevas. Quedan fuera los validadores (`text(mixed)`, uno por clase, que reciben arrays ya leídos) y el token GET de invitaciones. |
 | R5 | `Container::shared()` y funciones globales con `$_SESSION` (`session.php`). | Difícil de probar y de reutilizar en CLI. | Inyectar dependencias en `AuthContext`; las funciones globales quedan como fachada fina. |
@@ -310,14 +312,14 @@ Método: `ui-ux-pro-max` (checklist de accesibilidad, interacción, rendimiento,
 
 ## 7. Pruebas de ataque realizadas (resumen reproducible)
 
-Se ejecutaron desde fuera de la aplicación (HTTP), sobre la BD de desarrollo, y los casos quedaron en el repositorio como **`tests/ataques.py`** (solo biblioteca estándar de Python; ~108 comprobaciones, ~30 s):
+Se ejecutaron desde fuera de la aplicación (HTTP), sobre la BD de desarrollo, y los casos quedaron en el repositorio como **`tests/ataques.py`** (solo biblioteca estándar de Python; hoy **169 comprobaciones, ~90 s**, 0 fallidas y 0 hallazgos conocidos pendientes):
 
 ```bash
 python3 tests/ataques.py             # ejecuta todo; crea y borra usuarios ataque_*@correo.com
 python3 tests/ataques.py --limpiar   # borra restos si una ejecución se interrumpió
 ```
 
-Los hallazgos de este reporte que siguieran abiertos (hoy ninguno) se marcan en el script como `CONOCIDO <id>`: no hacen fallar la ejecución. Al corregir uno, la prueba imprime `RESUELTO <id>`; entonces se borra su argumento `conocido=` para que, si reaparece, falle de verdad. Hoy el script no está en `tests/run-all.sh` (envía ~12 correos a Mailpit y gasta cupo de registro por IP); conviene añadirlo cuando haya CI.
+Los hallazgos de este reporte que siguieran abiertos (hoy ninguno) se marcan en el script como `CONOCIDO <id>`: no hacen fallar la ejecución. Al corregir uno, la prueba imprime `RESUELTO <id>`; entonces se borra su argumento `conocido=` para que, si reaparece, falle de verdad. Sigue sin estar en `tests/run-all.sh` (envía ~12 correos a Mailpit y gasta cupo de registro por IP), pero **el workflow de CI (`.github/workflows/ci.yml`) lo ejecuta** después de `run-all.sh`.
 
 | Grupo | Casos | Resultado |
 |---|---|---|
@@ -333,15 +335,20 @@ Los hallazgos de este reporte que siguieran abiertos (hoy ninguno) se marcan en 
 | Enumeración por mensaje y por tiempo | 3 | ✅ sin diferencias (excepto registro, D2) |
 | Abuso de invitaciones | 30 | ✅ corregido: tope de 10/día (antes ❌ sin límite, A2) |
 | Correo ajeno sin verificar | 11 | ✅ corregido: no recibe invitaciones ni correo (antes ❌, A1) |
-| Xdebug en configuración de producción | 1 | ❌ `develop` activo (M2) |
+| Xdebug en configuración de producción | 1 | ✅ corregido: la imagen de producción se construye sin Xdebug (antes ❌ `develop` activo, M2) |
+| Verificación en dos pasos (M7) | 26 | ✅ repetición de códigos, fuerza bruta, fijación de sesión, CSRF, códigos de un solo uso, secretos cifrados |
+| Importación CSV: vista previa y abuso (M8/U4) | 6 | ✅ cuenta ajena, campos manipulados, 20.000 líneas basura, HTML escapado |
+| Cabeceras de comprobantes (M6) | 4 | ✅ CSP `sandbox`, PDF como descarga |
 
 ---
 
 ## 8. Cobertura de pruebas del proyecto
 
-- Unitarias: **504 correctas, 0 fallidas**. Integración: **436 correctas, 0 fallidas**. Humo: **792 correctas, 0 fallidas**.
-- Está bien cubierto: validadores, dinero, CSRF/origen, sesión, límites, correo, adjuntos, migraciones idempotentes, IDOR básico.
-- **Falta cubrir:** pruebas de carrera con concurrencia real (hoy solo secuenciales), abuso de invitaciones, borrado de comprobantes al eliminar un espacio (M3), y que el admin de la seed no exista en producción (C1). Sin CI no se ejecutan en cada cambio (R8).
+- **Hoy:** unitarias **588**, integración **563**, humo **875**, copias de seguridad **39** y ataques **169**; todas con 0 fallidas. (En la auditoría original: 504, 436 y 792, sin las dos últimas.)
+- **Análisis estático y estilo (R8):** PHPStan nivel 6 sin avisos nuevos (la línea base `phpstan-baseline.neon` recoge 34 previos, ninguno un fallo real) y PHP CS Fixer limpio; `bin/estatico todo` los ejecuta en el contenedor.
+- **CI (R8):** `.github/workflows/ci.yml` (calidad + `tests/run-all.sh` + `tests/ataques.py` con Docker Compose). **Aún no se ejecutó en GitHub**: sus comandos se probaron en local.
+- Está bien cubierto: validadores, dinero, CSRF/origen, sesión, límites, correo y su cola, adjuntos, copias y restauración (incluidos archivos manipulados), 2FA, migraciones idempotentes, IDOR, el borrado completo de datos contra `information_schema` (R2) y los índices (R9).
+- **Lo que sigue sin cubrirse:** carreras con concurrencia real más allá de `ataques.py` (20 hilos), el flujo completo del administrador con 2FA obligatorio (se probó a mano con `ADMIN_2FA_OBLIGATORIO=1`; las suites corren en `APP_ENV=local`), el envío real por un SMTP de producción y una prueba de carga actualizada tras la cola de correo y las sesiones.
 
 ---
 
@@ -361,8 +368,11 @@ Los hallazgos de este reporte que siguieran abiertos (hoy ninguno) se marcan en 
 | 10 | ~~M8 / U4~~ ✅ | Vista previa de importación | hecho | Datos erróneos |
 | 11 | ~~M5~~ ✅ (parcial) | Tope de sesiones, caducidad absoluta, menos escrituras; falta el `SessionHandler` | hecho | Escalado |
 | 12 | ~~M7~~ ✅ | 2FA TOTP | hecho | Cuenta financiera |
-| 13 | R2, R8, R1 | Lista única de tablas, CI + PHPStan, partir `MovimientoController` | 1-2 días | Deuda técnica |
-| 14 | Resto de B*, E*, U*, R* | Endurecimiento y pulido | continuo | Bajo |
+| 13 | ~~R2, R8, R1~~ ✅ | Lista única de tablas, CI + PHPStan, partir `MovimientoController::form()` | hecho | Deuda técnica |
+| 14 | ~~B12, R3, R4, R9~~ ✅ | Copias con comprobantes, `ResultadoSubida`, `Peticion`, índices de espacios | hecho | Datos / mantenimiento |
+| 15 | R5, R6, R7 | Inyección de dependencias en `session.php`, manejador central de errores, partir `Ui.php` | 1-2 días | Deuda técnica |
+| 16 | B1–B11, E2–E4, U5–U11 | Endurecimiento y pulido (ver listas; B1, B5 y B10 antes de producción) | continuo | Bajo |
+| 17 | Mejoras | Código QR en la activación del 2FA, `SessionHandler` propio (solo con más de un contenedor PHP), re-codificar imágenes para quitar EXIF | a demanda | Opcional |
 
 ### Antes del primer despliegue público (lista mínima)
 - [x] C1 resuelto (la seed ya no crea el admin; verificado con arranque real y `salud.php`).
@@ -372,9 +382,15 @@ Los hallazgos de este reporte que siguieran abiertos (hoy ninguno) se marcan en 
 - [x] A1 resuelto.
 - [ ] `APP_ORIGIN` con `https://`, certificados, `APP_ENV=production`, contraseñas de BD generadas (B10).
 - [ ] SMTP real con TLS (B5) y SPF/DKIM/DMARC del dominio.
-- [ ] Copias de seguridad probadas con restauración real (no cubierto en esta auditoría) **y que incluyan los comprobantes** (B12 ✅: ya los incluyen; falta que pruebes la restauración real en tu servidor).
-- [ ] CI con `tests/run-all.sh` (R8).
+- [x] M1, M3, M4, M5, M6, M7 y M8 resueltos (ver cada uno).
+- [ ] Copias de seguridad **probadas con una restauración real en tu servidor** (las suites ya prueban la copia y la restauración en desarrollo, y la copia incluye los comprobantes: B12 ✅). Sincronizar los dos archivos (`.sql.gz` y `.adjuntos.tar.gz`) fuera del servidor.
+- [x] CI configurado (R8 ✅): falta **ejecutarlo una vez en GitHub** y confirmar que pasa.
+- [ ] `APP_KEY` generada (`openssl rand -base64 32`) y guardada aparte (M7); administradores con el 2FA activado; migraciones 013–016 aplicadas y `03-users.sh` ejecutado (tablas nuevas); servicio `correo` en marcha (M4).
 
 ## 10. Conclusión
 
-La aplicación está **bien construida**: arquitectura clara por capas, consultas preparadas, escape de salida sistemático, CSP sin `unsafe-inline`, bloqueos transaccionales correctos, aislamiento por usuario y por espacio verificado con ataques reales, y una cobertura de pruebas poco común en un proyecto de este tamaño. Lo que impide llamarla «lista para internet» no son fallos de programación, sino **tres decisiones de producto/operación**: la cuenta admin sembrada (C1), la ausencia de verificación de correo con invitaciones por correo (A1/A2) y el cuidado de la imagen de producción (M2/B1). Con las 5-6 primeras tareas del plan (menos de dos días de trabajo) queda en un nivel de seguridad adecuado para un lanzamiento controlado.
+La aplicación estaba **bien construida** y hoy lo está más: arquitectura clara por capas, consultas preparadas, escape de salida sistemático, CSP sin `unsafe-inline`, bloqueos transaccionales correctos, aislamiento por usuario y por espacio verificado con ataques reales, y una cobertura de pruebas poco común en un proyecto de este tamaño (más de 1 800 comprobaciones automáticas, análisis estático y CI configurado).
+
+Lo que la auditoría original señalaba como barrera para llamarla «lista para internet» eran **tres decisiones de producto y operación**: la cuenta admin sembrada (C1), la ausencia de verificación de correo con invitaciones por correo (A1/A2) y el cuidado de la imagen de producción (M2/B1). **C1, A1, A2 y M2 están resueltos**, igual que todos los hallazgos medios (M1–M8): ya no se puede bloquear a otra persona al iniciar sesión, los comprobantes se sirven aislados y viajan en las copias, el correo no ocupa procesos web, las sesiones tienen tope y caducidad y hay verificación en dos pasos (obligatoria para administradores).
+
+**Lo que queda** no es de seguridad crítica: B1 (código no escribible en producción) conviene cerrarlo o aceptarlo por escrito, B5 y B10 son comprobaciones de configuración de producción, y el resto son endurecimientos, refactores (R5–R7) y pulido de interfaz (U5–U11). Antes del primer despliegue público hay que completar la lista de la sección 9: configuración de producción (`APP_ORIGIN` con HTTPS, `APP_KEY`, contraseñas generadas, SMTP real con TLS), una **restauración real** de las copias en el servidor y **una ejecución del CI en GitHub**.
