@@ -1,0 +1,22 @@
+# Análisis estático (R8 de docs/AUDITORIA.md). Nivel 6: tipos de parámetros y retornos, tipos genéricos de arrays, métodos inexistentes.
+# Ejecutar:  bin/estatico analizar    (o, con Composer instalado, `composer analizar`)
+# Los fallos que ya existían al activarlo están en phpstan-baseline.neon: no se ignoran, se pagan poco a poco. CI falla ante CUALQUIER
+# fallo nuevo. Para regenerar la línea base tras arreglar cosas:  bin/estatico analizar --generate-baseline
+includes:
+    - phpstan-baseline.neon
+parameters:
+    level: 6
+    paths:
+        - src/app
+        - src/public
+        - src/scripts
+        - src/views
+    excludePaths:
+        - src/storage
+    bootstrapFiles:
+        - src/app/Security/session.php
+        - src/app/Security/csrf.php
+        - src/app/Security/origin.php
+        - src/app/Security/request-guard.php
+    tmpDir: .phpstan.cache
+    treatPhpDocTypesAsCertain: false

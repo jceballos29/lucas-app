@@ -1,0 +1,71 @@
+# Integración continua (R8 de docs/AUDITORIA.md). En cada push y pull request:
+#   1. calidad  → PHPStan (nivel 6, sin fallos nuevos respecto a phpstan-baseline.neon) y PHP CS Fixer (estilo).
+#   2. pruebas  → levanta el entorno de desarrollo con Docker Compose y ejecuta tests/run-all.sh (unitarias, integración, humo y copias)
+#                 más la suite de ataques (tests/ataques.py).
+# Los mismos comandos funcionan en local: `bin/estatico todo` y `tests/run-all.sh`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  calidad:
+    name: Calidad de código
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+      - name: Instalar herramientas
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+      - name: PHP CS Fixer
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff
+
+  pruebas:
+    name: Pruebas (Docker Compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configuración de desarrollo
+        run: |
+          cp .env.example .env
+          echo "HOST_UID=$(id -u)" >> .env
+          echo "HOST_GID=$(id -g)" >> .env
+      - name: Levantar el entorno
+        run: docker compose up -d --build
+      - name: Esperar a que la aplicación responda
+        run: |
+          port="$(grep -E '^APP_PORT=' .env | cut -d= -f2)"
+          for i in $(seq 1 90); do
+            if curl -fsS "http://127.0.0.1:${port:-8090}/salud.php" >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs --tail 80
+          exit 1
+      - name: Pruebas (unitarias, integración, humo y copias)
+        run: tests/run-all.sh
+      - name: Pruebas de ataque
+        run: python3 tests/ataques.py
+      - name: Registros si algo falló
+        if: failure()
+        run: docker compose logs --tail 200
+      - name: Apagar
+        if: always()
+        run: docker compose down -v

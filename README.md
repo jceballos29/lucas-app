@@ -170,6 +170,8 @@ bin/as-migrator php tests/integration.php           # repositorios contra una BD
 tests/smoke.sh                                      # punta a punta con curl (con la app en marcha)
 tests/backup.sh                                     # copia de seguridad real + restauración
 tests/run-all.sh                                    # todas las suites, en orden
+python3 tests/ataques.py                            # ataques contra la app en marcha (IDOR, XSS, fuerza bruta, 2FA...)
+bin/estatico todo                                   # PHPStan (nivel 6) + PHP CS Fixer, igual que CI (bin/estatico estilo:arreglar para corregir)
 python3 tests/carga.py --setup --users 500          # prueba de carga (ver docs/DESPLIEGUE.md; --cleanup al terminar)
 bin/as-migrator php scripts/migrate.php             # aplica las migraciones pendientes
 bin/backup-db                                       # copia de seguridad de la base y de los comprobantes (semanal en producción)
@@ -179,6 +181,8 @@ docker compose exec php composer dump-autoload      # tras añadir clases
 bin/as-migrator php scripts/<script>.php            # scripts que cambian datos o esquema (usuario de migraciones)
 docker compose down -v                              # parar y BORRAR la base
 ```
+
+**Integración continua:** `.github/workflows/ci.yml` ejecuta en cada push y pull request la calidad de código (`bin/estatico todo`) y todas las suites con Docker Compose, más `tests/ataques.py`. PHPStan parte de una línea base (`phpstan-baseline.neon`) con los 34 avisos que ya existían: CI falla ante cualquiera **nuevo**; al arreglar los antiguos, regenera la línea base con `bin/estatico analizar --generate-baseline`.
 
 ### Problemas frecuentes
 

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#
+# Herramientas de calidad de código (R8 de docs/AUDITORIA.md), dentro del contenedor php (no hace falta tener PHP ni Composer instalados):
+#
+#   bin/estatico instalar            # composer install de las herramientas (PHPStan y PHP CS Fixer) en ./vendor
+#   bin/estatico analizar [...]      # PHPStan nivel 6 (config: phpstan.neon; los fallos previos están en phpstan-baseline.neon)
+#   bin/estatico estilo              # PHP CS Fixer en modo «solo mostrar»: falla si algo no sigue el estilo
+#   bin/estatico estilo:arreglar     # lo corrige
+#   bin/estatico todo                # instalar si falta + analizar + estilo (lo mismo que ejecuta CI)
+#
+# Los argumentos extra pasan a la herramienta:  bin/estatico analizar --generate-baseline
+
+set -eu
+export MSYS_NO_PATHCONV=1
+cd "$(dirname "$0")/.."
+
+correr() { docker compose run --rm --no-deps -T -u "$(id -u):$(id -g)" -e COMPOSER_HOME=/tmp/composer -v "$PWD":/app -w /app --entrypoint "" php "$@"; }
+instalar() { [ -x vendor/bin/phpstan ] || correr composer install --no-interaction --no-progress; }
+
+orden="${1:-todo}"; [ $# -gt 0 ] && shift
+case "$orden" in
+    instalar)         correr composer install --no-interaction --no-progress ;;
+    analizar)         instalar; correr vendor/bin/phpstan analyse --memory-limit=1G --no-progress "$@" ;;
+    estilo)           instalar; correr vendor/bin/php-cs-fixer fix --dry-run --diff "$@" ;;
+    estilo:arreglar)  instalar; correr vendor/bin/php-cs-fixer fix "$@" ;;
+    todo)             instalar; correr vendor/bin/phpstan analyse --memory-limit=1G --no-progress; correr vendor/bin/php-cs-fixer fix --dry-run --diff ;;
+    *) echo "Uso: bin/estatico [instalar|analizar|estilo|estilo:arreglar|todo]" >&2; exit 2 ;;
+esac
